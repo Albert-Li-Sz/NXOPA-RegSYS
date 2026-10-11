@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-11T19:05:50.055207+00:00",
+  "generatedAt": "2026-10-11T19:13:09.729349+00:00",
   "evidence": [
     {
       "path": "admissions-batch.json",
@@ -247,9 +247,34 @@
       "sha256": "368883d5bdcb4264873607b0ae2dea9401301f133bd281ad294c2290e83d3d40"
     },
     {
+      "path": "pages-deployment.json",
+      "bytes": 5960,
+      "sha256": "f854b895da30ff3784874ca96a87777f57e4585f3bee0e281375171f5e4c8db0"
+    },
+    {
       "path": "pages-desktop.png",
       "bytes": 213144,
       "sha256": "77273de84633133371c27b5083fbd2137fe355a2f4ddd3db50e6fc2d13330187"
+    },
+    {
+      "path": "pages-live-browser.json",
+      "bytes": 753,
+      "sha256": "743c13140042add692e063f8649649fa06785a93c91a0dc7ec57a6505253d5bd"
+    },
+    {
+      "path": "pages-live-desktop.png",
+      "bytes": 213144,
+      "sha256": "77273de84633133371c27b5083fbd2137fe355a2f4ddd3db50e6fc2d13330187"
+    },
+    {
+      "path": "pages-live-mail.png",
+      "bytes": 206757,
+      "sha256": "16218c9f995e9cfdce11e8111af7bc469d6669b0d08f61ea2f6d92ed716b4734"
+    },
+    {
+      "path": "pages-live-mobile.png",
+      "bytes": 88052,
+      "sha256": "4d83b5e7c8c25bb45bc01646023286e6f5dcdaf7070024981f56a6d08f037f2c"
     },
     {
       "path": "pages-mail.png",

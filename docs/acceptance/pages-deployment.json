@@ -1,0 +1,198 @@
+{
+  "passed": true,
+  "url": "https://albert-li-sz.github.io/NXOPA-RegSYS/",
+  "repository": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS",
+  "publishedBranch": "main",
+  "siteCommit": "772de76a072a4ed94761a14391a4886a6c1e0696",
+  "workflow": {
+    "conclusion": "success",
+    "databaseId": 38166631827,
+    "headSha": "772de76a072a4ed94761a14391a4886a6c1e0696",
+    "jobs": [
+      {
+        "completedAt": "2026-10-11T19:06:59Z",
+        "conclusion": "success",
+        "databaseId": 114550430215,
+        "name": "构建教程网页",
+        "startedAt": "2026-10-11T19:06:50Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-11T19:06:53Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-11T19:06:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-11T19:06:55Z",
+            "conclusion": "success",
+            "name": "获取项目源码",
+            "number": 2,
+            "startedAt": "2026-10-11T19:06:53Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-11T19:06:55Z",
+            "conclusion": "success",
+            "name": "准备 Node.js",
+            "number": 3,
+            "startedAt": "2026-10-11T19:06:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-11T19:06:56Z",
+            "conclusion": "success",
+            "name": "读取 Pages 配置",
+            "number": 4,
+            "startedAt": "2026-10-11T19:06:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-11T19:06:56Z",
+            "conclusion": "success",
+            "name": "从 LaTeX 教程构建网页",
+            "number": 5,
+            "startedAt": "2026-10-11T19:06:56Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-11T19:06:57Z",
+            "conclusion": "success",
+            "name": "上传教程产物",
+            "number": 6,
+            "startedAt": "2026-10-11T19:06:56Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-11T19:06:57Z",
+            "conclusion": "success",
+            "name": "Post 准备 Node.js",
+            "number": 11,
+            "startedAt": "2026-10-11T19:06:57Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-11T19:06:57Z",
+            "conclusion": "success",
+            "name": "Post 获取项目源码",
+            "number": 12,
+            "startedAt": "2026-10-11T19:06:57Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-11T19:06:57Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 13,
+            "startedAt": "2026-10-11T19:06:57Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38166631827/job/114550430215"
+      },
+      {
+        "completedAt": "2026-10-11T19:07:10Z",
+        "conclusion": "success",
+        "databaseId": 114550468174,
+        "name": "发布 GitHub Pages",
+        "startedAt": "2026-10-11T19:07:03Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-11T19:07:04Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-11T19:07:03Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-11T19:07:09Z",
+            "conclusion": "success",
+            "name": "部署教程",
+            "number": 2,
+            "startedAt": "2026-10-11T19:07:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-11T19:07:09Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 3,
+            "startedAt": "2026-10-11T19:07:09Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38166631827/job/114550468174"
+      }
+    ],
+    "status": "completed",
+    "url": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38166631827"
+  },
+  "site": {
+    "build_type": "workflow",
+    "html_url": "https://albert-li-sz.github.io/NXOPA-RegSYS/",
+    "https_enforced": true,
+    "status": null
+  },
+  "liveBuildMetadata": {
+    "source": "docs/CONFIGURATION_GUIDE.tex",
+    "chapters": [
+      {
+        "id": "deployment",
+        "title": "首次部署与管理员初始化"
+      },
+      {
+        "id": "site",
+        "title": "首页、登录与站点设置"
+      },
+      {
+        "id": "mail",
+        "title": "邮件服务：保存、检测与实际收件"
+      },
+      {
+        "id": "invitations",
+        "title": "通过链接授予账号身份"
+      },
+      {
+        "id": "permissions",
+        "title": "授权确认与范围检查"
+      },
+      {
+        "id": "hydro",
+        "title": "接入 Hydro 评测平台"
+      },
+      {
+        "id": "domjudge",
+        "title": "接入 DOMjudge 评测平台"
+      },
+      {
+        "id": "binding",
+        "title": "比赛绑定与报名同步"
+      },
+      {
+        "id": "contest",
+        "title": "竞赛报名规则与线下财务"
+      },
+      {
+        "id": "fields",
+        "title": "配置报名字段"
+      },
+      {
+        "id": "admissions",
+        "title": "配置准考证模板与发放"
+      },
+      {
+        "id": "operations",
+        "title": "模板语法、任务与维护"
+      }
+    ],
+    "screenshots": 14,
+    "commit": "772de76a072a4ed94761a14391a4886a6c1e0696"
+  },
+  "liveBrowserChecks": 6,
+  "originalLicensePreserved": true,
+  "checkedAt": "2026-10-11T19:10:54.194358+00:00"
+}

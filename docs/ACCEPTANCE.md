@@ -37,6 +37,8 @@
 
 使用真实浏览器在 `/NXOPA-RegSYS/` 子路径完成 6 组检查：正文与模板变量、全部图片和脚本路径、章节导航与剪贴板、截图弹窗、三种下载文件 SHA-256、390 像素手机目录及无横向溢出。见 [教程浏览器记录](acceptance/pages-browser.json)、[桌面截图](acceptance/pages-desktop.png)、[邮件章节截图](acceptance/pages-mail.png)、[手机截图](acceptance/pages-mobile.png)。网页构建只依赖 Node.js 内置模块；发布由 `.github/workflows/pages.yml` 执行，推送教程相关变更至 `main` 后自动部署。
 
+已保留目标仓库原有 MIT License 与初始提交，将项目推送至 `Albert-Li-Sz/NXOPA-RegSYS` 的 `main`。GitHub Actions [发布运行](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38166631827)构建与部署均成功；线上 `build-info.json` 对应提交 `772de76a072a4ed94761a14391a4886a6c1e0696`，公开地址返回 HTTP 200。公开网站重复完成全部 6 组浏览器检查，三种下载文件的 SHA-256 与本地交付物完全相同，无脚本错误或资源请求失败；[发布记录](acceptance/pages-deployment.json)、[线上浏览器记录](acceptance/pages-live-browser.json)、[线上桌面](acceptance/pages-live-desktop.png)、[线上手机](acceptance/pages-live-mobile.png)。仓库排除了私有环境配置、运行数据库与存储、测试凭据文件、依赖和临时编译目录。
+
 本机 Node.js 24.18.0、pnpm 11.25.0、Docker Engine 29.8.2；Docker Desktop 分配 8 CPU、约 8 GiB 内存。生产镜像使用 Node.js 24.12.0、PostgreSQL 17.6、Redis 7.4.5、Caddy 2.10.2；Prisma 固定 7.10.0。官网使用 Vue 3 / TypeScript / Element Plus，API 与 Worker 独立运行。开发、正式 Compose 和两个 OJ 的数据库卷独立。
 
 | 交付物                               | 位置                                                                               |
