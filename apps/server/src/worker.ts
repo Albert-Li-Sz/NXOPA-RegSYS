@@ -10,6 +10,7 @@ import { platformConfig, envelope, scheduleSync } from './integrations.js';
 import { admissionMaterial, activeTemplate } from './admissions.js';
 import { renderTemplate } from './templates.js';
 import { sendSystemMail } from './mail.js';
+import { publicLink } from './site-settings.js';
 const redisUrl = new URL(config.redisUrl);
 const connection = {
   host: redisUrl.hostname,
@@ -63,7 +64,7 @@ const worker = new Worker(
           {
             to: String(p.to),
             subject: String(p.subject),
-            text: String(p.text),
+            text: `${p.text}${typeof p.actionPath === 'string' ? `\n${await publicLink(p.actionPath)}` : ''}`,
           },
           p.test === true ? Number(p.configurationVersion) : undefined,
         );
@@ -111,49 +112,121 @@ const worker = new Worker(
         });
         result = { documentId: document.id };
       } else if (j.kind === 'SYNC') {
-        const mapping = await db.accountMapping.findUniqueOrThrow({
-          where: { id: String(p.mappingId) },
-        });
-        const r = await db.registration.findUniqueOrThrow({
-          where: { id: mapping.registrationId },
-          include: registrationInclude,
-        });
-        if (!r.eligible) throw new Error('Registration no longer eligible');
-        if (r.version !== p.version)
-          throw new Error('Registration version changed before synchronization');
-        const c = await platformConfig(mapping.bindingId);
-        const input = {
-          envelope: await envelope(r),
-          username: mapping.username,
-          password: decrypt(mapping.credential),
-          onProgress: async (output: import('@contest-center/contracts').ProvisioningResultV1) => {
-            await db.accountMapping.update({
-              where: { id: mapping.id },
+        result = await db.$transaction(
+          async (tx) => {
+            const mappingId = String(p.mappingId);
+            await lock(tx, `sync:${mappingId}`);
+            const mapping = await tx.accountMapping.findUniqueOrThrow({ where: { id: mappingId } });
+            const expectedMapping = {
+              id: mapping.id,
+              registration: { version: Number(p.version), eligible: true },
+              binding: {
+                version: Number(p.bindingVersion),
+                enabled: true,
+                instance: { version: Number(p.instanceVersion), enabled: true },
+              },
+            };
+            const r = await tx.registration.findUniqueOrThrow({
+              where: { id: mapping.registrationId },
+              include: registrationInclude,
+            });
+            async function versions() {
+              const binding = await tx.platformBinding.findUniqueOrThrow({
+                where: { id: mapping.bindingId },
+                include: { instance: true },
+              });
+              const registration = await tx.registration.findUniqueOrThrow({ where: { id: r.id } });
+              const school = p.organizationMappingId
+                ? await tx.organizationMapping.findUniqueOrThrow({
+                    where: { id: String(p.organizationMappingId) },
+                  })
+                : null;
+              if (
+                !registration.eligible ||
+                registration.version !== p.version ||
+                binding.version !== p.bindingVersion ||
+                binding.instance.version !== p.instanceVersion ||
+                !binding.enabled ||
+                !binding.instance.enabled ||
+                (school &&
+                  (school.version !== p.organizationVersion || school.status !== 'CONFIRMED'))
+              )
+                throw new Error('报名、学校或平台配置已改变，请重新发起同步');
+              return binding;
+            }
+            const binding = await versions();
+            const c = await platformConfig(mapping.bindingId);
+            c.configuration.organizationId = p.organizationId
+              ? String(p.organizationId)
+              : undefined;
+            const shared =
+              mapping.remoteTeamId &&
+              (await tx.accountMapping.findFirst({
+                where: {
+                  id: { not: mapping.id },
+                  remoteTeamId: mapping.remoteTeamId,
+                  bindingId: {
+                    in: (
+                      await tx.platformBinding.findMany({
+                        where: { instanceId: binding.instanceId },
+                        select: { id: true },
+                      })
+                    ).map((b) => b.id),
+                  },
+                },
+              }));
+            if (shared && c.type === 'DOMJUDGE')
+              throw new Error('历史远端队伍被其他绑定共享，请管理员确认并解除映射冲突后重试');
+            const input = {
+              envelope: await envelope(r),
+              username: mapping.username,
+              password: decrypt(mapping.credential),
+              remoteTeamId: String(p.remoteTeamId),
+              remoteUserId: mapping.remoteUserId ?? undefined,
+              onProgress: async (
+                output: import('@contest-center/contracts').ProvisioningResultV1,
+              ) => {
+                await versions();
+                // Persist partial remote IDs outside this transaction so recovery reuses them after a remote error.
+                const saved = await db.accountMapping.updateMany({
+                  where: expectedMapping,
+                  data: {
+                    state: output.state,
+                    remoteUserId: output.remoteUserId,
+                    remoteTeamId: output.remoteTeamId,
+                    details: json({
+                      ...output,
+                      registrationVersion: p.version,
+                      bindingVersion: p.bindingVersion,
+                    }),
+                  },
+                });
+                if (saved.count !== 1) throw new Error('报名或平台配置已改变，请重新发起同步');
+                await db.job.update({ where: { id: j.id }, data: { result: json(output) } });
+              },
+            };
+            const output = await connector(c.type).provisionRegistration(c.configuration, input);
+            if (output.state !== 'VERIFIED') throw new Error('平台未确认账号、队伍及目标比赛访问');
+            await lock(tx, r.id);
+            await versions();
+            const saved = await tx.accountMapping.updateMany({
+              where: expectedMapping,
               data: {
-                state: output.state,
+                state: 'VERIFIED',
                 remoteUserId: output.remoteUserId,
                 remoteTeamId: output.remoteTeamId,
-                details: json(output),
+                details: json({
+                  ...output,
+                  registrationVersion: p.version,
+                  bindingVersion: p.bindingVersion,
+                }),
               },
             });
-            await db.job.update({ where: { id: j.id }, data: { result: json(output) } });
+            if (saved.count !== 1) throw new Error('报名或平台配置已改变，请重新发起同步');
+            return output;
           },
-        };
-        const output = await connector(c.type).provisionRegistration(c.configuration, input);
-        if (output.state !== 'VERIFIED')
-          throw new Error('Platform did not verify account and contest access');
-        const current = await db.registration.findUniqueOrThrow({ where: { id: r.id } });
-        await db.accountMapping.update({
-          where: { id: mapping.id },
-          data: {
-            state:
-              current.eligible && current.version === p.version ? 'VERIFIED' : 'REVOKED_LOCALLY',
-            remoteUserId: output.remoteUserId,
-            remoteTeamId: output.remoteTeamId,
-            details: json(output),
-          },
-        });
-        result = output;
+          { timeout: 120000 },
+        );
       } else if (j.kind === 'WEBHOOK') {
         const hook = await db.webhook.findUniqueOrThrow({ where: { id: String(p.webhookId) } });
         if (!hook.enabled) throw new Error('Webhook disabled');
@@ -194,9 +267,19 @@ const worker = new Worker(
         const m = await db.accountMapping.findUnique({
           where: { id: String((j.payload as Record<string, unknown>).mappingId) },
         });
-        if (m)
-          await db.accountMapping.update({
-            where: { id: m.id },
+        const payload = j.payload as Record<string, unknown>;
+        const r = m && (await db.registration.findUnique({ where: { id: m.registrationId } }));
+        const b = m && (await db.platformBinding.findUnique({ where: { id: m.bindingId } }));
+        if (m && r?.version === payload.version && b?.version === payload.bindingVersion)
+          await db.accountMapping.updateMany({
+            where: {
+              id: m.id,
+              registration: { version: Number(payload.version) },
+              binding: {
+                version: Number(payload.bindingVersion),
+                instance: { version: Number(payload.instanceVersion) },
+              },
+            },
             data: { state: 'FAILED', details: json({ ...(m.details as object), error: message }) },
           });
       }
@@ -254,7 +337,8 @@ async function dispatch() {
                 payload: json({
                   to: u.email,
                   subject: '竞赛报名状态更新',
-                  text: `${p.message}\n${config.publicUrl}/registrations/${r.id}`,
+                  text: String(p.message),
+                  actionPath: `/registrations/${r.id}`,
                 }),
               },
               update: {},

@@ -24,9 +24,40 @@ pnpm generate:client
 
 浏览器会话 Cookie 为 `cc_session`。从 `GET /api/v1/auth/me` 获取 CSRF，写操作发送 `X-CSRF-Token`。写入版本化资源时传 `version`；旧版本返回 409。写请求可传 `Idempotency-Key`，同一用户对相同 URL、方法、正文的重试返回原结果；幂等结果和业务写入在一个 PostgreSQL 事务提交，结果静态加密。
 
-JSON 请求上限 5 MiB，附件上限 10 MiB。竞赛后台统计来自整个竞赛的数据库聚合，不随列表分页变化。准考证批量下载使用 POST /api/v1/admissions/batch，正文选择 ids 或 registrationIds，单次最多 1000 张。
+JSON 请求上限 5 MiB，附件上限 10 MiB。竞赛后台统计与导出使用完整权限和筛选条件，不随当前页变化。准考证批量下载使用 POST /api/v1/admissions/batch，正文选择 ids 或 registrationIds，单次最多 1000 张。
 
-列表默认最多 500 条，报名列表支持 `cursor=<上一页最后一项ID>`，按 UUID 升序分页；直到返回不足 500 条。导出接口遍历全部报名，不受页面上限影响，采用 UTF-8 BOM，并转义 CSV 公式前缀。
+### 分页与筛选
+
+列表显式传入 `page` 或 `pageSize` 时返回共享 `PageResult<T>`：`{items,total,page,pageSize}`。`page` 从 1 开始，`pageSize` 只接受 20／50／100，默认 20。审计、任务、用户、授权邀请、报名、工单和财务历史均支持后端分页；权限与搜索／状态／时间条件同时作用于总数和列表。按时间及唯一 ID 稳定排序。
+
+```text
+GET /api/v1/admin/audit?page=2&pageSize=50&search=<对象ID>&status=REVIEW
+GET /api/v1/registrations?page=1&pageSize=20&contestId=<UUID>&participationType=UNOFFICIAL
+GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
+```
+
+时间筛选为带时区 ISO `from`／`to`。状态键按列表使用 `status`、`review`、`kind`；完整参数见 OpenAPI。报名可使用 `eligible`、`participationType`、`search`，统计与 CSV 接收同样筛选。`GET /registrations/:id?history=false` 返回财务合计但不附带历史数组，历史分别从 `finance/vouchers`、`finance/ledger`、`finance/refunds`、`finance/invoices` 读取。
+
+未显式分页的旧调用继续返回原数组；报名 `cursor=<上一页最后一项ID>` 按 UUID 升序、最多 500 条，用于导出和既有集成。CSV 遍历全部筛选报名，采用 UTF-8 BOM 并转义公式前缀。
+
+### 公网地址、竞赛与发票
+
+`GET /api/v1/site` 返回当前 `publicUrl` 与配置 `version`；系统管理员 `PUT /api/v1/admin/site` 保存新地址并检查版本。地址仅允许根路径 HTTP／HTTPS，生产要求 HTTPS；API 与 Worker 动态读取。环境地址和 `TRUSTED_MANAGEMENT_ORIGINS` 保留为可信管理入口，CLI `pnpm restore:public-url https://reg.example.org` 提供恢复并记录审计。
+
+竞赛新增 `descriptionFormat: TEXT|MARKDOWN`；旧数据保持 `TEXT`。规则新增 `allowUnofficial`、版本化 `platformProfiles`、`invoiceTypes: NORMAL|SPECIAL` 和 `invoiceRequiredFields`。报名新增 `participationType: OFFICIAL|UNOFFICIAL` 与 `organization: {name,shortName,country,icpcId?}`；旧报名默认正式，字段向后兼容。提交锁定资料快照，关键变更使审核、准考证和映射失效。非正式申请必须人工审核。
+
+开票申请包含 `invoiceType`、`titleType: PERSON|ENTERPRISE|ORGANIZATION`、`title`、`taxId`、`amountCents`、`email`、`contactName`、`phone`、`address`、`bankName`、`bankAccount`、`remarks`。企业税号必填、专票只接受单位与税号，额外必填项使用当前竞赛配置；保存申请 `snapshot`。金额受净收款及保留开票金额约束；拒绝须说明原因，实际发票附件受报名权限保护。历史缺项保持历史展示。
+
+### 平台模板与学校映射
+
+| 接口                                                               | 行为                                                                                              |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| GET `/api/v1/integrations/field-templates`                         | 登录后读取 Hydro 5.0.7／DOMjudge 9.0.1 基础字段及填写／生成／管理来源                             |
+| GET `/api/v1/integrations/bindings/:id/metadata`                   | 获授权管理员查询目标组织与分组                                                                    |
+| GET `/api/v1/integrations/bindings/:id/schools?page=1&pageSize=20` | 按实例、竞赛权限查询待确认／已确认学校                                                            |
+| PUT `/api/v1/integrations/bindings/:id/schools/:schoolId`          | `version` 加 `remoteId` 选择已有组织，或 `create:true` 确认新组织；保留全称、简称、国家和 ICPC ID |
+
+绑定新增 `version`、`importMode: FOLLOW|FORCE_UNOFFICIAL`、`includeUnofficial`、`unofficialGroupId`、`nickname`。保存时自动合并所需模板字段。学校未确认返回 `WAITING_ORGANIZATION`；关闭非正式导入返回 `SKIPPED`；缺少非正式分组返回配置待处理状态。新任务固定报名、绑定、实例和学校版本，过期任务不得覆盖最新映射。
 
 ## 账号与页面入口
 
@@ -69,7 +100,7 @@ Hydro / DOMjudge 的联动是报名资格生效后创建独立比赛账号，与
 
 Scopes：`contests:read`、`registrations:read`、`finance:read`、`support:read`、`integration:read`、`integration:write`。
 
-字段示例：`PERSON.name`、`PERSON.email`、`PERSON.school`、`COACH.name`、`COACH.email`、`TEAM.<字段键>`、`REGISTRATION.<字段键>`、`SUPPORT.text`、`SUPPORT.attachments`、`FINANCE.summary`。缺省仅允许 `PERSON.name`；报名的状态、版本和资格始终作为业务元数据返回，自定义资料按字段列表过滤。
+字段示例：`PERSON.name`、`PERSON.email`、`PERSON.school`、`COACH.name`、`COACH.email`、`TEAM.<字段键>`、`REGISTRATION.<字段键>`、`REGISTRATION.organization`、`REGISTRATION.participationType`、`SUPPORT.text`、`SUPPORT.attachments`、`FINANCE.summary`。缺省仅允许 `PERSON.name`；报名的状态、版本和资格始终作为业务元数据返回，组织、参赛性质及自定义资料按明确字段权限过滤；HTTP 查询与 MCP 使用相同权限。
 
 ## 联合注册接口 v1
 
@@ -81,7 +112,7 @@ Scopes：`contests:read`、`registrations:read`、`finance:read`、`support:read
 | GET `/api/integration/v1/jobs/:id`                           | 当前状态与 ProvisioningResultV1                                               |
 | POST `/api/integration/v1/registrations/:id/result`          | 正文 bindingId、registrationVersion、result；读取远端核验身份及参赛关联后保存 |
 
-Envelope 包含 schemaVersion、源实例 UUID、报名 UUID / 版本、竞赛、队名、参赛者、老师、表单快照与资格。结果包含远端用户 / 队伍 ID、用户名，以及 TEAM_CREATED、ACCOUNT_CREATED、VERIFIED、FAILED 状态。普通查询不返回 OJ 密码；授权的浏览器账号交付接口单独记录审计。
+Envelope 包含 schemaVersion、源实例 UUID、报名 UUID / 版本、竞赛、队名、参赛者、老师、表单快照与资格，向后兼容增加可选 `participationType` 和 `organization`。结果包含远端用户 / 队伍 ID、用户名、可选 `verification` 读回详情，以及 TEAM_CREATED、ACCOUNT_CREATED、VERIFIED、FAILED 状态。普通查询不返回 OJ 密码；授权的浏览器账号交付接口单独记录审计。
 
 新适配器实现 `ContestPlatformConnector` 的 probe、provisionRegistration、getProvisioningResult，声明能力；可用 onProgress 持久化阶段结果。callback 不接受客户端单方面声称已验证，必须以本站保存的凭据对远端再次核验；不认识的适配器类型会拒绝执行。
 

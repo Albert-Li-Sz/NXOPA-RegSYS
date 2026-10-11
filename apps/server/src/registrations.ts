@@ -18,6 +18,9 @@ import {
   quoteFee,
   registrationEligible,
   contestStatus,
+  mergePlatformFields,
+  organizationSchema,
+  participationSchema,
   type Principal,
   type ContestPolicy,
   type FieldDefinition,
@@ -45,6 +48,54 @@ import {
   sha,
 } from './security.js';
 import { config } from './config.js';
+import { publicLink } from './site-settings.js';
+import { paginated, dateFilter, pageOptions, type ListQuery } from './pagination.js';
+
+function registrationAccess(u: Principal, contestId?: string) {
+  return {
+    ...(contestId ? { contestId } : {}),
+    ...(!u.isAdmin && !(contestId && manages(u, contestId))
+      ? {
+          OR: [
+            { ownerId: u.id },
+            { people: { some: { userId: u.id, active: true } } },
+            { coaches: { some: { userId: u.id } } },
+            { contestId: { in: u.contestIds } },
+          ],
+        }
+      : {}),
+  };
+}
+function filteredAccess(u: Principal, query: ListQuery, contestId?: string) {
+  return {
+    AND: [
+      registrationAccess(u, contestId),
+      registrationFilters(query),
+      ...(query.role === 'coach' ? [{ coaches: { some: { userId: u.id } } }] : []),
+    ],
+  };
+}
+function registrationFilters(query: ListQuery) {
+  return {
+    ...(query.search
+      ? {
+          OR: [
+            { teamName: { contains: query.search, mode: 'insensitive' as const } },
+            {
+              people: { some: { name: { contains: query.search, mode: 'insensitive' as const } } },
+            },
+          ],
+        }
+      : {}),
+    ...(query.status ? { status: query.status } : {}),
+    ...(query.review ? { review: query.review } : {}),
+    ...(query.participationType
+      ? { participationType: participationSchema.parse(query.participationType) }
+      : {}),
+    ...(query.eligible ? { eligible: query.eligible === 'true' } : {}),
+    createdAt: dateFilter(query),
+  };
+}
 
 const ajv = new (Ajv as unknown as typeof import('ajv').Ajv)({ allErrors: true, strict: false });
 (addFormats as unknown as (a: typeof ajv) => void)(ajv);
@@ -91,11 +142,11 @@ function windowOpen(r: Registration) {
     throw new BadRequestException('此报名已取消或正在取消');
 }
 export class RegistrationService {
-  async statistics(u: Principal, contestId: string) {
+  async statistics(u: Principal, contestId: string, query: ListQuery = {}) {
     requireManager(u, contestId);
     const groups = await db.registration.groupBy({
       by: ['status', 'review', 'eligible'],
-      where: { contestId },
+      where: { contestId, ...registrationFilters(query) },
       _count: { _all: true },
     });
     return groups.reduce(
@@ -127,6 +178,7 @@ export class RegistrationService {
     });
     return rows.map((c) => ({
       ...c,
+      policy: policySchema.parse(c.policy),
       status: contestStatus(c),
       fields: c.forms[0]?.fields ?? [],
       forms: undefined,
@@ -139,7 +191,13 @@ export class RegistrationService {
     });
     if (!c || (!c.published && !u?.isAdmin && !u?.contestIds.includes(id)))
       throw new NotFoundException('竞赛不存在');
-    return { ...c, forms: undefined, fields: c.forms[0]?.fields ?? [], status: contestStatus(c) };
+    return {
+      ...c,
+      policy: policySchema.parse(c.policy),
+      forms: undefined,
+      fields: c.forms[0]?.fields ?? [],
+      status: contestStatus(c),
+    };
   }
   async saveContest(u: Principal, id: string | undefined, body: unknown) {
     const b = contestSchema.parse(body);
@@ -151,7 +209,7 @@ export class RegistrationService {
         const c = await tx.contest.findUniqueOrThrow({ where: { id } });
         checkVersion(c.version, b.version);
       }
-      const fields = b.fields;
+      const fields = mergePlatformFields(b.fields, b.policy.platformProfiles);
       const { fields: _, version: __, policy: p, ...data } = b;
       const dates = {
         startsAt: new Date(b.startsAt),
@@ -190,40 +248,61 @@ export class RegistrationService {
       return c;
     });
   }
-  async list(u: Principal, contestId?: string, cursor?: string, take = 500) {
-    const where =
-      contestId && manages(u, contestId)
-        ? { contestId }
-        : u.isAdmin
-          ? { ...(contestId ? { contestId } : {}) }
-          : {
-              ...(contestId ? { contestId } : {}),
-              OR: [
-                { ownerId: u.id },
-                { people: { some: { userId: u.id, active: true } } },
-                { coaches: { some: { userId: u.id } } },
-                { contestId: { in: u.contestIds } },
-              ],
-            };
-    return db.registration.findMany({
-      where,
-      include: registrationInclude,
-      orderBy: { id: 'asc' },
-      take: Math.min(500, Math.max(1, take)),
-      ...(cursor ? { cursor: { id: z.string().uuid().parse(cursor) }, skip: 1 } : {}),
-    });
+  async list(u: Principal, contestId?: string, cursor?: string, take = 500, query: ListQuery = {}) {
+    const filtered = filteredAccess(u, query, contestId);
+    return paginated(
+      query,
+      (options) =>
+        db.registration.findMany({
+          where: filtered,
+          include: registrationInclude,
+          orderBy: pageOptions(query) ? [{ createdAt: 'desc' }, { id: 'desc' }] : { id: 'asc' },
+          ...options,
+          ...(!pageOptions(query) && cursor
+            ? { cursor: { id: z.string().uuid().parse(cursor) }, skip: 1 }
+            : {}),
+        }),
+      () => db.registration.count({ where: filtered }),
+      Math.min(500, Math.max(1, take)),
+    );
   }
-  async detail(u: Principal, id: string) {
+  async summary(u: Principal, query: ListQuery = {}) {
+    const groups = await db.registration.groupBy({
+      by: ['status', 'review', 'eligible'],
+      where: filteredAccess(u, query, query.contestId),
+      _count: { _all: true },
+    });
+    return groups.reduce(
+      (sum, row) => {
+        const n = row._count._all;
+        sum.total += n;
+        if (row.status === 'SUBMITTED' && row.review === 'PENDING') sum.pending += n;
+        if (row.eligible) sum.eligible += n;
+        if (row.status === 'CORRECTION') sum.correction += n;
+        return sum;
+      },
+      { total: 0, pending: 0, eligible: 0, correction: 0 },
+    );
+  }
+  async detail(u: Principal, id: string, history = true) {
     const r = await getRegistration(u, id);
     const [vouchers, ledger, refunds, invoices, admissions, mappings, invitations] =
       await Promise.all([
         db.paymentVoucher.findMany({
+          take: history ? undefined : 0,
           where: { registrationId: id },
           orderBy: { createdAt: 'desc' },
         }),
-        db.ledgerEntry.findMany({ where: { registrationId: id }, orderBy: { createdAt: 'desc' } }),
-        db.refund.findMany({ where: { registrationId: id } }),
-        db.invoiceRequest.findMany({ where: { registrationId: id } }),
+        db.ledgerEntry.findMany({
+          take: history ? undefined : 0,
+          where: { registrationId: id },
+          orderBy: { createdAt: 'desc' },
+        }),
+        db.refund.findMany({ take: history ? undefined : 0, where: { registrationId: id } }),
+        db.invoiceRequest.findMany({
+          take: history ? undefined : 0,
+          where: { registrationId: id },
+        }),
         db.admissionDocument.findMany({
           where: { registrationId: id },
           orderBy: { createdAt: 'desc' },
@@ -262,8 +341,18 @@ export class RegistrationService {
         },
       },
     });
+    const invoicesTotal = await db.invoiceRequest.aggregate({
+      where: { registrationId: id, status: { in: ['REQUESTED', 'ISSUED'] } },
+      _sum: { amountCents: true },
+    });
+    const issued = await db.invoiceRequest.aggregate({
+      where: { registrationId: id, status: 'ISSUED' },
+      _sum: { amountCents: true },
+    });
     return {
       ...r,
+      invoiceIssuedCents: issued._sum.amountCents ?? 0,
+      invoiceReservedCents: invoicesTotal._sum.amountCents ?? 0,
       latestFormVersion: forms?.version,
       formUpdated: !r.quoted && r.formVersion !== r.contest.formVersion,
       fields: forms?.fields ?? [],
@@ -315,6 +404,9 @@ export class RegistrationService {
       checkVersion(r.version, b.version);
       windowOpen(r);
       const p = policy(r);
+      const participationType = b.participationType ?? r.participationType;
+      if (participationType === 'UNOFFICIAL' && !p.allowUnofficial)
+        throw new BadRequestException('此竞赛未开放非正式报名');
       if ((p.mode === 'INDIVIDUAL' && b.people.length !== 1) || b.people.length > p.maxMembers)
         throw new BadRequestException('参赛人数不符合规则');
       if (
@@ -336,6 +428,8 @@ export class RegistrationService {
       const same =
         r.teamName === b.teamName &&
         r.teamEnglishName === b.teamEnglishName &&
+        r.participationType === participationType &&
+        (b.organization === undefined || isDeepStrictEqual(r.organization, b.organization)) &&
         isDeepStrictEqual(r.answers, b.answers) &&
         r.people.length === b.people.length &&
         b.people.every((x) => {
@@ -371,6 +465,15 @@ export class RegistrationService {
         data: {
           teamName: b.teamName,
           teamEnglishName: b.teamEnglishName,
+          participationType,
+          ...(b.organization !== undefined
+            ? {
+                organization:
+                  b.organization === null
+                    ? (await import('@prisma/client')).Prisma.DbNull
+                    : json(b.organization),
+              }
+            : {}),
           answers: json(b.answers),
         },
       });
@@ -395,6 +498,14 @@ export class RegistrationService {
       )
         throw new BadRequestException('人数不符或成员尚未确认');
       if (p.mode === 'TEAM' && !r.teamName.trim()) throw new BadRequestException('请填写队名');
+      if (r.participationType === 'UNOFFICIAL' && !p.allowUnofficial)
+        throw new BadRequestException('此竞赛未开放非正式报名');
+      if (p.platformProfiles.length) {
+        if (!r.organization) throw new BadRequestException('请填写代表学校／单位信息');
+        organizationSchema.parse(r.organization);
+        if (r.people.some((x) => !x.email))
+          throw new BadRequestException('平台同步需要成员联系人邮箱');
+      }
       if (
         (p.coachMode === 'REQUIRED' && !r.coaches.length) ||
         r.coaches.length > p.maxCoaches ||
@@ -431,6 +542,8 @@ export class RegistrationService {
       const snapshot = {
         teamName: r.teamName,
         teamEnglishName: r.teamEnglishName,
+        participationType: r.participationType,
+        organization: r.organization,
         answers: r.answers,
         people: r.people,
         coaches: r.coaches,
@@ -450,7 +563,7 @@ export class RegistrationService {
         where: { id },
         data: {
           status: 'SUBMITTED',
-          review: p.manualReview ? 'PENDING' : 'APPROVED',
+          review: p.manualReview || r.participationType === 'UNOFFICIAL' ? 'PENDING' : 'APPROVED',
           reviewReason: '',
           formVersion,
           policySnapshot: json(p),
@@ -519,6 +632,7 @@ export class RegistrationService {
         version: z.number().int(),
         decision: z.enum(['APPROVED', 'CORRECTION', 'REJECTED']),
         reason: z.string().max(3000).default(''),
+        participationType: participationSchema.optional(),
       })
       .parse(body);
     return db.$transaction(async (tx) => {
@@ -532,6 +646,36 @@ export class RegistrationService {
         throw new BadRequestException('此竞赛需要先确认足额到账');
       if (b.decision !== 'APPROVED' && !b.reason.trim())
         throw new BadRequestException('请填写审核意见');
+      if (b.participationType === 'UNOFFICIAL' && !p.allowUnofficial)
+        throw new BadRequestException('此竞赛未开放非正式报名');
+      if (b.participationType && b.participationType !== r.participationType) {
+        const snapshot = {
+          ...((r.snapshot as object) ?? {}),
+          participationType: b.participationType,
+        };
+        await tx.registration.update({
+          where: { id },
+          data: { participationType: b.participationType, snapshot: json(snapshot) },
+        });
+        await tx.registrationRevision.create({
+          data: {
+            registrationId: id,
+            version: r.version + 1,
+            actorId: u.id,
+            snapshot: json(snapshot),
+            reason: 'PARTICIPATION_REVIEW',
+          },
+        });
+        await tx.admissionDocument.updateMany({
+          where: { registrationId: id },
+          data: { state: 'STALE', releasedAt: null },
+        });
+        await tx.accountMapping.updateMany({
+          where: { registrationId: id },
+          data: { state: 'STALE' },
+        });
+        await event(tx, 'ELIGIBILITY', id, { eligible: false });
+      }
       await tx.registration.update({
         where: { id },
         data: {
@@ -543,7 +687,10 @@ export class RegistrationService {
       });
       await audit(tx, u.id, 'REVIEW', id, b);
       await event(tx, 'NOTIFY', id, { message: `报名审核：${b.decision}。${b.reason}` });
-      return refresh(tx, id);
+      const current = await refresh(tx, id);
+      if (b.participationType && current.eligible)
+        await event(tx, 'ELIGIBILITY', id, { eligible: true, version: current.version });
+      return current;
     });
   }
   async cancel(u: Principal, id: string, body: unknown) {
@@ -621,7 +768,7 @@ export class RegistrationService {
           expiresAt: new Date(Date.now() + 7 * 86400000),
         },
       });
-      return { id: v.id, url: `${config.publicUrl}/invite/${raw}`, expiresAt: v.expiresAt };
+      return { id: v.id, url: await publicLink(`/invite/${raw}`), expiresAt: v.expiresAt };
     });
   }
   async invitation(u: Principal, token: string) {

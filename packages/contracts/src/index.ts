@@ -1,4 +1,9 @@
 import { z } from 'zod';
+export {
+  platformTemplates,
+  requiredPlatformFields,
+  mergePlatformFields,
+} from './platform-fields.js';
 
 export const defaultSite = {
   name: '南晓开放原子社在线报名系统',
@@ -7,6 +12,52 @@ export const defaultSite = {
 };
 
 export const uuid = z.string().uuid();
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+export const participationSchema = z.enum(['OFFICIAL', 'UNOFFICIAL']);
+export const organizationSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  shortName: z.string().trim().min(1).max(80),
+  country: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{3}$/, '国家使用三位代码，例如 CHN'),
+  icpcId: z.string().trim().max(40).default(''),
+});
+export type OrganizationInfo = z.infer<typeof organizationSchema>;
+export const invoiceRequiredKeys = [
+  'contactName',
+  'phone',
+  'address',
+  'bankName',
+  'bankAccount',
+] as const;
+export const invoiceSchema = z
+  .object({
+    amountCents: z.number().int().positive().max(100_000_000),
+    title: z.string().trim().min(1).max(200),
+    taxId: z.string().trim().max(100).default(''),
+    email: z.email(),
+    invoiceType: z.enum(['NORMAL', 'SPECIAL']).default('NORMAL'),
+    titleType: z.enum(['PERSON', 'ENTERPRISE', 'ORGANIZATION']).default('PERSON'),
+    contactName: z.string().trim().max(100).default(''),
+    phone: z.string().trim().max(50).default(''),
+    address: z.string().trim().max(300).default(''),
+    bankName: z.string().trim().max(200).default(''),
+    bankAccount: z.string().trim().max(100).default(''),
+    remarks: z.string().trim().max(2000).default(''),
+  })
+  .superRefine((v, ctx) => {
+    if ((v.titleType === 'ENTERPRISE' || v.invoiceType === 'SPECIAL') && !v.taxId)
+      ctx.addIssue({ code: 'custom', path: ['taxId'], message: '企业或专票申请必须填写税号' });
+    if (v.invoiceType === 'SPECIAL' && v.titleType === 'PERSON')
+      ctx.addIssue({ code: 'custom', path: ['titleType'], message: '专票申请须使用单位抬头' });
+  });
 export const mailSettingsSchema = z.object({
   version: z.number().int().min(0),
   enabled: z.boolean(),
@@ -90,6 +141,8 @@ export const fieldSchema = z.object({
   options: z.array(z.string().max(100)).max(100).default([]),
   help: z.string().max(500).default(''),
   group: z.string().max(100).default('基本信息'),
+  locked: z.boolean().default(false),
+  source: z.string().max(80).optional(),
   min: z.number().optional(),
   max: z.number().optional(),
   condition: z
@@ -120,12 +173,19 @@ export const policySchema = z
     coachMode: z.enum(['DISABLED', 'OPTIONAL', 'REQUIRED']).default('OPTIONAL'),
     maxCoaches: z.number().int().min(0).max(10).default(1),
     manualReview: z.boolean().default(true),
+    allowUnofficial: z.boolean().default(false),
+    platformProfiles: z.array(z.enum(['HYDRO_5_0_7', 'DOMJUDGE_9_0_1'])).default([]),
     feeMode: z.enum(['FREE', 'FIXED', 'PER_PERSON']).default('FREE'),
     feeCents: z.number().int().min(0).max(100_000_000).default(0),
     paymentSequence: z.enum(['REVIEW_FIRST', 'PAYMENT_FIRST']).default('REVIEW_FIRST'),
     paymentInstructions: z.string().max(10000).default(''),
     refundsEnabled: z.boolean().default(true),
     invoicesEnabled: z.boolean().default(true),
+    invoiceTypes: z
+      .array(z.enum(['NORMAL', 'SPECIAL']))
+      .min(1)
+      .default(['NORMAL']),
+    invoiceRequiredFields: z.array(z.enum(invoiceRequiredKeys)).default([]),
     uniquePersonFields: z.array(z.string()).max(5).default([]),
   })
   .superRefine((p, ctx) => {
@@ -143,6 +203,7 @@ export const contestSchema = z
     title: z.string().min(2).max(200),
     season: z.string().max(40),
     description: z.string().max(30000),
+    descriptionFormat: z.enum(['TEXT', 'MARKDOWN']).default('TEXT'),
     announcement: z.string().max(10000).default(''),
     location: z.string().max(300).default(''),
     startsAt: z.iso.datetime({ offset: true }),
@@ -168,6 +229,8 @@ export const registrationSchema = z.object({
   version: z.number().int().positive(),
   teamName: z.string().trim().max(100).default(''),
   teamEnglishName: z.string().max(100).default(''),
+  participationType: participationSchema.optional(),
+  organization: organizationSchema.nullable().optional(),
   answers: answersSchema.default({}),
   people: z.array(personSchema).min(1).max(30),
 });
@@ -238,6 +301,7 @@ export function registrationEligible(
   r: {
     status: string;
     review: string;
+    participationType?: string;
     feeCents: number;
     netPaidCents: number;
     people: { confirmed: boolean; active: boolean }[];
@@ -249,7 +313,7 @@ export function registrationEligible(
   return (
     r.status === 'SUBMITTED' &&
     r.review !== 'REJECTED' &&
-    (r.review === 'APPROVED' || !p.manualReview) &&
+    (r.review === 'APPROVED' || (!p.manualReview && r.participationType !== 'UNOFFICIAL')) &&
     n >= p.minMembers &&
     n <= p.maxMembers &&
     r.people.filter((x) => x.active).every((x) => x.confirmed) &&
@@ -267,6 +331,8 @@ export interface RegistrationEnvelopeV1 {
   contest: { id: string; title: string; mode: 'INDIVIDUAL' | 'TEAM' };
   teamName: string;
   teamEnglishName?: string;
+  participationType?: 'OFFICIAL' | 'UNOFFICIAL';
+  organization?: OrganizationInfo;
   people: { id?: string; name?: string; captain: boolean; email?: string; answers?: Answers }[];
   form?: { version: number; fields: FieldDefinition[]; answers: Answers };
   coaches?: { id: string; name?: string; email?: string; answers: Answers }[];
@@ -280,6 +346,7 @@ export interface ProvisioningResultV1 {
   remoteTeamId?: string;
   username?: string;
   error?: string;
+  verification?: Record<string, unknown>;
 }
 export interface ConnectorConfiguration {
   baseUrl: string;
@@ -288,11 +355,18 @@ export interface ConnectorConfiguration {
   domainId: string;
   groupIds: string[];
   organizationId?: string;
+  importMode?: 'FOLLOW' | 'FORCE_UNOFFICIAL';
+  includeUnofficial?: boolean;
+  unofficialGroupId?: string;
+  nickname?: boolean;
 }
 export interface ProvisioningInput {
   envelope: RegistrationEnvelopeV1;
   username: string;
   password: string;
+  remoteTeamId?: string;
+  remoteUserId?: string;
+  allowSharedTeamUpdate?: boolean;
   onProgress?: (result: ProvisioningResultV1) => Promise<void>;
 }
 export const provisioningResultSchema = z.object({
@@ -303,6 +377,7 @@ export const provisioningResultSchema = z.object({
   remoteTeamId: z.string().max(100).optional(),
   username: z.string().max(100).optional(),
   error: z.string().max(1500).optional(),
+  verification: z.record(z.string(), z.json()).optional(),
 });
 export const registrationEnvelopeSchema = z.object({
   schemaVersion: z.literal(1),
@@ -312,6 +387,8 @@ export const registrationEnvelopeSchema = z.object({
   contest: z.object({ id: uuid, title: z.string(), mode: z.enum(['INDIVIDUAL', 'TEAM']) }),
   teamName: z.string(),
   teamEnglishName: z.string().optional(),
+  participationType: participationSchema.optional(),
+  organization: organizationSchema.optional(),
   people: z.array(
     z.object({
       id: uuid.optional(),

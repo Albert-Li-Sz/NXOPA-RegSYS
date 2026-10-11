@@ -11,6 +11,7 @@ on:
       - 'apps/web/public/brand/**'
       - 'output/pdf/configuration-guide*'
       - 'scripts/build-docs-site.mjs'
+      - 'plugins/hydro-contest-center/**'
   workflow_dispatch:
 
 permissions:

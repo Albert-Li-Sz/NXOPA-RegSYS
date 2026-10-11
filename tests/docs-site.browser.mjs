@@ -30,13 +30,16 @@ try {
   await page.goto(base, { waitUntil: 'networkidle' });
   await expect(page).toHaveTitle('配置教程 · 南晓开放原子社在线报名系统');
   await expect(page.getByRole('heading', { name: '系统配置教程', exact: false })).toBeVisible();
-  await expect(page.locator('.chapter')).toHaveCount(12);
-  await expect(page.locator('figure img')).toHaveCount(14);
+  const info = await (await page.request.get(new URL('build-info.json', base).href)).json();
+  await expect(page.locator('.chapter')).toHaveCount(info.chapters.length);
+  await expect(page.locator('figure img')).toHaveCount(info.screenshots);
+  assert.equal(info.chapters.length, 14);
+  assert.equal(info.screenshots, 23);
   await expect(page.locator('#mail')).toContainText('后台保存后优先使用数据库配置');
   await expect(page.locator('#operations pre').first()).toContainText('{{#each team.members}}');
   await expect(page.locator('#operations pre').first()).toContainText('{{this.name}}');
   checks.push(
-    '12 Chinese chapters and all 14 actual screenshots rendered from LaTeX; template variables are intact',
+    `${info.chapters.length} Chinese chapters and all ${info.screenshots} actual screenshots rendered from LaTeX; template variables are intact`,
   );
 
   const assets = await page.evaluate(async () => {
@@ -108,6 +111,31 @@ try {
   }
   checks.push(
     'PDF, source ZIP and LaTeX downloads have the exact hashes of the delivered artifacts',
+  );
+  assert.equal(info.plugin.version, '0.2.0');
+  assert.equal(info.plugin.hydroVersion, '5.0.7');
+  assert.deepEqual(
+    [...info.plugin.files].sort(),
+    ['LICENSE', 'README.md', 'index.ts', 'package.json'].sort(),
+  );
+  for (const filename of [info.plugin.filename, 'hydro-contest-center-latest.tgz']) {
+    const response = await page.request.get(new URL('downloads/' + filename, base).href);
+    assert.equal(response.status(), 200);
+    assert.equal(
+      createHash('sha256')
+        .update(await response.body())
+        .digest('hex'),
+      info.plugin.sha256,
+    );
+    const checksum = await page.request.get(
+      new URL('downloads/' + filename + '.sha256', base).href,
+    );
+    assert.equal(checksum.status(), 200);
+    assert.equal((await checksum.text()).trim(), `${info.plugin.sha256}  ${filename}`);
+  }
+  await expect(page.locator('#hydro-plugin .digest')).toContainText(info.plugin.sha256);
+  checks.push(
+    'Versioned and stable Hydro 0.2.0 downloads match the whitelist, supported version and SHA-256',
   );
 
   await page.setViewportSize({ width: 390, height: 844 });

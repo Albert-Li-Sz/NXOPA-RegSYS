@@ -9,6 +9,8 @@
 - [评测平台接入与独立验收实例](docs/INTEGRATIONS.md)
 - [LaTeX 模板与准考证](docs/ADMISSIONS.md)
 - [验收报告](docs/ACCEPTANCE.md)
+- [增强功能验收报告](docs/ENHANCEMENT_ACCEPTANCE.md)
+- [Hydro 0.2.0 插件与校验文件下载](https://albert-li-sz.github.io/NXOPA-RegSYS/#hydro-plugin)
 - [原始业务规则](PROJECT_PLAN.md)、[结构设计](docs/ARCHITECTURE.md)
 
 ## 启动正式实例
@@ -55,6 +57,7 @@ pnpm typecheck
 pnpm build
 pnpm test
 pnpm test:integration
+pnpm test:enhancements
 pnpm test:admissions
 pnpm test:e2e
 pnpm test:auth
@@ -71,14 +74,17 @@ pnpm test:load
 
 ```bash
 pnpm exec tsx scripts/capture-configuration-guide.ts
+# 先完成相应独立平台增强验收，再捕获评测系统实际页面
+pnpm exec tsx scripts/capture-enhancement-guide.ts DOMJUDGE
+pnpm exec tsx scripts/capture-enhancement-guide.ts HYDRO
 bash scripts/build-configuration-guide.sh
 ```
 
-输出为 `output/pdf/configuration-guide.pdf` 和含 LaTeX 源码、截图的 ZIP。仅编译无需运行截图命令。
+输出为 `output/pdf/configuration-guide.pdf`、含 LaTeX 源码与截图的 ZIP，以及文件摘要清单。仅编译无需运行截图命令。
 
 ## 教程网站与 GitHub Pages
 
-在线教程位于 <https://albert-li-sz.github.io/NXOPA-RegSYS/>，包含章节导航、实际页面截图、原图查看、配置示例复制，以及 PDF / LaTeX / 截图下载。网页正文从 `docs/CONFIGURATION_GUIDE.tex` 构建，样式和交互源文件位于 `docs/site/`。
+在线教程位于 <https://albert-li-sz.github.io/NXOPA-RegSYS/>，包含章节导航、实际页面截图、原图查看、配置示例复制，以及 PDF / LaTeX / 截图和 Hydro 插件下载。网页正文从 `docs/CONFIGURATION_GUIDE.tex` 构建，章节与截图数量自动生成，样式和交互源文件位于 `docs/site/`。工作流检查教程摘要清单，并从同一提交按白名单打包版本化／稳定插件包及 SHA-256。
 
 ```bash
 pnpm docs:build

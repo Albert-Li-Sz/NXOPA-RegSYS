@@ -553,3 +553,120 @@ h2 {
     height: 30px;
   }
 }
+
+/* Shared list, editor and detail layouts. Tables scroll within cards on narrow screens. */
+.list-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+  min-width: 0;
+}
+.list-pagination .el-pagination {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  white-space: normal;
+}
+.el-pagination__sizes .el-select {
+  width: 128px;
+}
+.card,
+.panel,
+.el-form-item__content,
+.two-columns > *,
+.form-grid > * {
+  min-width: 0;
+}
+.el-dialog {
+  max-width: calc(100vw - 32px);
+}
+.el-table .cell,
+.break-anywhere,
+.page-heading h1 {
+  overflow-wrap: anywhere;
+}
+.el-table {
+  width: 100%;
+}
+.el-form-item .el-select,
+.el-form-item .el-date-editor,
+.markdown-editor {
+  width: 100%;
+}
+.markdown-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.markdown-tools .el-button {
+  margin-left: 0;
+}
+.markdown-content {
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+.markdown-content > :first-child {
+  margin-top: 0;
+}
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+.markdown-content pre {
+  overflow-x: auto;
+  background: #f4f7fb;
+  padding: 16px;
+  border-radius: 8px;
+}
+.markdown-content code {
+  font-family: ui-monospace, monospace;
+}
+.markdown-content blockquote {
+  margin: 16px 0;
+  padding: 4px 18px;
+  border-left: 3px solid #2080f0;
+  color: #66758b;
+  background: #f6f9ff;
+}
+.markdown-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid #e0e7f0;
+  padding: 8px 12px;
+}
+.record-detail {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+@media (max-width: 600px) {
+  .list-pagination {
+    justify-content: flex-start;
+  }
+  .list-pagination .el-pagination {
+    justify-content: flex-start;
+  }
+  .list-pagination .el-pagination__jump {
+    margin-left: 0;
+  }
+  .el-descriptions__body {
+    overflow-x: auto;
+  }
+  .el-form-item .el-radio-group {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .el-dialog__body {
+    padding: 10px 0;
+  }
+  .el-message {
+    max-width: calc(100vw - 24px);
+  }
+}

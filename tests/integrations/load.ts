@@ -93,8 +93,8 @@ try {
   assert.equal(statistics.approved, 10000);
   console.log('Seeded 10000 realistic registration/person/user rows');
   const endpoints = [
-      `/api/v1/registrations?contestId=${c.id}`,
-      `/api/v1/registrations/${ids[0]}`,
+      `/api/v1/registrations?contestId=${c.id}&page=1&pageSize=20`,
+      `/api/v1/registrations/${ids[0]}?history=false`,
       `/api/v1/contests/${c.id}`,
     ],
     durations: number[] = [],
@@ -131,6 +131,16 @@ try {
   const exported = (await csv.text()).trim().split('\r\n').length - 1;
   assert.equal(exported, 10000);
   const pages: number[] = [];
+  for (const pageSize of [20, 50, 100]) {
+    const page = await admin.api(`/registrations?contestId=${c.id}&page=2&pageSize=${pageSize}`);
+    assert.equal(page.total, 10000);
+    assert.equal(page.items.length, pageSize);
+    assert.equal(page.page, 2);
+  }
+  const filtered = await admin.api(
+    `/registrations?contestId=${c.id}&page=1&pageSize=20&search=${encodeURIComponent('负载选手 9999')}`,
+  );
+  assert.equal(filtered.total, 1);
   let cursor: string | undefined;
   do {
     const page = await admin.api(
@@ -155,7 +165,7 @@ try {
     statistics,
     requests: 1000,
     scenario:
-      'authenticated read mix: 1/3 list (500 rows), 1/3 registration detail, 1/3 contest detail',
+      'authenticated read mix: 1/3 backend-paginated list (20 rows), 1/3 registration summary, 1/3 contest detail',
     counts,
     elapsedMs: Math.round(elapsed),
     requestsPerSecond: Math.round((1000 / (elapsed / 1000)) * 10) / 10,
@@ -165,6 +175,8 @@ try {
     maxMs: percentile(1),
     csvExported: exported,
     paginatedTotal: pages.reduce((a, b) => a + b, 0),
+    pageSizesVerified: [20, 50, 100],
+    filteredTotal: filtered.total,
     errors,
   };
   await writeFile('.runtime/reports/load.json', JSON.stringify(report, null, 2));

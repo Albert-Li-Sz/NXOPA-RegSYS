@@ -1,12 +1,48 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { z } from 'zod';
-import type { Principal } from '@contest-center/contracts';
-import { db, audit, event, lock } from './db.js';
+import { invoiceSchema, policySchema, type Principal } from '@contest-center/contracts';
+import { db, audit, event, lock, json } from './db.js';
+import { paginated, dateFilter, type ListQuery } from './pagination.js';
 import { loaded, policy, refresh } from './registrations.js';
-import { canEdit, requireManager, checkVersion } from './security.js';
+import { canEdit, getRegistration, requireManager, checkVersion } from './security.js';
 import { bindFile } from './files.js';
 const cents = z.number().int().positive().max(100_000_000);
 export class FinanceService {
+  async history(u: Principal, id: string, collection: string, query: ListQuery = {}) {
+    await getRegistration(u, id);
+    const models = {
+      vouchers: db.paymentVoucher,
+      ledger: db.ledgerEntry,
+      refunds: db.refund,
+      invoices: db.invoiceRequest,
+    };
+    if (!(collection in models)) throw new BadRequestException('财务记录类型无效');
+    const model = models[collection as keyof typeof models] as any;
+    const searchFields: Record<string, string[]> = {
+      vouchers: ['payer', 'channel', 'reference', 'reason'],
+      ledger: ['sourceId', 'channelReference', 'note'],
+      refunds: ['reason', 'reference'],
+      invoices: ['title', 'taxId', 'email', 'contactName', 'remarks', 'reason'],
+    };
+    const where = {
+      registrationId: id,
+      createdAt: dateFilter(query),
+      ...(query.status ? { [collection === 'ledger' ? 'kind' : 'status']: query.status } : {}),
+      ...(query.search
+        ? {
+            OR: searchFields[collection].map((field) => ({
+              [field]: { contains: query.search, mode: 'insensitive' },
+            })),
+          }
+        : {}),
+    };
+    return paginated(
+      { page: '1', ...query },
+      (options) =>
+        model.findMany({ where, ...options, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }),
+      () => model.count({ where }),
+    );
+  }
   async voucher(u: Principal, id: string, body: unknown) {
     const b = z
       .object({
@@ -211,26 +247,29 @@ export class FinanceService {
     });
   }
   async invoice(u: Principal, id: string, body: unknown) {
-    const b = z
-      .object({
-        amountCents: cents,
-        title: z.string().min(1).max(200),
-        taxId: z.string().max(100),
-        email: z.email(),
-      })
-      .parse(body);
+    const b = invoiceSchema.parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, id);
       const r = await loaded(tx, id);
       if (!canEdit(u, r)) throw new ForbiddenException();
-      if (!policy(r).invoicesEnabled) throw new BadRequestException('此竞赛未开启开票');
+      const invoicePolicy = policySchema.parse(r.contest.policy);
+      if (!invoicePolicy.invoicesEnabled) throw new BadRequestException('此竞赛未开启开票');
+      if (!invoicePolicy.invoiceTypes.includes(b.invoiceType))
+        throw new BadRequestException('此竞赛未开放该票种');
+      for (const key of invoicePolicy.invoiceRequiredFields)
+        if (!b[key].trim())
+          throw new BadRequestException(
+            `开票方要求填写 ${{ contactName: '联系人', phone: '联系电话', address: '地址', bankName: '开户银行', bankAccount: '银行账号' }[key]}`,
+          );
       const total = await tx.invoiceRequest.aggregate({
         where: { registrationId: id, status: { in: ['REQUESTED', 'ISSUED'] } },
         _sum: { amountCents: true },
       });
       if (b.amountCents > r.netPaidCents - (total._sum.amountCents ?? 0))
         throw new BadRequestException('金额超过可开票余额');
-      const x = await tx.invoiceRequest.create({ data: { ...b, registrationId: id } });
+      const x = await tx.invoiceRequest.create({
+        data: { ...b, snapshot: json(b), registrationId: id },
+      });
       await audit(tx, u.id, 'INVOICE_REQUEST', id, { invoiceId: x.id });
       await event(tx, 'NOTIFY', id, { message: '开票申请已提交，等待管理员上传发票。' });
       return x;
@@ -260,6 +299,8 @@ export class FinanceService {
         if (!b.attachmentId) throw new BadRequestException('请上传实际发票');
         await bindFile(tx, u, b.attachmentId, r.id);
       }
+      if (b.decision === 'REJECTED' && !b.reason.trim())
+        throw new BadRequestException('请填写拒绝开票原因');
       const out = await tx.invoiceRequest.update({
         where: { id },
         data: {

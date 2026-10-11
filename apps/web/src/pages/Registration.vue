@@ -1,15 +1,28 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted } from 'vue';
+import { ref, shallowRef, computed, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, auth, money, date, label, upload } from '../api';
 import type { RegistrationView, PersonView, Data } from '../types';
+import InvoiceApplication from '../components/InvoiceApplication.vue';
+import ListPagination from '../components/ListPagination.vue';
+import { usePagedList } from '../composables/usePagedList';
+import { policySchema } from '@contest-center/contracts';
 import DynamicFields from '../components/DynamicFields.vue';
 const route = useRoute(),
   r = shallowRef<RegistrationView>(),
-  form = ref<{ teamName: string; teamEnglishName: string; answers: Data; people: PersonView[] }>({
+  form = ref<{
+    teamName: string;
+    teamEnglishName: string;
+    participationType: string;
+    organization: { name: string; shortName: string; country: string; icpcId: string };
+    answers: Data;
+    people: PersonView[];
+  }>({
     teamName: '',
     teamEnglishName: '',
+    participationType: 'OFFICIAL',
+    organization: { name: '', shortName: '', country: 'CHN', icpcId: '' },
     answers: {},
     people: [],
   }),
@@ -19,12 +32,31 @@ const route = useRoute(),
   link = ref(''),
   credentials = ref<Data[]>([]),
   bindings = ref<Data[]>([]);
-const invoiceTotal = computed(
-  () =>
-    r.value?.invoices
-      .filter((i) => i.status === 'ISSUED')
-      .reduce((n: number, i: Data) => n + Number(i.amountCents), 0) ?? 0,
-);
+const invoiceTotal = computed(() => r.value?.invoiceIssuedCents ?? 0);
+const invoiceApplication = ref(false),
+  invoiceDetail = ref<Data>();
+const voucherPage = usePagedList(
+    'vouchers',
+    () => `/registrations/${route.params.id}/finance/vouchers`,
+  ),
+  ledgerPage = usePagedList('ledger', () => `/registrations/${route.params.id}/finance/ledger`),
+  refundPage = usePagedList('refunds', () => `/registrations/${route.params.id}/finance/refunds`),
+  invoicePage = usePagedList(
+    'invoices',
+    () => `/registrations/${route.params.id}/finance/invoices`,
+  );
+async function loadFinance() {
+  if (r.value)
+    await Promise.all([
+      voucherPage.load(),
+      ledgerPage.load(),
+      refundPage.load(),
+      invoicePage.load(),
+    ]);
+}
+watch(tab, (value) => {
+  if (value === 'finance') loadFinance();
+});
 const manager = computed(
   () => !!r.value && (auth.user?.isAdmin || auth.user?.contestIds.includes(r.value.contestId)),
 );
@@ -34,25 +66,39 @@ const editor = computed(
     r.value?.ownerId === auth.user?.id ||
     r.value?.coaches.some((c) => c.userId === auth.user?.id),
 );
-const policy = computed(() => r.value?.policySnapshot ?? r.value?.contest.policy);
+const policy = computed(() =>
+  r.value ? policySchema.parse(r.value.policySnapshot ?? r.value.contest.policy) : undefined,
+);
+const platformProfiles = computed(() => [
+  ...new Set([
+    ...(policy.value?.platformProfiles ?? []),
+    ...((r.value ? policySchema.parse(r.value.contest.policy).platformProfiles : []) ?? []),
+  ]),
+]);
+const invoicePolicy = computed(() =>
+  r.value ? policySchema.parse(r.value.contest.policy) : undefined,
+);
 const canSave = computed(
   () => editor.value && !['CANCELLED', 'CANCEL_REQUESTED'].includes(r.value?.status ?? ''),
 );
 async function refresh() {
   try {
     loadError.value = '';
-    r.value = await api(`/registrations/${route.params.id}`);
+    r.value = await api(`/registrations/${route.params.id}?history=false`);
     const x = r.value!;
     form.value = JSON.parse(
       JSON.stringify({
         teamName: x.teamName,
         teamEnglishName: x.teamEnglishName,
+        participationType: x.participationType,
+        organization: x.organization ?? { name: '', shortName: '', country: 'CHN', icpcId: '' },
         answers: { registration: {}, team: {}, ...x.answers },
         people: x.people,
       }),
     );
     if (manager.value)
       bindings.value = await api(`/integrations/bindings?contestId=${x.contestId}`);
+    if (tab.value === 'finance') await loadFinance();
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '报名暂时无法加载';
     r.value = undefined;
@@ -72,7 +118,11 @@ async function action(path: string, body: Data = {}) {
 async function save() {
   busy.value = true;
   try {
-    await api(`/registrations/${r.value!.id}`, 'PUT', { ...form.value, version: r.value!.version });
+    await api(`/registrations/${r.value!.id}`, 'PUT', {
+      ...form.value,
+      organization: form.value.organization?.name ? form.value.organization : null,
+      version: r.value!.version,
+    });
     await refresh();
     ElMessage.success('报名草稿已保存');
   } finally {
@@ -96,6 +146,7 @@ async function review(decision: string) {
     version: r.value!.version,
     decision,
     reason,
+    participationType: form.value.participationType,
   });
 }
 async function cancel() {
@@ -142,6 +193,10 @@ async function sendVoucher() {
   voucherDialog.value = false;
 }
 async function financialRequest(type: 'refunds' | 'invoices') {
+  if (type === 'invoices') {
+    invoiceApplication.value = true;
+    return;
+  }
   const { value } = await ElMessageBox.prompt(
     type === 'refunds' ? '输入退款金额（元）' : '输入开票金额（元）',
     type === 'refunds' ? '申请退款' : '申请开票',
@@ -151,15 +206,6 @@ async function financialRequest(type: 'refunds' | 'invoices') {
   if (type === 'refunds') {
     const result = await ElMessageBox.prompt('说明退款原因', '退款原因');
     await action(`/finance/${r.value!.id}/refunds`, { amountCents, reason: result.value });
-  } else {
-    const result = await ElMessageBox.prompt('填写发票抬头', '发票信息');
-    const tax = await ElMessageBox.prompt('填写税号，个人可留空', '发票信息');
-    await action(`/finance/${r.value!.id}/invoices`, {
-      amountCents,
-      title: result.value,
-      taxId: tax.value,
-      email: auth.user!.email,
-    });
   }
 }
 const invoiceFile = ref<Data>({}),
@@ -233,6 +279,9 @@ async function memberSave(id: string, index: number) {
       ><el-tag
         :type="r.review === 'APPROVED' ? 'success' : r.review === 'REJECTED' ? 'danger' : 'warning'"
         >{{ label(r.review) }}</el-tag
+      ><el-tag :type="r.participationType === 'UNOFFICIAL' ? 'warning' : 'info'">{{
+        r.participationType === 'UNOFFICIAL' ? '非正式参赛' : '正式参赛'
+      }}</el-tag
       ><el-tag :type="r.eligible ? 'success' : 'info'">{{
         r.eligible ? '已取得参赛资格' : '暂未取得参赛资格'
       }}</el-tag
@@ -277,7 +326,54 @@ async function memberSave(id: string, index: number) {
         </div>
       </div>
       <el-form label-position="top"
-        ><div class="card" v-if="policy?.mode === 'TEAM'">
+        ><el-alert
+          v-if="platformProfiles.length && !r.organization"
+          title="评测平台基础信息待补充"
+          description="请补充代表学校／单位与联系人邮箱。历史报名保留原表单；修改资料后需要重新提交审核。"
+          type="info"
+          :closable="false"
+        />
+        <div class="card" v-if="policy?.allowUnofficial || platformProfiles.length">
+          <h3>参赛性质与代表单位</h3>
+          <div class="form-grid">
+            <el-form-item label="参赛性质" v-if="policy?.allowUnofficial"
+              ><el-radio-group v-model="form.participationType" :disabled="!canSave"
+                ><el-radio value="OFFICIAL">正式参赛</el-radio
+                ><el-radio value="UNOFFICIAL">非正式参赛</el-radio></el-radio-group
+              ></el-form-item
+            ><template v-if="platformProfiles.length || form.organization?.name"
+              ><el-form-item label="代表学校／单位全称" required for="organization-name"
+                ><el-input
+                  id="organization-name"
+                  v-model="form.organization.name"
+                  :disabled="!canSave" /></el-form-item
+              ><el-form-item label="学校／单位简称" required for="organization-short"
+                ><el-input
+                  id="organization-short"
+                  v-model="form.organization.shortName"
+                  :disabled="!canSave" /></el-form-item
+              ><el-form-item label="国家／地区代码" required for="organization-country"
+                ><el-input
+                  id="organization-country"
+                  v-model="form.organization.country"
+                  :disabled="!canSave"
+                  placeholder="CHN"
+                  maxlength="3" /></el-form-item
+              ><el-form-item label="学校 ICPC 编号（可选）" for="organization-icpc"
+                ><el-input
+                  id="organization-icpc"
+                  v-model="form.organization.icpcId"
+                  :disabled="!canSave" /></el-form-item
+            ></template>
+          </div>
+          <p class="form-help" v-if="form.participationType === 'UNOFFICIAL'">
+            非正式参赛须经管理员审核，缴费、老师关联和准考证规则相同。
+          </p>
+          <p class="form-help" v-if="platformProfiles.length">
+            代表单位用于评测平台学校映射；成员个人学校资料单独填写。
+          </p>
+        </div>
+        <div class="card" v-if="policy?.mode === 'TEAM'">
           <h3>队伍信息</h3>
           <div class="form-grid">
             <el-form-item label="队伍名称" required for="team-name"
@@ -473,7 +569,7 @@ async function memberSave(id: string, index: number) {
             <el-button type="primary" @click="voucherDialog = true">上传收款凭证</el-button
             ><el-button v-if="policy?.refundsEnabled" @click="financialRequest('refunds')"
               >申请退款</el-button
-            ><el-button v-if="policy?.invoicesEnabled" @click="financialRequest('invoices')"
+            ><el-button v-if="invoicePolicy?.invoicesEnabled" @click="financialRequest('invoices')"
               >申请开票</el-button
             >
           </div>
@@ -481,7 +577,38 @@ async function memberSave(id: string, index: number) {
       >
       <div class="card">
         <h3>收款凭证</h3>
-        <el-table :data="r.vouchers"
+        <el-alert
+          v-if="voucherPage.error.value"
+          :title="voucherPage.error.value"
+          type="error"
+          :closable="false"
+        />
+        <div class="toolbar">
+          <el-select v-model="voucherPage.filters.value.status" clearable placeholder="筛选状态"
+            ><el-option
+              v-for="state in ['PENDING', 'CONFIRMED', 'REJECTED']"
+              :key="state"
+              :value="state"
+              :label="label(state)" /></el-select
+          ><el-date-picker
+            v-model="voucherPage.filters.value.from"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ssZ"
+            placeholder="开始时间"
+          /><el-date-picker
+            v-model="voucherPage.filters.value.to"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ssZ"
+            placeholder="结束时间"
+          />
+        </div>
+        <el-input
+          v-model="voucherPage.filters.value.search"
+          clearable
+          placeholder="搜索付款人、渠道或参考号"
+          style="max-width: 360px; margin-bottom: 16px"
+        />
+        <el-table :data="voucherPage.items.value"
           ><el-table-column label="付款人" prop="payer" /><el-table-column label="金额"
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
           ><el-table-column label="状态"
@@ -498,10 +625,47 @@ async function memberSave(id: string, index: number) {
             ></el-table-column
           ></el-table
         >
+        <ListPagination
+          v-model:page="voucherPage.page.value"
+          v-model:size="voucherPage.pageSize.value"
+          :total="voucherPage.total.value"
+          :loading="voucherPage.loading.value"
+        />
       </div>
       <div class="card">
         <h3>账簿</h3>
-        <el-table :data="r.ledger"
+        <el-alert
+          v-if="ledgerPage.error.value"
+          :title="ledgerPage.error.value"
+          type="error"
+          :closable="false"
+        />
+        <div class="toolbar">
+          <el-select v-model="ledgerPage.filters.value.status" clearable placeholder="筛选状态"
+            ><el-option
+              v-for="state in ['PAYMENT', 'REFUND', 'REVERSAL', 'RECEIVABLE']"
+              :key="state"
+              :value="state"
+              :label="label(state)" /></el-select
+          ><el-date-picker
+            v-model="ledgerPage.filters.value.from"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ssZ"
+            placeholder="开始时间"
+          /><el-date-picker
+            v-model="ledgerPage.filters.value.to"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ssZ"
+            placeholder="结束时间"
+          />
+        </div>
+        <el-input
+          v-model="ledgerPage.filters.value.search"
+          clearable
+          placeholder="搜索账目说明或参考号"
+          style="max-width: 360px; margin-bottom: 16px"
+        />
+        <el-table :data="ledgerPage.items.value"
           ><el-table-column label="时间" min-width="170"
             ><template #default="{ row }">{{ date(row.createdAt) }}</template></el-table-column
           ><el-table-column label="类型"
@@ -522,10 +686,47 @@ async function memberSave(id: string, index: number) {
             ></el-table-column
           ></el-table
         >
+        <ListPagination
+          v-model:page="ledgerPage.page.value"
+          v-model:size="ledgerPage.pageSize.value"
+          :total="ledgerPage.total.value"
+          :loading="ledgerPage.loading.value"
+        />
       </div>
       <div class="card">
         <h3>退款记录</h3>
-        <el-table :data="r.refunds"
+        <el-alert
+          v-if="refundPage.error.value"
+          :title="refundPage.error.value"
+          type="error"
+          :closable="false"
+        />
+        <div class="toolbar">
+          <el-select v-model="refundPage.filters.value.status" clearable placeholder="筛选状态"
+            ><el-option
+              v-for="state in ['REQUESTED', 'APPROVED', 'REJECTED', 'COMPLETED']"
+              :key="state"
+              :value="state"
+              :label="label(state)" /></el-select
+          ><el-date-picker
+            v-model="refundPage.filters.value.from"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ssZ"
+            placeholder="开始时间"
+          /><el-date-picker
+            v-model="refundPage.filters.value.to"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ssZ"
+            placeholder="结束时间"
+          />
+        </div>
+        <el-input
+          v-model="refundPage.filters.value.search"
+          clearable
+          placeholder="搜索退款原因或参考号"
+          style="max-width: 360px; margin-bottom: 16px"
+        />
+        <el-table :data="refundPage.items.value"
           ><el-table-column label="金额"
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
           ><el-table-column label="原因" prop="reason" min-width="150" /><el-table-column
@@ -557,10 +758,61 @@ async function memberSave(id: string, index: number) {
             ></el-table-column
           ></el-table
         >
+        <ListPagination
+          v-model:page="refundPage.page.value"
+          v-model:size="refundPage.pageSize.value"
+          :total="refundPage.total.value"
+          :loading="refundPage.loading.value"
+        />
       </div>
       <div class="card">
         <h3>开票记录</h3>
-        <el-table :data="r.invoices"
+        <el-alert
+          v-if="invoicePage.error.value"
+          :title="invoicePage.error.value"
+          type="error"
+          :closable="false"
+        />
+        <div class="toolbar">
+          <el-select v-model="invoicePage.filters.value.status" clearable placeholder="筛选状态"
+            ><el-option
+              v-for="state in ['REQUESTED', 'ISSUED', 'REJECTED', 'VOID']"
+              :key="state"
+              :value="state"
+              :label="label(state)" /></el-select
+          ><el-date-picker
+            v-model="invoicePage.filters.value.from"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ssZ"
+            placeholder="开始时间"
+          /><el-date-picker
+            v-model="invoicePage.filters.value.to"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ssZ"
+            placeholder="结束时间"
+          />
+        </div>
+        <el-input
+          v-model="invoicePage.filters.value.search"
+          clearable
+          placeholder="搜索发票抬头、税号或备注"
+          style="max-width: 360px; margin-bottom: 16px"
+        />
+        <el-table :data="invoicePage.items.value"
+          ><el-table-column label="申请信息" min-width="190"
+            ><template #default="{ row }"
+              ><div>{{ row.title }}</div>
+              <span class="muted">{{
+                row.invoiceType === 'SPECIAL'
+                  ? '专用发票'
+                  : row.invoiceType === 'NORMAL'
+                    ? '普通发票'
+                    : '历史申请'
+              }}</span
+              ><el-button text type="primary" @click="invoiceDetail = row"
+                >查看详情</el-button
+              ></template
+            ></el-table-column
           ><el-table-column label="抬头" prop="title" min-width="160" /><el-table-column
             label="金额"
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
@@ -597,6 +849,12 @@ async function memberSave(id: string, index: number) {
             ></el-table-column
           ></el-table
         >
+        <ListPagination
+          v-model:page="invoicePage.page.value"
+          v-model:size="invoicePage.pageSize.value"
+          :total="invoicePage.total.value"
+          :loading="invoicePage.loading.value"
+        />
       </div>
     </div>
     <div v-if="tab === 'admissions'" class="panel">
@@ -676,6 +934,52 @@ async function memberSave(id: string, index: number) {
         </p>
       </div>
     </div>
+    <el-dialog v-model="invoiceApplication" title="申请开票" width="760px" destroy-on-close
+      ><InvoiceApplication
+        v-if="r && invoicePolicy"
+        :registration-id="r.id"
+        :available-cents="Math.max(0, r.netPaidCents - r.invoiceReservedCents)"
+        :policy="invoicePolicy"
+        @submitted="
+          invoiceApplication = false;
+          refresh();
+        "
+    /></el-dialog>
+    <el-dialog
+      :model-value="!!invoiceDetail"
+      @close="invoiceDetail = undefined"
+      title="开票申请详情"
+      width="720px"
+      ><el-descriptions v-if="invoiceDetail" :column="1" border
+        ><el-descriptions-item
+          v-for="(title, key) in {
+            title: '抬头',
+            invoiceType: '票种',
+            titleType: '抬头类型',
+            taxId: '税号',
+            email: '接收邮箱',
+            contactName: '联系人',
+            phone: '电话',
+            address: '地址',
+            bankName: '开户银行',
+            bankAccount: '银行账号',
+            remarks: '备注',
+            reason: '处理意见',
+          }"
+          :key="key"
+          :label="title"
+          >{{
+            key === 'titleType'
+              ? ({ PERSON: '个人', ENTERPRISE: '企业', ORGANIZATION: '非企业单位' } as Data)[
+                  invoiceDetail[key]
+                ] || '历史申请'
+              : label(invoiceDetail[key]) || '—'
+          }}</el-descriptions-item
+        ><el-descriptions-item label="金额">{{
+          money(invoiceDetail.amountCents)
+        }}</el-descriptions-item></el-descriptions
+      ></el-dialog
+    >
     <el-dialog v-model="voucherDialog" title="上传收款凭证" width="520px"
       ><el-form label-position="top"
         ><el-form-item label="申报金额（元）"

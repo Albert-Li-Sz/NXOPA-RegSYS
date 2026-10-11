@@ -1,0 +1,30 @@
+{
+  "sourceSha256": "1abb4959ddc4bc45cd8548457ecaeebdd2f514519bb8437126dffbf9127ae0fb",
+  "pdfSha256": "049d9a7e7d9916846cbd63af4b0a3e6e0078cad07a837cdf017261b33f218d23",
+  "sourceZipSha256": "b3f23ed0226a3e051bb32d7e973f887ee883a2f2d542de97a037522f83a323ec",
+  "screenshots": {
+    "01-home.png": "afac20a997452dbf93b5acde4f7174cca538cf64718fddac7dc07fddc39e343d",
+    "02-login.png": "57f346b4bf286306120a52292e8f7ae6c654cd6ddecfa8f43287c2ff6ea5daf0",
+    "03-mail.png": "a45701c4f5b519120ccde8aa8770a381cfffa4cae9814138000cc437abe09c35",
+    "04-site.png": "bc6f1d26689e6a12cbcefff794b1cabd79f7908813ff66f2c5cefaff2851445e",
+    "05-role-invitation.png": "da90f313fecd44cacb6b611d395a4bf4f1fd51ab142053617c0cda38250097e1",
+    "06-role-confirmation.png": "e82cdaf610fd0d9a3c485f1cc764de754939f263f02c26960cd0fdd8483c95ea",
+    "07-hydro-instance.png": "2f94d42bdb6c30da6dfa5640259a917781b7ba25ca1417bcc25a624545adf29c",
+    "08-domjudge-instance.png": "3546f49a0e92ba6e956c1a723548b71af58c61216f11ff4682736afb01bee733",
+    "09-contest-binding.png": "94b4d94010e8fc2f53d9279011c83abccb27d270ce21791229acdb8a7bae5994",
+    "10-contest-policy.png": "7a2321a4d57f777875184303c55c8a1de29d2933caa39f7fe6439576a1b4c934",
+    "11-contest-finance.png": "c451f89a5def852041ff56fbf597d2be678bdf9e4b15f78612470dc471260d43",
+    "12-fields.png": "f6e279ad0d5e00af72372a2406ff0a9f3492deb25abe474aac1a9f3dfbc59d69",
+    "13-admission-template.png": "223e42ce7608a5eaf696578c24419734802e24c7d47b3da2d34b2d8bee577826",
+    "14-jobs.png": "26f74c5d3a551b47c8c1b0a06722b8fffde0c2d4dbf6472f356458e04210a977",
+    "15-hydro-contest.png": "f15ec65671bb8513c2956a09a403000c026300e28fdf89b9f6e5695e591abe0a",
+    "16-domjudge-users.png": "ef456c991e1c0d1ef25ff0187ce5c382ba8d5fd728838199e3f7b36e181fcd16",
+    "17-domjudge-groups.png": "ecf127c307755aeb285b7ea611febb5f3046ba6b532c74434ffcb30bb1b6870b",
+    "18-school-mapping.png": "32188ba1e7c14d833376926b462ac3c1ce8cc9c168ad686f7e50de7f243d5c9a",
+    "19-domjudge-organizations.png": "233b62870efa62c334dbedb42ac390a9df333b83a3f639b0c51338053d5b703e",
+    "20-domjudge-team.png": "187e5775ffa9e2039ada0bb4aeb00a4469c88268f29384dde2a98f7a6ceb6a77",
+    "21-invoice-application.png": "561b62e075eba6a44989c17eb98a3796fb9731021f8dd072fb51623707ae766d",
+    "22-pagination.png": "8a4b86ad68fe1f9e8f1d0ccba5cd7c69af39e5e104dbfe4ef5dfa59512ca7f5b",
+    "23-markdown.png": "5dfe110bf8da4124d4151c4f6b0bade82e518298e66b9008a3a4ac9c65a898b3"
+  }
+}

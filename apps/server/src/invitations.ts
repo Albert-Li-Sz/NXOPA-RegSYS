@@ -15,7 +15,8 @@ import {
 } from '@contest-center/contracts';
 import { db, audit, lock, type Tx } from './db.js';
 import { opaqueToken, requireAdmin, sha } from './security.js';
-import { config } from './config.js';
+import { publicLink } from './site-settings.js';
+import { pageOptions, dateFilter, type ListQuery } from './pagination.js';
 import { RegistrationService, dirty, loaded } from './registrations.js';
 
 const isAccountInvitation = (kind: string): kind is (typeof accountInvitationKinds)[number] =>
@@ -96,18 +97,38 @@ export class InvitationService {
       return {
         id: invitation.id,
         kind: b.kind,
-        url: `${config.publicUrl}/invite/${raw}`,
+        url: await publicLink(`/invite/${raw}`),
         expiresAt: invitation.expiresAt,
       };
     });
   }
 
-  async list(u: Principal) {
+  async list(u: Principal, query: ListQuery = {}) {
     requireAdmin(u);
+    const p = pageOptions(query);
+    const now = new Date();
+    const state = query.status;
+    const where = {
+      kind: { in: [...accountInvitationKinds] },
+      ...(query.search
+        ? { targetEmail: { contains: query.search, mode: 'insensitive' as const } }
+        : {}),
+      createdAt: dateFilter(query),
+      ...(state === 'REVOKED'
+        ? { revoked: true }
+        : state === 'ACCEPTED'
+          ? { revoked: false, acceptedBy: { not: null } }
+          : state === 'EXPIRED'
+            ? { revoked: false, acceptedBy: null, expiresAt: { lte: now } }
+            : state === 'PENDING'
+              ? { revoked: false, acceptedBy: null, expiresAt: { gt: now } }
+              : {}),
+    };
     const records = await db.invitation.findMany({
-      where: { kind: { in: [...accountInvitationKinds] } },
-      orderBy: { createdAt: 'desc' },
-      take: 500,
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: p?.take ?? 500,
+      skip: p?.skip,
     });
     const ids = [
       ...new Set(
@@ -126,7 +147,7 @@ export class InvitationService {
         select: { id: true, title: true },
       }),
     ]);
-    return records.map((i) => ({
+    const items = records.map((i) => ({
       id: i.id,
       kind: i.kind,
       targetEmail: i.targetEmail,
@@ -145,6 +166,9 @@ export class InvitationService {
             ? 'EXPIRED'
             : 'PENDING',
     }));
+    return p
+      ? { items, total: await db.invitation.count({ where }), page: p.page, pageSize: p.pageSize }
+      : items;
   }
 
   async preview(u: Principal, token: string) {

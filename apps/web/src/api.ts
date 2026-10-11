@@ -79,6 +79,19 @@ export const date = (value: string) =>
 export const shortDate = (value: string) =>
   new Date(value).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' }).replaceAll('/', '-');
 export const labels: Record<string, string> = {
+  OFFICIAL: '正式参赛',
+  UNOFFICIAL: '非正式参赛',
+  NORMAL: '普通发票',
+  SPECIAL: '专用发票',
+  ENTERPRISE: '企业',
+  ORGANIZATION: '非企业单位',
+  WAITING_ORGANIZATION: '等待学校确认',
+  NEEDS_CONFIGURATION: '待完善平台配置',
+  SKIPPED: '按配置跳过',
+  PAYMENT: '确认收款',
+  REFUND: '实际退款',
+  REVERSAL: '收款冲正',
+  RECEIVABLE: '应收费用',
   PERSON: '参赛者',
   TEAM: '队伍',
   COACH: '指导老师',

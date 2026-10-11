@@ -86,6 +86,7 @@ model Contest {
   title String
   season String
   description String
+  descriptionFormat String @default("TEXT")
   announcement String @default("")
   location String @default("")
   startsAt DateTime
@@ -128,6 +129,8 @@ model Registration {
   ownerId String @db.Uuid
   teamName String @default("")
   teamEnglishName String @default("")
+  participationType String @default("OFFICIAL")
+  organization Json?
   answers Json @default("{}")
   status String @default("DRAFT")
   review String @default("PENDING")
@@ -154,6 +157,7 @@ model Registration {
   mappings AccountMapping[]
   @@index([contestId,status,review,eligible])
   @@index([ownerId])
+  @@index([contestId,createdAt,id])
 }
 model RegistrationPerson {
   id String @id @default(uuid()) @db.Uuid
@@ -269,6 +273,15 @@ model InvoiceRequest {
   title String
   taxId String
   email String
+  invoiceType String?
+  titleType String?
+  contactName String?
+  phone String?
+  address String?
+  bankName String?
+  bankAccount String?
+  remarks String?
+  snapshot Json?
   status String @default("REQUESTED")
   attachmentId String? @db.Uuid
   handledBy String? @db.Uuid
@@ -350,13 +363,36 @@ model PlatformBinding {
   organizationId String?
   automatic Boolean @default(true)
   enabled Boolean @default(true)
+  version Int @default(1)
+  importMode String @default("FOLLOW")
+  includeUnofficial Boolean @default(true)
+  nickname Boolean @default(true)
+  unofficialGroupId String?
+  mappings AccountMapping[]
   @@unique([contestId,instanceId,remoteContestId])
+}
+model OrganizationMapping {
+  id String @id @default(uuid()) @db.Uuid
+  instanceId String @db.Uuid
+  nameKey String
+  name String
+  shortName String
+  country String
+  icpcId String @default("")
+  remoteId String?
+  status String @default("PENDING")
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([instanceId,nameKey])
+  @@index([instanceId,status])
 }
 model AccountMapping {
   id String @id @default(uuid()) @db.Uuid
   registrationId String @db.Uuid
   registration Registration @relation(fields:[registrationId],references:[id])
   bindingId String @db.Uuid
+  binding PlatformBinding @relation(fields:[bindingId],references:[id])
   remoteUserId String?
   remoteTeamId String?
   username String
@@ -365,6 +401,7 @@ model AccountMapping {
   details Json @default("{}")
   updatedAt DateTime @updatedAt
   @@unique([registrationId,bindingId])
+  @@index([bindingId])
 }
 model Job {
   id String @id @default(uuid()) @db.Uuid

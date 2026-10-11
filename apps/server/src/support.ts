@@ -2,36 +2,55 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { z } from 'zod';
 import type { Principal } from '@contest-center/contracts';
 import { db, json, lock, audit, event } from './db.js';
-import { config } from './config.js';
+import { paginated, dateFilter, type ListQuery } from './pagination.js';
 import { getRegistration, manages, checkVersion } from './security.js';
 const message = z.object({
   text: z.string().trim().min(1).max(10000),
   attachments: z.array(z.string().uuid()).max(10).default([]),
 });
 export class SupportService {
-  async list(u: Principal) {
-    return db.supportTicket.findMany({
-      where: u.isAdmin
-        ? {}
-        : {
-            OR: [
-              { ownerId: u.id },
-              { contestId: { in: u.contestIds } },
-              {
-                registrationId: {
-                  in: (
-                    await db.registrationCoach.findMany({
-                      where: { userId: u.id },
-                      select: { registrationId: true },
-                    })
-                  ).map((c) => c.registrationId),
-                },
+  async list(u: Principal, query: ListQuery = {}) {
+    const access = u.isAdmin
+      ? {}
+      : {
+          OR: [
+            { ownerId: u.id },
+            { contestId: { in: u.contestIds } },
+            {
+              registrationId: {
+                in: (
+                  await db.registrationCoach.findMany({
+                    where: { userId: u.id },
+                    select: { registrationId: true },
+                  })
+                ).map((c) => c.registrationId),
               },
-            ],
-          },
-      orderBy: { updatedAt: 'desc' },
-      take: 500,
-    });
+            },
+          ],
+        };
+    const where = {
+      AND: [
+        access,
+        {
+          ...(query.search
+            ? { title: { contains: query.search, mode: 'insensitive' as const } }
+            : {}),
+          ...(query.status ? { status: query.status } : {}),
+          ...(query.contestId ? { contestId: z.string().uuid().parse(query.contestId) } : {}),
+          createdAt: dateFilter(query),
+        },
+      ],
+    };
+    return paginated(
+      query,
+      (options) =>
+        db.supportTicket.findMany({
+          where,
+          ...options,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        }),
+      () => db.supportTicket.count({ where }),
+    );
   }
   async access(u: Principal, id: string) {
     const t = await db.supportTicket.findUniqueOrThrow({ where: { id } });
@@ -107,7 +126,8 @@ export class SupportService {
         await event(tx, 'MAIL', t.id, {
           to: a.email,
           subject: '新工单待处理',
-          text: `${t.title}\n${config.publicUrl}/support/${t.id}`,
+          text: t.title,
+          actionPath: `/support/${t.id}`,
         });
       return t;
     });
@@ -152,7 +172,8 @@ export class SupportService {
       await event(tx, 'MAIL', id, {
         to: owner.email,
         subject: '工单有新回复',
-        text: `${t.title}\n${b.text}\n${config.publicUrl}/support/${id}`,
+        text: `${t.title}\n${b.text}`,
+        actionPath: `/support/${id}`,
       });
       return result;
     });

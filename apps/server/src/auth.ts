@@ -6,6 +6,7 @@ import type { Request, Response } from 'express';
 import { invitationReturnPathSchema, type Principal } from '@contest-center/contracts';
 import { db, audit, event, json } from './db.js';
 import { config } from './config.js';
+import { publicLink, trustedOrigins } from './site-settings.js';
 import { opaqueToken, sha, hmac, same } from './security.js';
 
 export const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
@@ -52,11 +53,10 @@ export async function attachPrincipal(req: AuthRequest) {
     req.principal = await publicUser(s.userId);
   }
 }
-export function checkCsrf(req: AuthRequest) {
+export async function checkCsrf(req: AuthRequest) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return;
   const origin = req.headers.origin;
-  if (origin && origin !== new URL(config.publicUrl).origin)
-    throw new ForbiddenException('请求来源无效');
+  if (origin && !(await trustedOrigins()).has(origin)) throw new ForbiddenException('请求来源无效');
   if (
     req.sessionId &&
     !same(String(req.headers['x-csrf-token'] ?? ''), hmac(config.encryptionKey, req.sessionId))
@@ -95,7 +95,8 @@ async function mailToken(id: string, purpose: string, next?: string) {
     await event(tx, 'MAIL', id, {
       to: u.email,
       subject: purpose === 'VERIFY' ? '验证您的邮箱' : '重置登录密码',
-      text: `${u.name}，请在一小时内打开以下链接：\n${config.publicUrl}/account/${purpose === 'VERIFY' ? 'verify' : 'reset'}?${new URLSearchParams({ token: raw, ...(next ? { next } : {}) })}\n如果您未发起此操作，请忽略此邮件。`,
+      text: `${u.name}，请在一小时内打开以下链接。\n如果您未发起此操作，请忽略此邮件。`,
+      actionPath: `/account/${purpose === 'VERIFY' ? 'verify' : 'reset'}?${new URLSearchParams({ token: raw, ...(next ? { next } : {}) })}`,
     });
   });
 }

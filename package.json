@@ -36,7 +36,11 @@
     "package:hydro": "pnpm --dir plugins/hydro-contest-center pack --pack-destination ../../dist",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
-    "test:admissions": "tsx tests/integrations/admissions-batch.ts"
+    "test:admissions": "tsx tests/integrations/admissions-batch.ts",
+    "restore:public-url": "tsx scripts/restore-public-url.ts",
+    "test:enhancements": "tsx tests/integrations/enhancements.ts",
+    "test:oj-enhancements": "tsx tests/integrations/oj-enhancements.ts",
+    "test:oj-recovery": "tsx tests/integrations/oj-recovery.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

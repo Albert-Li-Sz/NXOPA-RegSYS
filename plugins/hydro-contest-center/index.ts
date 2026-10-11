@@ -30,7 +30,20 @@ function parse(args: any) {
     !ObjectId.isValid(contestId)
   )
     throw new ForbiddenError();
-  return { username, password, envelope, domainId, tid: new ObjectId(contestId) };
+  const nickname =
+    envelope.contest?.mode === 'TEAM' ? envelope.teamName : envelope.people?.[0]?.name;
+  if (typeof nickname !== 'string' || !nickname.trim() || nickname.length > 200)
+    throw new Error('报名昵称无效');
+  return {
+    username,
+    password,
+    envelope,
+    domainId,
+    tid: new ObjectId(contestId),
+    nickname,
+    nicknameEnabled: args.nickname !== false,
+    unrank: args.unrank === true,
+  };
 }
 async function result(args: any) {
   const a = parse(args);
@@ -44,6 +57,14 @@ async function result(args: any) {
     status.contestCenterSource !== a.envelope.sourceInstance
   )
     throw new Error('Contest linkage was not verified');
+  const domainUser = (
+    await DomainModel.getMultiUserInDomain(a.domainId, { uid: user._id }).toArray()
+  )[0];
+  if (
+    (a.nicknameEnabled && domainUser?.displayName !== a.nickname) ||
+    Boolean(status.unrank) !== a.unrank
+  )
+    throw new Error('昵称或非正式参赛状态校验失败');
   return {
     schemaVersion: 1,
     registrationId: a.envelope.registrationId,
@@ -51,13 +72,27 @@ async function result(args: any) {
     remoteUserId: String(user._id),
     remoteTeamId: String(user._id),
     username: a.username,
+    verification: {
+      nickname: domainUser?.displayName,
+      unrank: Boolean(status.unrank),
+      domainId: a.domainId,
+      contestId: String(a.tid),
+    },
   };
 }
 class ProbeHandler extends AuthorizedHandler {
   async get() {
     this.response.body = {
       version: '5.0.7',
-      capabilities: ['provision', 'query', 'independent_team_account'],
+      pluginVersion: '0.2.0',
+      capabilities: [
+        'provision',
+        'query',
+        'independent_team_account',
+        'nickname',
+        'unofficial',
+        'contest_linkage',
+      ],
     };
   }
 }
@@ -85,16 +120,26 @@ class ProvisionHandler extends AuthorizedHandler {
     await user.checkPassword(a.password);
     await DomainModel.setUserRole(a.domainId, user._id, 'default', true);
     const status = await ContestModel.getStatus(a.domainId, a.tid, user._id);
+    if (
+      status?.attend &&
+      (status.contestCenterRegistrationId !== a.envelope.registrationId ||
+        status.contestCenterSource !== a.envelope.sourceInstance)
+    )
+      throw new Error('账号已关联其他报名');
+    if (a.nicknameEnabled)
+      await DomainModel.setUserInDomain(a.domainId, user._id, { displayName: a.nickname });
     if (!status?.attend) {
       try {
         await ContestModel.attend(a.domainId, a.tid, user._id, {
           contestCenterRegistrationId: a.envelope.registrationId,
           contestCenterSource: a.envelope.sourceInstance,
+          unrank: a.unrank,
         });
       } catch (error) {
         if (!(await ContestModel.getStatus(a.domainId, a.tid, user._id))?.attend) throw error;
       }
     }
+    await ContestModel.setStatus(a.domainId, a.tid, user._id, { unrank: a.unrank });
     this.response.body = await result(args);
   }
 }

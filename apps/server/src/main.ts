@@ -82,7 +82,7 @@ app.use(cookieParser());
 app.use(async (req: AuthRequest, res: import('express').Response, next: (e?: unknown) => void) => {
   try {
     await attachPrincipal(req);
-    checkCsrf(req);
+    await checkCsrf(req);
     next();
   } catch (e) {
     res

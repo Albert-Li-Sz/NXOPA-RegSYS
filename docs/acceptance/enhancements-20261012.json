@@ -1,0 +1,250 @@
+{
+  "checkedAt": "2026-10-11T21:11:19.609314+00:00",
+  "environment": "macOS local dev + independent PostgreSQL/Redis, Hydro 5.0.7, DOMjudge 9.0.1 and production Compose",
+  "checks": {
+    "business": {
+      "status": "PASS",
+      "groups": 14,
+      "checks": [
+        "atomic HTTP idempotency / concurrent create",
+        "free individual, optional coach, review and eligibility",
+        "participant isolation and manager scope",
+        "optimistic concurrency and critical edits invalidate qualification",
+        "invited team, confirmed teacher link, teacher edits and submits",
+        "Chinese individual / shared team PDF, release and download authorization",
+        "teacher unlink immediately revokes access and admission",
+        "manual team, per-person fee, review first, partial payment, duplicate confirmation",
+        "invoice request, admin uploads invoice, authorized download and void",
+        "payment first, rejection, actual offline refund is idempotent",
+        "scoped support, attachments, replies and status",
+        "automation token contest and field boundaries",
+        "compiler failures persisted and queryable",
+        "template version invalidates previously issued admission"
+      ]
+    },
+    "auth": {
+      "status": "PASS",
+      "groups": 3,
+      "checks": [
+        "Mailpit delivery, email verification and single-use token",
+        "password recovery and revocation of previous sessions",
+        "Retired third-party login, binding, callback and administrator configuration routes return 404"
+      ]
+    },
+    "mail-settings": {
+      "status": "PASS",
+      "groups": 9,
+      "checks": [
+        "Only system administrators can read, save, probe or test mail settings",
+        "Passwords encrypted at rest and absent from read responses, public settings and audit logs",
+        "Real authenticated SMTP connection verified against isolated Mailpit",
+        "Persistent worker sends a real test email using saved credentials and deduplicates request replay",
+        "Blank password preserves credentials; changed sender applies without restarting API or worker",
+        "Concurrent edits and stale test requests cannot overwrite or test a different configuration",
+        "Invalid settings rejected; authentication and required-TLS failures return sanitized Chinese messages",
+        "Disabled service rejects test sends; worker rejects jobs targeting an obsolete settings version",
+        "Clearing authentication removes its secret; normal public registration still delivers and verifies email"
+      ]
+    },
+    "invitations": {
+      "status": "PASS",
+      "groups": 14,
+      "checks": [
+        "only system administrators issue invitations; recipient and scope validation",
+        "grant endpoint returns a URL; opening it grants nothing; wrong account is rejected",
+        "ten concurrent confirmations grant one contest role once; other contests remain forbidden",
+        "revocation is immediate, cancels pending links, and replaying a used link cannot restore permissions",
+        "expired and withdrawn invitations are unusable; recipients cannot manage administrator invitations",
+        "invitation creation is idempotent; database, list and audit never reveal raw invitation tokens",
+        "deleted competition cannot be authorized",
+        "teacher identity requires explicit invitation confirmation; profile cannot self-grant roles",
+        "system administrator confirms before granting; revoked issuer links cannot revive after reauthorization",
+        "new account invitation supports public signup, Mailpit verification, safe return URL and later role acceptance",
+        "public email registration remains open without an invitation and grants no extra role",
+        "existing member links remain single-use under competing accounts and do not duplicate members",
+        "teacher role revocation immediately removes access, association, eligibility and all pending teacher links",
+        "concurrent teacher association and role revocation cannot leave residual access"
+      ]
+    },
+    "enhancements": {
+      "status": "PASS",
+      "groups": 4,
+      "checks": [
+        "公网地址数据库生效、校验、版本冲突、邮件链接与可信管理入口",
+        "非正式申请强制人工审核、平台基础字段、组织与参赛性质快照、先缴费顺序",
+        "个人普票、企业普票、单位专票、备注快照、金额限制与分页附件权限",
+        "后端分页总数、稳定跨页排序、20／50条、筛选全量导出与越权拒绝"
+      ]
+    },
+    "admissions-batch": {
+      "status": "PASS",
+      "groups": 6,
+      "checks": [
+        "Actual ZIP contains two complete individual/shared-team PDFs; repeated ID is deduplicated",
+        "Mixed batch validates every document permission before sending ZIP",
+        "Oversized batch is rejected explicitly rather than silently truncating",
+        "Administrator registration selection resolves the current eligible documents",
+        "Integration read token cannot retrieve private PDF job results or compiler logs",
+        "Explicit administrator rejection revokes eligibility even for automatic-review competitions"
+      ]
+    },
+    "boundaries": {
+      "status": "PASS",
+      "groups": 9,
+      "checks": [
+        "Unchanged save preserves review, qualification and version",
+        "Federation envelope applies contest and field permissions",
+        "Federation callback verifies remote IDs and rejects invented results",
+        "Token revocation and encrypted idempotency replay records",
+        "Real webhook signature, durable failure and retry",
+        "XeLaTeX no network, read-only container, private per-job UID, no shell execution (SUCCESS)",
+        "Runaway TeX compilation terminates within CPU/time limits",
+        "Worker heartbeat and persisted queue metrics",
+        "Chinese PDF with authorized photo assets, batch seat assignment and versioned regeneration"
+      ]
+    },
+    "deployment": {
+      "status": "PASS",
+      "groups": 6,
+      "checks": [
+        "Production Compose health, versioned migrations, formal administrator bootstrap and login",
+        "Development demo accounts absent in production database",
+        "Production private volumes, Outbox worker and isolated Chinese PDF generation",
+        "PostgreSQL, Redis, API and Worker restart preserves sessions, registration and private attachment",
+        "Tampered encrypted backup is rejected before changing database or private files",
+        "AES-256-GCM encrypted backup restores database versions, ledger, private files and original session"
+      ]
+    },
+    "hydro-enhancements": {
+      "platform": "HYDRO",
+      "at": "2026-10-11T20:40:29.454Z",
+      "version": "5.0.7",
+      "pluginVersion": "0.2.0",
+      "status": "PASS",
+      "checks": [
+        "昵称／队名、组织、非正式状态／分组读回，实际登录与比赛访问，重复同步复用",
+        "远端提交后失败恢复不重复创建账号与队伍",
+        "审核调整为正式参赛后更新同一远端对象",
+        "全部非正式导入策略、过期绑定任务拒绝且不覆盖最新映射"
+      ]
+    },
+    "domjudge-enhancements": {
+      "platform": "DOMJUDGE",
+      "at": "2026-10-11T21:04:10.686Z",
+      "version": "9.0.1",
+      "status": "PASS",
+      "checks": [
+        "学校待映射允许报名、管理员创建组织并恢复同步",
+        "昵称／队名、组织、非正式状态／分组读回，实际登录与比赛访问，重复同步复用",
+        "远端提交后失败恢复不重复创建账号与队伍",
+        "审核调整为正式参赛后更新同一远端对象",
+        "全部非正式导入策略、过期绑定任务拒绝且不覆盖最新映射"
+      ]
+    },
+    "hydro-recovery": {
+      "platform": "HYDRO",
+      "at": "2026-10-11T20:43:18.722Z",
+      "status": "PASS",
+      "checks": [
+        "个人报名姓名映射，真实远端创建后丢失响应，自动重试且账号／队伍没有重复",
+        "禁用非正式导入时跳过，重新启用后复用原账号并恢复非正式关联"
+      ],
+      "lostResponses": 1,
+      "attempts": 2
+    },
+    "domjudge-recovery": {
+      "platform": "DOMJUDGE",
+      "at": "2026-10-11T21:05:17.375Z",
+      "status": "PASS",
+      "checks": [
+        "个人报名姓名映射，真实远端创建后丢失响应，自动重试且账号／队伍没有重复",
+        "禁用非正式导入时跳过，重新启用后复用原账号并恢复非正式关联"
+      ],
+      "lostResponses": 1,
+      "attempts": 2
+    },
+    "browser": {
+      "status": "PASS",
+      "startTime": "2026-10-11T21:07:19.962Z",
+      "duration": 84441.499,
+      "expected": 20,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "mcp": {
+      "status": "PASS",
+      "tools": [
+        "list_contests",
+        "list_registrations",
+        "get_registration",
+        "get_finance_summary",
+        "get_support_ticket"
+      ],
+      "scopeDenial": "PASS",
+      "fieldFiltering": "PASS",
+      "enhancedFieldAuthorization": "PASS"
+    },
+    "load": {
+      "time": "2026-10-11T20:24:53.590Z",
+      "dataset": {
+        "registrations": 10000,
+        "people": 10000,
+        "users": 10000,
+        "seedMs": 3861
+      },
+      "concurrency": 100,
+      "statistics": {
+        "total": 10000,
+        "pending": 0,
+        "approved": 10000,
+        "rejected": 0,
+        "eligible": 10000
+      },
+      "requests": 1000,
+      "scenario": "authenticated read mix: 1/3 backend-paginated list (20 rows), 1/3 registration summary, 1/3 contest detail",
+      "counts": [334, 333, 333],
+      "elapsedMs": 1288,
+      "requestsPerSecond": 776.5,
+      "p50Ms": 112,
+      "p95Ms": 213.4,
+      "p99Ms": 276.1,
+      "maxMs": 318.8,
+      "csvExported": 10000,
+      "paginatedTotal": 10000,
+      "pageSizesVerified": [20, 50, 100],
+      "filteredTotal": 1,
+      "errors": []
+    },
+    "pdf": {
+      "pages": 21,
+      "nonemptyPages": 21,
+      "chaptersPresent": true
+    },
+    "localTutorial": {
+      "passed": true,
+      "base": "http://localhost:5184/NXOPA-RegSYS/",
+      "checks": [
+        "14 Chinese chapters and all 23 actual screenshots rendered from LaTeX; template variables are intact",
+        "Every image, stylesheet, script and favicon resolves below /NXOPA-RegSYS/",
+        "Chapter anchors and active navigation work; copied commands match the LaTeX source",
+        "Screenshot viewer opens the correct original image and closes with Escape",
+        "PDF, source ZIP and LaTeX downloads have the exact hashes of the delivered artifacts",
+        "Versioned and stable Hydro 0.2.0 downloads match the whitelist, supported version and SHA-256",
+        "390px mobile layout has no horizontal overflow; menu navigation and Escape work without script or asset failures"
+      ],
+      "errors": [],
+      "failedResources": [],
+      "checkedAt": "2026-10-11T21:09:01.844Z"
+    },
+    "engineering": {
+      "typecheck": "PASS",
+      "productionBuild": "PASS",
+      "unitTests": 4
+    }
+  },
+  "publication": {
+    "status": "PENDING",
+    "url": "https://albert-li-sz.github.io/NXOPA-RegSYS/"
+  }
+}

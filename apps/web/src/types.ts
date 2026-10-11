@@ -16,6 +16,7 @@ export interface ContestView {
   title: string;
   season: string;
   description: string;
+  descriptionFormat: 'TEXT' | 'MARKDOWN';
   announcement: string;
   location: string;
   startsAt: string;
@@ -47,6 +48,10 @@ export interface RegistrationView {
   ownerId: string;
   teamName: string;
   teamEnglishName: string;
+  participationType: 'OFFICIAL' | 'UNOFFICIAL';
+  organization?: { name: string; shortName: string; country: string; icpcId: string } | null;
+  invoiceReservedCents: number;
+  invoiceIssuedCents: number;
   answers: Data;
   status: string;
   review: string;

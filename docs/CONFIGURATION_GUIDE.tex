@@ -1,6 +1,6 @@
 \documentclass[UTF8,fontset=fandol,a4paper,11pt]{ctexart}
 \usepackage[margin=20mm,headheight=16pt]{geometry}
-\usepackage{graphicx,xcolor,booktabs,tabularx,enumitem,fancyhdr,fvextra,hyperref}
+\usepackage{graphicx,xcolor,booktabs,tabularx,enumitem,fancyhdr,fvextra,etoolbox,hyperref}
 \definecolor{brand}{HTML}{2080F0}
 \definecolor{ink}{HTML}{25344B}
 \definecolor{muted}{HTML}{607087}
@@ -21,7 +21,9 @@
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
 \newcommand{\shot}[3][0.48\textheight]{\begin{center}\fcolorbox{rule}{white}{\includegraphics[width=0.96\linewidth,height=#1,keepaspectratio]{#2.png}}\par\vspace{4pt}{\small\color{muted}#3}\end{center}}
-\DefineVerbatimEnvironment{Code}{Verbatim}{fontsize=\small,breaklines=true,breakanywhere=true,frame=single,rulecolor=\color{rule},framesep=8pt}
+\DefineVerbatimEnvironment{Code}{Verbatim}{fontsize=\small,breaklines=true,breakanywhere=true,samepage=true,frame=single,rulecolor=\color{rule},framesep=8pt}
+\BeforeBeginEnvironment{Code}{\par\noindent\begin{minipage}{\linewidth}}
+\AfterEndEnvironment{Code}{\end{minipage}\par}
 \begin{document}
 \thispagestyle{empty}
 {\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 12 日}
@@ -58,7 +60,7 @@ curl --fail http://localhost:8080/api/v1/health
 \end{Code}
 初始化命令交互输入邮箱和密码，密码输入不回显。首次管理员由此命令创建；它不会覆盖已有账号。正式部署不使用开发演示账号。健康检查应返回 \code{status: ok}，API、数据库与缓存服务应处于健康状态。
 
-\textbf{设置公网地址。}上线前编辑项目根目录 \code{.env} 中的部署项。下列地址与密码占位值需要替换。邮件链接以部署站点地址为基址，因此应先设定正确域名。
+\textbf{设置公网地址。}上线前编辑项目根目录 \code{.env} 中的部署项。下列地址与密码占位值需要替换。首次启动使用环境地址作为初始值；登录后在“管理中心 → 全局设置”保存公网地址，邮件与邀请统一读取数据库配置。
 \begin{Code}
 DEPLOY_PUBLIC_URL=https://contest.example.org
 SITE_ADDRESS=contest.example.org
@@ -69,9 +71,9 @@ ALLOW_PRIVATE_INTEGRATIONS=false
 \end{Code}
 原生开发使用 \code{PUBLIC_URL}，正式 Compose 使用 \code{DEPLOY_PUBLIC_URL}。如果评测平台确实位于受信任内网，再显式启用内网联动；正式环境外部评测接口要求 HTTPS。
 
-\textbf{需要留在部署环境的配置：}数据库、缓存、私有文件目录、站点公开地址和 \code{ENCRYPTION_KEY}。这些属于运行基础设施。保留同一个加密密钥，否则无法解密已有邮件密码、评测凭据与备份。
+\textbf{需要留在部署环境的配置：}数据库、缓存、私有文件目录、可信管理入口和 \code{ENCRYPTION_KEY}。这些属于运行基础设施。保留同一个加密密钥，否则无法解密已有邮件密码、评测凭据与备份。
 
-\textbf{可在管理中心调整的配置：}站点名称、主色、页脚、邮件服务、用户授权、评测平台、接口令牌、全局字段和准考证模板。首次登录后优先完成邮件配置，以便用户验证邮箱和找回密码。
+\textbf{可在管理中心调整的配置：}站点名称、主色、页脚、公网地址、邮件服务、用户授权、评测平台、接口令牌、全局字段和准考证模板。首次登录后优先完成邮件配置，以便用户验证邮箱和找回密码。
 
 \newpage
 \section{首页、登录与站点设置}
@@ -80,6 +82,23 @@ ALLOW_PRIVATE_INTEGRATIONS=false
 
 系统管理员登录后打开“管理中心 → 全局设置”，调整站点名称、主色与页脚，并点击“保存”。竞赛管理员没有全局设置权限。默认主色为 \texttt{\#2080F0}。
 \shot[0.24\textheight]{04-site}{全局设置中的站点配置。}
+
+\textbf{公网地址。}填写根路径地址，例如 \code{https://reg.example.org}；不能包含账号密码、额外路径、查询参数或片段，端口须在 1 至 65535 之间。正式环境只能保存 HTTPS。保存采用版本检查，冲突时刷新；操作进入审计日志。API 和 Worker 使用同一数据库配置生成验证、找回、角色授权、队员与老师邀请、工单通知链接，尚未发送的邮件在执行时读取最新地址。
+
+\begin{enumerate}
+\item 域名解析：给注册域名添加指向服务器的 A 记录；启用 IPv6 时再配置正确的 AAAA 记录。
+\item 反向代理：Compose 设置 \code{SITE_ADDRESS=reg.example.org}，开放 80／443。Caddy 自动申请与续期证书；已有代理则将 HTTPS 流量转发到私有 HTTP 端口，并保留原始 Host 与请求协议。
+\item 更换域名：先解析新域名、配置代理与证书，并实际检查新站可登录，再保存新的公网地址。旧的、已经发出的邀请 URL 不会被重写，迁移期保留旧域名反向代理或引导用户重新获取链接。
+\item 恢复入口：环境配置的 \code{PUBLIC_URL}（Compose 对应 \code{DEPLOY_PUBLIC_URL}）继续作为可信管理来源；可增加 \code{TRUSTED_MANAGEMENT_ORIGINS}，用逗号分隔完整 Origin。不能把任意请求 Host 当作可信来源。
+\end{enumerate}
+\begin{Code}
+# 原生部署：在项目目录使用原数据库与加密密钥
+pnpm restore:public-url https://reg.example.org
+# Docker：在 API 容器内恢复数据库配置
+docker compose exec api pnpm restore:public-url https://reg.example.org
+\end{Code}
+恢复命令保留站点其他设置、递增版本并记录审计，不需要清空数据库。
+
 
 公开邮箱注册保留；用户验证邮箱后才可提交报名或确认授权。本站密码与评测平台比赛账号的密码分别管理。首页不会展示已登录用户的管理导航，进入报名系统后再显示相应入口。
 
@@ -130,33 +149,103 @@ ALLOW_PRIVATE_INTEGRATIONS=false
 
 \newpage
 \section{接入 Hydro 评测平台}
-Hydro 接入使用项目提供的桥接插件。当前适配目标版本为 5.0.7。先在项目目录生成插件包：
+Hydro 接入使用 \code{hydro-contest-center} 插件，当前插件 0.2.0 适配 Hydro 5.0.7。下载入口位于\href{https://albert-li-sz.github.io/NXOPA-RegSYS/#hydro-plugin}{教程网页的 Hydro 插件下载区}；同时提供版本化安装包、稳定入口和 SHA-256。安装前核对包名、版本与摘要。不要把实例 Token 写入安装包。
 \begin{Code}
-pnpm package:hydro
+curl -fLO https://albert-li-sz.github.io/NXOPA-RegSYS/downloads/hydro-contest-center-0.2.0.tgz
+curl -fLO https://albert-li-sz.github.io/NXOPA-RegSYS/downloads/hydro-contest-center-0.2.0.tgz.sha256
+sha256sum -c hydro-contest-center-0.2.0.tgz.sha256
+# macOS 也可用 shasum -a 256 比对网页摘要
+npm install --prefix /opt/hydro hydro-contest-center-0.2.0.tgz
 \end{Code}
-生成的 \code{dist} 中包含安装包。在 Hydro 的 Node.js 环境安装该包，把 \code{hydro-contest-center} 加入 \code{~/.hydro/addon.json}。
+\textbf{原生部署。}确认运行 Hydro 的用户、工作目录和 addon.json 所在位置。以 Hydro 运行用户安装到其 Node.js 工作目录，将安装后的插件目录添加到该用户的 \code{~/.hydro/addon.json}，保留原有其他插件。项目提供的包只含源码、说明和许可证。
+\begin{Code}
+["@hydrooj/ui-default", "/opt/hydro/node_modules/hydro-contest-center"]
+\end{Code}
+设置 \code{CONTEST_CENTER_TOKEN} 为至少 32 位的随机密钥，本站与 Hydro 必须使用同一值；设置域白名单 \code{CONTEST_CENTER_DOMAINS=system,training}。这些变量必须进入 Hydro 进程环境；只在登录终端中 export 不会改变已运行的 systemd／PM2 服务。
+\begin{Code}
+# systemd 服务的 EnvironmentFile 示例（权限 600）
+CONTEST_CENTER_TOKEN=replace_with_at_least_32_random_characters
+CONTEST_CENTER_DOMAINS=system,training
+# 修改服务的 EnvironmentFile 或 Environment 后
+sudo systemctl daemon-reload
+sudo systemctl restart hydro
+# PM2 修改进程环境后
+pm2 restart hydro --update-env
+\end{Code}
+\textbf{Docker 部署。}在自己的 Hydro 镜像中安装下载包，或将插件目录只读挂载到容器，再更新容器内实际运行用户的 addon.json。Token 与域白名单放入 Compose 的 environment 或受保护环境文件，重建／重启容器使变量进入进程；不要仅修改宿主机文件后假定容器已生效。
+\begin{Code}
+# 自有镜像示例，基底应与自己的 Hydro 部署一致
+COPY hydro-contest-center-0.2.0.tgz /tmp/bridge.tgz
+RUN npm install --prefix /opt/hydro /tmp/bridge.tgz && rm /tmp/bridge.tgz
+# Compose 相应服务
+# environment:
+#   CONTEST_CENTER_TOKEN: ${HYDRO_BRIDGE_TOKEN}
+#   CONTEST_CENTER_DOMAINS: system,training
+docker compose up -d --build hydro
+\end{Code}
+\shot[0.40\textheight]{07-hydro-instance}{本站后台的 Hydro 实例配置，密钥不展示。}
 
-配置桥接密钥 \code{CONTEST_CENTER_TOKEN}，长度至少 32 字符。允许域列表通过 \code{CONTEST_CENTER_DOMAINS} 设置，然后重启 Hydro。详细路由和安装说明见项目 \code{docs/INTEGRATIONS.md}。
+\textbf{获取域和比赛编号。}打开目标比赛，地址由平台基址、\code{/d/training/contest/} 与 24 位比赛编号组成，例如：
+\begin{Code}
+https://hydro.example.org/d/training/contest/0123456789abcdef01234567
+\end{Code}
+域为 \code{training}，比赛编号为最后的 24 位标识。默认域可能省略 \code{/d/system}，此时填 system。比赛必须已存在，白名单必须包含所选域。
+\shot[0.32\textheight]{15-hydro-contest}{独立 Hydro 5.0.7 实例的实际比赛页，可从地址栏获取比赛编号。}
 
-在“管理中心 → 评测平台”添加实例，填写中文名称、Hydro 类型、实例地址与相同的插件密钥，选择允许使用该实例的本站竞赛，并保存。
-\shot[0.55\textheight]{07-hydro-instance}{Hydro 实例配置示例；插件密钥未展示。}
+\textbf{完整配置示例。}实例名称“社团 Hydro 评测平台”、地址 \code{https://hydro.example.org}，类型 Hydro；选择可使用的本站竞赛。在比赛绑定填域 training、目标比赛 24 位编号，启用昵称映射、同步非正式报名，参赛性质选择“跟随报名性质”。队伍名称写入目标域昵称；个人报名使用姓名。独立比赛用户名与密码由本站生成，不复制本站密码。
 
-凭据加密保存，编辑时留空保留原值。新建实例或切换平台类型时，需要填写对应凭据。实例保存后继续配置比赛绑定，单独添加实例不会创建参赛账号。
+非正式报名经管理员审核后，在比赛内写入 \code{unrank=true}；正式报名写入 false。“全部作为非正式参赛”覆盖两类报名的远端性质。“不导入非正式报名”则跳过该类报名并明确显示状态。插件探测应返回版本 0.2.0 及昵称、非正式、比赛关联能力；旧插件缺失能力时提示升级。
+
+\textbf{验收与故障排查。}依次探测、提交／审核报名、查看任务、领取比赛账号、实际登录目标比赛；核对域昵称与比赛状态，再重复同步确认远端用户编号不变。Hydro 的昵称属于域用户资料，某些排行榜视图按原平台权限隐藏昵称；不要为了显示昵称给所有用户开放私人资料权限。
+\begin{itemize}
+\item 401／403：检查 Token 一致、域在白名单中、进程确实收到环境变量；不在浏览器或日志中展示完整密钥。
+\item 404：检查反向代理是否保留插件路径、插件是否安装并启用；确认域和比赛编号。
+\item 能探测但无法导入：检查目标比赛是否存在、报名是否有资格、昵称是否为空，以及账号是否被其他报名占用。
+\item 修改资料后：重新提交和审核，再生成新版本同步任务。旧任务版本不符时不能直接重试覆盖新资料。
+\end{itemize}
 
 \newpage
 \section{接入 DOMjudge 评测平台}
-当前适配目标版本为 9.0.1。先在 DOMjudge 建立目标比赛，并创建同时具有 \code{api_reader} 与 \code{api_writer} 角色的独立服务账号。
+当前适配目标版本为 DOMjudge 9.0.1。本站通过该版本的 REST 写接口创建学校、队伍和账号，CCS 读接口用于确认组织、分组、比赛关联与账号访问；不只创建独立账号。
+\begin{enumerate}
+\item 以 DOMjudge 管理员登录后台，创建目标比赛，确认启用时间、开始／结束时间及允许参赛的分组。
+\item 新建独立 API 服务账号，授予 \code{api_reader} 与 \code{api_writer}；不要把管理员登录账号当作长期服务凭据。原生部署填写实际 HTTPS 基址；Docker 对外使用配置好的反向代理 HTTPS 地址，容器内部 host 名不能直接用于公网访问。
+\item 在本站“管理中心 → 评测平台”添加实例，填写中文名称“社团 DOMjudge 评测平台”、地址 \code{https://domjudge.example.org} 和 API 用户名／密码，授权指定本站竞赛。
+\end{enumerate}
+\shot[0.39\textheight]{08-domjudge-instance}{本站 DOMjudge 实例配置，服务密码不展示。}
+\shot[0.32\textheight]{16-domjudge-users}{独立 DOMjudge 9.0.1 后台：服务账号与比赛队伍账号分别管理。}
 
-打开“管理中心 → 评测平台”，添加实例，填写中文名称、DOMjudge 类型、实例地址，以及服务账号用户名和密码。选择可使用此实例的本站竞赛，再保存。
-\shot[0.58\textheight]{08-domjudge-instance}{DOMjudge 实例配置示例；使用服务账号，密码未展示。}
+\textbf{获取外部 ID。}不要把数据库数字主键和接口外部 ID 混用。使用 API 服务账号请求 \code{/api/contests}、\code{/api/organizations} 与 \code{/api/contests/<比赛ID>/groups}，读取 JSON 中 id；本站绑定填这些外部 ID。用下面命令交互输入 API 密码，避免在命令历史里保存密码。
+\begin{Code}
+curl --user reg_bridge https://domjudge.example.org/api/contests
+curl --user reg_bridge https://domjudge.example.org/api/organizations
+curl --user reg_bridge https://domjudge.example.org/api/contests/training-2026/groups
+\end{Code}
+\textbf{正式与非正式分组。}建立例如 \code{official}（正式队伍，排名顺序 0）和 \code{unofficial}（非正式队伍，排名顺序 1），在目标比赛允许这两个组。不同排名顺序将分别排名；相同顺序会合并排名，因此不能只改分组名称。是否隐藏分组由主办方决定；在目标比赛的奖牌／奖项配置里按分组设置，非正式组按比赛要求不设置正式奖项。本站不自动修改远端奖项。
+\shot[0.32\textheight]{17-domjudge-groups}{DOMjudge 目标比赛分组：正式与非正式参赛使用不同排名顺序。}
 
-在比赛绑定中填写目标比赛编号。如果比赛按分组限制参赛，应填写正确分组；当前界面支持一个分组。组织编号可选。新比赛账号创建后会读取远端队伍与用户，确认参赛关联；重复同步复用本站建立的映射。
+\textbf{完整绑定示例。}目标比赛 \code{training-2026}，正式组 \code{official}，非正式组 \code{unofficial}，策略“跟随报名性质”，同步两类报名。历史报名缺少学校资料时可填写默认组织编号；新报名使用“代表学校／单位”并经学校映射确认，不用成员个人学校替代。
 
-实例地址、服务账号权限、比赛编号或分组错误，均可能使同步失败。应先修正配置，再在“任务”中重试。探测通过只代表接口可连接，需要另行核验比赛账号实际登录和目标比赛访问。
+\textbf{学校确认流程。}未知学校允许提交报名；取得资格后显示“等待学校确认”。管理员打开绑定的“学校映射”：选择已有远端组织，或核对全称、简称、国家三位代码（中国 CHN）与可选 ICPC 编号后确认创建。确认后继续原报名的同步，不需要重新报名。学校外部 ID 使用稳定标识，失败恢复不会重复创建。
+\shot[0.25\textheight]{18-school-mapping}{本站后台确认学校全称、简称、国家及远端组织编号。}
+\shot[0.28\textheight]{19-domjudge-organizations}{实际 DOMjudge 组织列表：确认学校全称、简称和国家信息。}
+
+\textbf{字段映射与验收。}中文队名写入队伍 \code{name} 与 \code{display_name}。DOMjudge 9.0.1 将成员名单保存到公开说明字段，因此英文队名与成员姓名合并写入 \code{public_description}，同步后读取该字段核验两者完整保存。学校映射到组织，队伍 ICPC 编号、编号／座位、地点为可选基础字段。账号填写队名／姓名和队长联系人邮箱，角色固定 team；远端 ID、独立用户名和密码由系统管理。完整流程为学校 → 队伍 → 账号绑定队伍 → 实际登录并确认目标比赛访问。
+\shot[0.30\textheight]{20-domjudge-team}{实际 DOMjudge 队伍信息：组织、分组与比赛账号关联。}
+
+新远端队伍 ID 按“绑定＋报名”生成，历史映射复用原 ID。跨比赛共享同一历史队伍的映射会暂停更新并提示管理员处理。队伍编号／座位在 DOMjudge 中全局唯一，填写时避免与其他比赛已有队伍重复；冲突会明确显示占用队伍。修改学校、队名、参赛性质或人员后重新审核，新同步更新队伍资料；DOMjudge 9.0.1 的用户更新接口存在限制，账号名称或邮箱变化会明确列出需人工更新的差异。请在远端账号后台修改资料后重新发起同步。
+
+\begin{itemize}
+\item 401／403：检查 API 账号启用状态及 reader／writer 角色；参赛账号使用独立凭据。
+\item 队伍导入后看不到比赛：检查激活时间、比赛允许组、队伍分组与比赛访问限制；创建队伍的写接口 URL 不能单独证明其已被比赛允许。
+\item 学校或分组读回不符：重新查询外部 ID 并确认映射，不能仅凭 POST 成功判断完成。
+\item 中途失败：任务保留已有队伍与账号编号，修正原因后按当前版本同步。若配置已改变，重新发起同步；旧任务不能覆盖新配置。
+\end{itemize}
+字段和分组规则参见\href{https://github.com/DOMjudge/domjudge/blob/9.0.1/doc/manual/import.rst}{9.0.1 官方导入格式}及\href{https://github.com/DOMjudge/domjudge/blob/9.0.1/doc/manual/scoring.rst}{官方分组排名说明}。
 
 \newpage
 \section{比赛绑定与报名同步}
-在“管理中心 → 评测平台”的“比赛绑定与报名同步”区域选择本站竞赛，再选择已获授权且启用的评测实例，填写目标比赛编号。Hydro 还需填写域编号；DOMjudge 根据远端比赛要求填写组织和分组。
+在“管理中心 → 评测平台”的“比赛绑定与报名同步”区域选择本站竞赛，再选择已获授权且启用的评测实例，填写目标比赛编号。Hydro 还需填写域编号；DOMjudge 配置正式和非正式分组，并确认学校映射。
 \shot[0.56\textheight]{09-contest-binding}{绑定示例：本站竞赛关联目标比赛，并设置自动同步。}
 
 \begin{itemize}
@@ -174,7 +263,7 @@ pnpm package:hydro
 个人报名固定一人。团队报名设置最少 / 最多人数，以及成员邀请或队长代填。老师可设置为必需、可选或不启用；必需老师的报名需要有效确认关联。
 \shot[0.28\textheight]{11-contest-finance}{线下财务示例：按报名单计费，先审核再缴费。}
 
-可设置免费、按报名单或按人数计费；金额单位是分，100 分等于 1 元。填写线下收款说明，选择“先审核，再缴费”或“先缴费，再审核”，并设置退款与开票。参赛者上传凭证后，由管理员确认实际到账；部分到账不会被视为足额缴费。退款完成需要记录实际退款，开票由管理员上传实际发票。
+可设置免费、按报名单或按人数计费；金额单位是分，100 分等于 1 元。填写线下收款说明，选择“先审核，再缴费”或“先缴费，再审核”，并设置退款与开票。非正式报名由参赛者选择且必须人工审核，费用、老师与准考证规则沿用正式报名。参赛者上传凭证后，由管理员确认实际到账；部分到账不会被视为足额缴费。退款完成需要记录实际退款，开票由管理员上传实际发票。
 
 \newpage
 \section{配置报名字段}
@@ -190,6 +279,24 @@ pnpm package:hydro
 \end{tabularx}
 
 键名用于接口和模板变量，保存后保持稳定。类型使用短文本、长文本、数字、日期、单选、多选、开关、文件或照片。选项字段需要提供选项内容；条件字段只在条件满足时显示。敏感字段在接口查询中需要明确授权。
+
+选择 Hydro 5.0.7 或 DOMjudge 9.0.1 基础模板后，系统合并重复项并区分参赛者填写、系统生成和管理员配置。固定映射项不可删除或改键名；队伍英文名、ICPC 编号、队伍编号／座位与地点按模板提供，可选资料无需强制填写。代表学校／单位与成员学校分别维护；启用新模板时提示旧报名补充缺项，不覆盖历史提交快照。
+
+\newpage
+\section{发票申请与审核}
+参赛者在报名“财务”页提交完整开票表单，先查看可开票余额并确认信息。抬头分个人、企业、非企业单位；默认仅普通发票，管理员在竞赛费用配置中开启专用发票并选择额外必填资料。
+\shot[0.45\textheight]{21-invoice-application}{完整开票申请表：票种、抬头、税号、金额、联系方式、银行资料和备注。}
+
+企业税号必填；个人和非企业单位的普通发票允许留空。专票必须为单位抬头并填写税号；地址、银行等是否必填由开票方配置。不要把所有票种都强制成传统纸质专票字段，参考\href{https://shanghai.chinatax.gov.cn/tax/zcfw/rdwd/202402/t470676.html}{税务机关购买方信息说明}。
+申请金额不能超过确认净收款减去已申请／已开票金额；退款前须处理关联发票。提交保存资料快照，管理员可以查看完整信息，拒绝时填写原因，开票时上传实际发票；附件沿用报名访问权限。历史申请缺少新字段时显示为历史记录，不补造资料。
+
+\newpage
+\section{分页、Markdown 与页面使用}
+管理中心的用户、授权邀请、审计与任务，报名名单、工单以及财务历史均支持 20／50／100 条每页。显示总数、页码与跳页；页大小刷新后保留，筛选变化回到第一页。搜索、状态与时间条件同时作用于列表和总数；统计和名单导出始终覆盖完整筛选结果。批量准考证操作使用明确选中的报名，未选时作用于当前页符合条件的报名。
+\shot[0.29\textheight]{22-pagination}{中文审计操作与分页：选择每页条数，查看关联对象和详情。}
+
+竞赛介绍可选择纯文本或 Markdown。旧介绍保持纯文本；编辑器提供标题、列表、表格、引用、代码块、链接和图片地址工具与预览。渲染关闭原始 HTML 并净化内容；图片使用可公开访问的 HTTPS 地址。手机号、税号等私人信息不要写入公开介绍。
+\shot[0.31\textheight]{23-markdown}{竞赛 Markdown 编辑与预览，支持表格、引用及代码块。}
 
 \newpage
 \section{配置准考证模板与发放}
@@ -222,5 +329,5 @@ pnpm package:hydro
 bash scripts/backup.sh /srv/contest-backups
 bash scripts/restore.sh /srv/contest-backups/contest-center-YYYYMMDDTHHMMSSZ.ccbak
 \end{Code}
-升级前备份数据库、私有附件与环境文件；备份包含后台邮件设置。异机恢复使用原加密密钥，并先在隔离环境核验。修改数据库与站点公开地址仍需更新部署环境并重启服务；邮件后台配置无需重启。
+升级前备份数据库、私有附件与环境文件；备份包含后台邮件设置。异机恢复使用原加密密钥，并先在隔离环境核验。数据库连接等基础设施变更仍需更新部署环境并重启服务；公网地址与邮件配置在后台保存后生效。环境配置的可信管理入口保留，以便恢复错误公网地址。
 \end{document}

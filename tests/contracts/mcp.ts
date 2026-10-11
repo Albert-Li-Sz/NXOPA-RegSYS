@@ -35,6 +35,8 @@ try {
   assert.ok(!good.isError);
   const value = JSON.parse((good.content as any[])[0].text);
   assert.equal(value.people[0].email, undefined);
+  assert.equal(value.organization, undefined);
+  assert.equal(value.participationType, undefined);
   assert.deepEqual(value.people[0].answers, {});
   const denied = await client.callTool({
     name: 'get_registration',
@@ -51,6 +53,42 @@ try {
     arguments: { ticketId: context.ticket },
   });
   assert.ok(!support.isError);
+  const enhanced = JSON.parse(await readFile('.runtime/enhancement-context.json', 'utf8'));
+  const scopedToken = await admin.api('/admin/tokens', 'POST', {
+    name: 'MCP enhancement fields acceptance',
+    contestIds: [enhanced.contestId],
+    scopes: ['registrations:read'],
+    fields: ['REGISTRATION.organization', 'REGISTRATION.participationType'],
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+  });
+  const scopedClient = new Client({ name: 'enhancement-fields-client', version: '1.0.0' });
+  try {
+    await scopedClient.connect(
+      new StdioClientTransport({
+        command: 'pnpm',
+        args: ['--silent', '--filter', '@contest-center/mcp-adapter', 'start'],
+        env: {
+          ...(process.env as Record<string, string>),
+          CONTEST_CENTER_TOKEN: scopedToken.token,
+          CONTEST_CENTER_URL: 'http://localhost:3000',
+        },
+        stderr: 'pipe',
+      }),
+    );
+    const result = await scopedClient.callTool({
+      name: 'get_registration',
+      arguments: { registrationId: enhanced.registrationId },
+    });
+    assert.ok(!result.isError);
+    const registration = JSON.parse((result.content as any[])[0].text);
+    assert.equal(registration.organization.name, '南京晓庄学院');
+    assert.ok(['OFFICIAL', 'UNOFFICIAL'].includes(registration.participationType));
+    assert.equal(registration.people[0].name, undefined);
+    assert.equal(registration.people[0].email, undefined);
+  } finally {
+    await scopedClient.close();
+    await admin.api(`/admin/tokens/${scopedToken.id}`, 'DELETE');
+  }
   await writeFile(
     '.runtime/reports/mcp.json',
     JSON.stringify(
@@ -59,6 +97,7 @@ try {
         tools: tools.map((t) => t.name),
         scopeDenial: 'PASS',
         fieldFiltering: 'PASS',
+        enhancedFieldAuthorization: 'PASS',
       },
       null,
       2,

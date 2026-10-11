@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-10-11T18:28:59.916Z",
-  "source": "Local development UI with fictitious examples. Credentials and invitation tokens are not shown.",
+  "capturedAt": "2026-10-11T21:09:51.168Z",
+  "source": "Actual local development UI and isolated Hydro 5.0.7 / DOMjudge 9.0.1 pages; fictitious contest and financial examples; no credentials or invitation tokens displayed.",
   "images": [
     "01-home",
     "02-login",
@@ -15,6 +15,15 @@
     "11-contest-finance",
     "12-fields",
     "13-admission-template",
-    "14-jobs"
+    "14-jobs",
+    "15-hydro-contest",
+    "16-domjudge-users",
+    "17-domjudge-groups",
+    "18-school-mapping",
+    "19-domjudge-organizations",
+    "20-domjudge-team",
+    "21-invoice-application",
+    "22-pagination",
+    "23-markdown"
   ]
 }

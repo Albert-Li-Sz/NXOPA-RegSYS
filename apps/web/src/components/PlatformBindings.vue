@@ -1,10 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted } from 'vue';
+import SchoolMappings from './SchoolMappings.vue';
 import { ElMessage } from 'element-plus';
 import { api, auth } from '../api';
 import type { ContestView, Data } from '../types';
-const props = defineProps<{ contests: ContestView[]; instances: Data[] }>();
-const contestId = ref(''),
+const props = defineProps<{
+  contests: ContestView[];
+  instances: Data[];
+  initialContestId?: string;
+}>();
+const emit = defineEmits<{ saved: [contest: Data] }>();
+const schoolBinding = ref('');
+const contestId = ref(props.initialContestId ?? ''),
   bindings = ref<Data[]>([]),
   busy = ref(false),
   loading = ref(false);
@@ -14,6 +21,10 @@ const defaults = () => ({
   domainId: 'system',
   groupIds: [] as string[],
   organizationId: '',
+  importMode: 'FOLLOW',
+  includeUnofficial: true,
+  nickname: true,
+  unofficialGroupId: '',
   automatic: true,
   enabled: true,
 });
@@ -49,20 +60,26 @@ async function save() {
     });
     ElMessage.success('比赛绑定已保存');
     await loadBindings();
+    emit('saved', await api(`/contests/${contestId.value}`));
   } finally {
     busy.value = false;
   }
 }
 async function probe(id: string) {
   const result = await api(`/integrations/bindings/${id}/probe`, 'POST');
-  ElMessage.success(`连接正常，平台版本 ${result.version}`);
+  ElMessage.success(
+    `连接正常，平台版本 ${result.version}${result.pluginVersion ? `，插件版本 ${result.pluginVersion}` : ''}`,
+  );
 }
+onMounted(() => {
+  if (contestId.value) loadBindings();
+});
 </script>
 <template>
   <div class="card platform-bindings">
     <h3>比赛绑定与报名同步</h3>
     <p class="subtitle">选择本站竞赛，将报名关联至 Hydro 或 DOMjudge 的目标比赛。</p>
-    <el-form label-position="top" class="binding-selector">
+    <el-form v-if="!initialContestId" label-position="top" class="binding-selector">
       <el-form-item label="本站竞赛" for="binding-contest"
         ><el-select
           id="binding-contest"
@@ -96,6 +113,12 @@ async function probe(id: string) {
         <el-table-column label="操作" min-width="175"
           ><template #default="{ row }"
             ><el-button text type="primary" @click="probe(row.id)">探测连接</el-button
+            ><el-button
+              v-if="row.instance.type === 'DOMJUDGE'"
+              text
+              type="primary"
+              @click="schoolBinding = row.id"
+              >学校映射</el-button
             ><el-button text @click="binding = { ...row, groupIds: [...row.groupIds] }"
               >编辑绑定</el-button
             ></template
@@ -133,17 +156,37 @@ async function probe(id: string) {
             ><el-input id="binding-domain" v-model="binding.domainId" placeholder="system"
           /></el-form-item>
           <template v-if="platformType === 'DOMJUDGE'"
-            ><el-form-item label="组织编号（可选）" for="binding-organization"
+            ><el-form-item label="历史报名默认组织编号（可选）" for="binding-organization"
               ><el-input id="binding-organization" v-model="binding.organizationId" /></el-form-item
-            ><el-form-item label="分组编号（可选）" for="binding-group"
+            ><el-form-item label="正式参赛分组编号" for="binding-group"
               ><el-input
                 id="binding-group"
                 :model-value="binding.groupIds[0] || ''"
                 @update:model-value="
                   (value: string) => (binding.groupIds = value ? [value] : [])
                 " /></el-form-item
+            ><el-form-item label="非正式参赛分组编号" for="binding-unofficial-group"
+              ><el-input
+                id="binding-unofficial-group"
+                v-model="binding.unofficialGroupId"
+                placeholder="与正式组不同的分组编号" /></el-form-item
           ></template>
         </div>
+        <el-form-item label="参赛性质导入策略"
+          ><el-radio-group v-model="binding.importMode"
+            ><el-radio value="FOLLOW">跟随报名性质</el-radio
+            ><el-radio value="FORCE_UNOFFICIAL">全部作为非正式参赛</el-radio></el-radio-group
+          ></el-form-item
+        >
+        <el-form-item label="非正式报名"
+          ><el-switch v-model="binding.includeUnofficial" active-text="同步非正式报名"
+        /></el-form-item>
+        <el-form-item v-if="platformType === 'HYDRO'" label="昵称"
+          ><el-switch v-model="binding.nickname" active-text="队名／姓名写入目标域昵称"
+        /></el-form-item>
+        <p v-if="platformType === 'DOMJUDGE'" class="form-help">
+          学校映射确认后创建学校、队伍与账号。正式和非正式分组应使用不同排名顺序，并在目标比赛中允许参赛。
+        </p>
         <el-form-item label="报名同步"
           ><el-switch
             v-model="binding.automatic"
@@ -168,6 +211,14 @@ async function probe(id: string) {
         >
       </el-form>
     </template>
+    <el-dialog
+      :model-value="!!schoolBinding"
+      @close="schoolBinding = ''"
+      title="DOMjudge 学校与分组"
+      width="960px"
+      destroy-on-close
+      ><SchoolMappings v-if="schoolBinding" :binding-id="schoolBinding"
+    /></el-dialog>
   </div>
 </template>
 <style scoped>

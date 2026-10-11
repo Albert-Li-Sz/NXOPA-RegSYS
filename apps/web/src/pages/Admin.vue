@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, auth, date, label } from '../api';
 import {
@@ -10,6 +10,8 @@ import {
 import type { Data, ContestView } from '../types';
 import PlatformBindings from '../components/PlatformBindings.vue';
 import MailSettings from '../components/MailSettings.vue';
+import ListPagination from '../components/ListPagination.vue';
+import { usePagedList } from '../composables/usePagedList';
 import { useRoute } from 'vue-router';
 const route = useRoute();
 const requestedTab = typeof route.query.tab === 'string' ? route.query.tab : 'contests';
@@ -19,13 +21,56 @@ const allowedTabs = [
   'instances',
   ...(auth.user?.isAdmin ? ['users', 'tokens', 'site', 'mail', 'audit'] : []),
 ];
+const jobsPage = usePagedList('jobs', () => '/admin/jobs'),
+  usersPage = usePagedList('users', () => '/admin/users'),
+  logsPage = usePagedList('audit', () => '/admin/audit'),
+  invitationsPage = usePagedList('invitations', () => '/admin/invitations');
+const loadError = ref(''),
+  detail = ref<Data>(),
+  effectivePublicUrl = ref('');
+const operationNames: Record<string, string> = {
+  SITE_URL_RECOVERY: '命令行恢复公网地址',
+  SITE_UPDATE: '修改全局设置',
+  MAIL_SETTINGS_UPDATE: '修改邮件设置',
+  MAIL_SETTINGS_TEST: '发送测试邮件',
+  CONTEST_CREATE: '创建竞赛',
+  CONTEST_UPDATE: '更新竞赛',
+  REGISTRATION_CREATE: '创建报名',
+  REGISTRATION_EDIT: '修改报名',
+  REGISTRATION_SUBMIT: '提交报名',
+  REVIEW: '审核报名',
+  VOUCHER_UPLOAD: '上传缴费凭证',
+  VOUCHER_REVIEW: '核对收款',
+  PAYMENT_REVERSE: '收款冲正',
+  REFUND_REQUEST: '申请退款',
+  REFUND_REVIEW: '处理退款',
+  INVOICE_REQUEST: '申请开票',
+  INVOICE_REVIEW: '处理开票',
+  TICKET_CREATE: '提交工单',
+  TICKET_REPLY: '回复工单',
+  CREDENTIAL_VIEW: '查看比赛账号',
+  PLATFORM_BINDING_SAVE: '保存平台绑定',
+  ORGANIZATION_MAP_CONFIRM: '确认学校映射',
+  AUTHORIZATION_INVITE_CREATE: '生成授权链接',
+  AUTHORIZATION_INVITE_ACCEPT: '确认授权',
+  AUTHORIZATION_INVITE_REVOKE: '撤销授权链接',
+  ROLE_REVOKE: '撤销权限',
+  MEMBER_INVITE: '邀请队员',
+  MEMBER_REMOVE: '移除队员',
+  COACH_REMOVE: '解除指导关系',
+  INVITATION_ACCEPT: '确认报名邀请',
+  CANCEL: '取消报名',
+  ADMISSION_GENERATE: '生成准考证',
+  ADMISSION_RELEASE: '发放准考证',
+  TEMPLATE_SAVE: '保存准考证模板',
+};
 const tab = ref(allowedTabs.includes(requestedTab) ? requestedTab : 'contests'),
   contests = ref<ContestView[]>([]),
-  jobs = ref<Data[]>([]),
-  users = ref<Data[]>([]),
+  jobs = jobsPage.items,
+  users = usersPage.items,
   tokens = ref<Data[]>([]),
   instances = ref<Data[]>([]),
-  logs = ref<Data[]>([]),
+  logs = logsPage.items,
   site = ref<Data>({}),
   instanceDialog = ref(false),
   tokenDialog = ref(false),
@@ -46,7 +91,7 @@ const tab = ref(allowedTabs.includes(requestedTab) ? requestedTab : 'contests'),
   recipientMode = ref('account'),
   authorizationUrl = ref(''),
   authorizationExpiresAt = ref(''),
-  authorizationInvitations = ref<Data[]>([]);
+  authorizationInvitations = invitationsPage.items;
 const invitationStates: Record<string, string> = {
   PENDING: '等待确认',
   ACCEPTED: '已确认',
@@ -61,30 +106,31 @@ const jobKinds: Record<string, string> = {
   WEBHOOK: '事件推送',
 };
 async function refresh() {
-  contests.value = await api('/contests?all=true');
-  jobs.value = await api('/admin/jobs');
-  instances.value = await api('/integrations/instances');
-  if (auth.user?.isAdmin) {
-    metrics.value = await api('/admin/metrics');
-    [
-      users.value,
-      tokens.value,
-      logs.value,
-      site.value,
-      templates.value,
-      fields.value,
-      authorizationInvitations.value,
-    ] = await Promise.all([
-      api('/admin/users'),
-      api('/admin/tokens'),
-      api('/admin/audit'),
-      api('/site'),
-      api('/admissions/templates'),
-      api('/admin/fields'),
-      api('/admin/invitations'),
-    ]);
+  loadError.value = '';
+  try {
+    if (['contests', 'instances', 'users', 'tokens', 'audit'].includes(tab.value))
+      contests.value = await api('/contests?all=true');
+    if (tab.value === 'jobs') {
+      await jobsPage.load();
+      if (auth.user?.isAdmin) metrics.value = await api('/admin/metrics');
+    }
+    if (tab.value === 'instances') instances.value = await api('/integrations/instances');
+    if (tab.value === 'users') await Promise.all([usersPage.load(), invitationsPage.load()]);
+    if (tab.value === 'audit') await logsPage.load();
+    if (tab.value === 'tokens') tokens.value = await api('/admin/tokens');
+    if (tab.value === 'site') {
+      [site.value, templates.value, fields.value] = await Promise.all([
+        api('/site'),
+        api('/admissions/templates'),
+        api('/admin/fields'),
+      ]);
+      effectivePublicUrl.value = site.value.publicUrl;
+    }
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : '管理数据加载失败';
   }
 }
+watch(tab, refresh);
 const managedContests = () =>
   contests.value.filter((c) => auth.user?.isAdmin || auth.user?.contestIds.includes(c.id));
 onMounted(refresh);
@@ -240,6 +286,9 @@ async function webhook() {
     </div>
     <el-button @click="refresh">刷新</el-button>
   </div>
+  <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false"
+    ><el-button text @click="refresh">重新加载</el-button></el-alert
+  >
   <el-tabs v-model="tab">
     <el-tab-pane label="竞赛" name="contests" /><el-tab-pane label="任务" name="jobs" /><el-tab-pane
       label="评测平台"
@@ -308,7 +357,44 @@ async function webhook() {
     </div>
     <div class="card">
       <h3>持久化任务</h3>
-      <el-table :data="jobs"
+      <div class="toolbar">
+        <el-input
+          v-model="jobsPage.filters.value.search"
+          clearable
+          placeholder="搜索持久化任务"
+          aria-label="搜索持久化任务"
+          style="max-width: 280px"
+        /><el-select
+          v-model="jobsPage.filters.value.status"
+          clearable
+          placeholder="筛选状态／操作"
+          style="max-width: 240px"
+          ><el-option
+            v-for="state in ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED']"
+            :key="state"
+            :value="state"
+            :label="label(state)"
+        /></el-select>
+      </div>
+      <div class="toolbar">
+        <el-date-picker
+          v-model="jobsPage.filters.value.from"
+          type="datetime"
+          value-format="YYYY-MM-DDTHH:mm:ssZ"
+          placeholder="开始时间"
+        /><el-date-picker
+          v-model="jobsPage.filters.value.to"
+          type="datetime"
+          value-format="YYYY-MM-DDTHH:mm:ssZ"
+          placeholder="结束时间"
+        />
+      </div>
+      <el-alert
+        v-if="jobsPage.error.value"
+        :title="jobsPage.error.value"
+        type="error"
+        :closable="false"
+      /><el-table :data="jobs"
         ><el-table-column label="类型" width="130"
           ><template #default="{ row }">{{
             jobKinds[row.kind] ?? '后台任务'
@@ -316,10 +402,13 @@ async function webhook() {
         ><el-table-column label="状态" width="100"
           ><template #default="{ row }">{{ label(row.state) }}</template></el-table-column
         ><el-table-column label="尝试" prop="attempts" width="70" /><el-table-column
-          label="错误"
-          prop="error"
-          min-width="260"
-        /><el-table-column label="更新时间" min-width="180"
+          label="说明"
+          min-width="220"
+          ><template #default="{ row }"
+            ><span>{{ row.error ? '执行失败，请查看详情' : '—' }}</span
+            ><el-button text type="primary" @click="detail = row">详情</el-button></template
+          ></el-table-column
+        ><el-table-column label="更新时间" min-width="180"
           ><template #default="{ row }">{{ date(row.updatedAt) }}</template></el-table-column
         ><el-table-column label="操作" width="90"
           ><template #default="{ row }"
@@ -333,6 +422,12 @@ async function webhook() {
           ></el-table-column
         ></el-table
       >
+      <ListPagination
+        v-model:page="jobsPage.page.value"
+        v-model:size="jobsPage.pageSize.value"
+        :total="jobsPage.total.value"
+        :loading="jobsPage.loading.value"
+      />
     </div>
   </div>
   <div class="panel" v-if="tab === 'users'">
@@ -343,7 +438,21 @@ async function webhook() {
       公开邮箱注册保持开放。账号邀请及新增身份权限通过链接确认；生成或打开链接不会授予权限，接收者验证邮箱并确认后才会生效。
     </div>
     <div class="card">
-      <el-table :data="users"
+      <div class="toolbar">
+        <el-input
+          v-model="usersPage.filters.value.search"
+          clearable
+          placeholder="搜索用户"
+          aria-label="搜索用户"
+          style="max-width: 280px"
+        />
+      </div>
+      <el-alert
+        v-if="usersPage.error.value"
+        :title="usersPage.error.value"
+        type="error"
+        :closable="false"
+      /><el-table :data="users"
         ><el-table-column label="姓名" prop="name" /><el-table-column
           label="邮箱"
           prop="email"
@@ -384,11 +493,41 @@ async function webhook() {
           ></el-table-column
         ></el-table
       >
+      <ListPagination
+        v-model:page="usersPage.page.value"
+        v-model:size="usersPage.pageSize.value"
+        :total="usersPage.total.value"
+        :loading="usersPage.loading.value"
+      />
     </div>
     <div class="card">
       <h3>账号与授权邀请</h3>
       <p class="subtitle">链接仅在生成时展示，请及时复制。撤销等待确认的邀请，可立即让链接失效。</p>
-      <el-table :data="authorizationInvitations" empty-text="暂无账号或授权邀请">
+      <div class="toolbar">
+        <el-input
+          v-model="invitationsPage.filters.value.search"
+          clearable
+          placeholder="搜索邀请"
+          aria-label="搜索邀请"
+          style="max-width: 280px"
+        /><el-select
+          v-model="invitationsPage.filters.value.status"
+          clearable
+          placeholder="筛选状态／操作"
+          style="max-width: 240px"
+          ><el-option
+            v-for="state in ['PENDING', 'ACCEPTED', 'EXPIRED', 'REVOKED']"
+            :key="state"
+            :value="state"
+            :label="invitationStates[state]"
+        /></el-select>
+      </div>
+      <el-alert
+        v-if="invitationsPage.error.value"
+        :title="invitationsPage.error.value"
+        type="error"
+        :closable="false"
+      /><el-table :data="authorizationInvitations" empty-text="暂无账号或授权邀请">
         <el-table-column label="邀请类型" min-width="120"
           ><template #default="{ row }">{{
             accountInvitationLabels[row.kind as AccountInvitationInput['kind']]
@@ -435,6 +574,12 @@ async function webhook() {
           ></el-table-column
         >
       </el-table>
+      <ListPagination
+        v-model:page="invitationsPage.page.value"
+        v-model:size="invitationsPage.pageSize.value"
+        :total="invitationsPage.total.value"
+        :loading="invitationsPage.loading.value"
+      />
     </div>
   </div>
   <div class="panel" v-if="tab === 'instances'">
@@ -504,7 +649,18 @@ async function webhook() {
         ><el-form-item label="站点名称"><el-input v-model="site.name" /></el-form-item
         ><el-form-item label="主色"><el-color-picker v-model="site.primaryColor" /></el-form-item
         ><el-form-item label="页脚"><el-input v-model="site.footer" /></el-form-item
-        ><el-button type="primary" @click="saveSite">保存</el-button></el-form
+        ><el-form-item label="公网地址" for="site-public-url"
+          ><el-input
+            id="site-public-url"
+            v-model="site.publicUrl"
+            placeholder="https://reg.example.org"
+        /></el-form-item>
+        <div class="notice">
+          <strong>当前生效地址：{{ effectivePublicUrl }}</strong>
+          <p>验证邮箱、找回密码与邀请链接使用此地址。环境配置的可信管理入口继续可用。</p>
+          <p class="break-anywhere">链接预览：{{ site.publicUrl }}/invite/示例邀请</p>
+        </div>
+        <el-button type="primary" @click="saveSite">保存</el-button></el-form
       >
     </div>
     <div class="card">
@@ -554,17 +710,70 @@ async function webhook() {
   </div>
   <div class="panel" v-if="tab === 'audit'">
     <div class="card">
-      <el-table :data="logs"
-        ><el-table-column label="操作" prop="action" min-width="180" /><el-table-column
-          label="资源"
-          prop="resourceId"
-          min-width="220"
-        /><el-table-column label="时间" min-width="180"
+      <div class="toolbar">
+        <el-input
+          v-model="logsPage.filters.value.search"
+          clearable
+          placeholder="搜索日志"
+          aria-label="搜索日志"
+          style="max-width: 280px"
+        /><el-select
+          v-model="logsPage.filters.value.status"
+          clearable
+          placeholder="筛选状态／操作"
+          style="max-width: 240px"
+          ><el-option
+            v-for="state in Object.keys(operationNames)"
+            :key="state"
+            :value="state"
+            :label="operationNames[state]"
+        /></el-select>
+      </div>
+      <div class="toolbar">
+        <el-date-picker
+          v-model="logsPage.filters.value.from"
+          type="datetime"
+          value-format="YYYY-MM-DDTHH:mm:ssZ"
+          placeholder="开始时间"
+        /><el-date-picker
+          v-model="logsPage.filters.value.to"
+          type="datetime"
+          value-format="YYYY-MM-DDTHH:mm:ssZ"
+          placeholder="结束时间"
+        />
+      </div>
+      <el-alert
+        v-if="logsPage.error.value"
+        :title="logsPage.error.value"
+        type="error"
+        :closable="false"
+      /><el-table :data="logs"
+        ><el-table-column label="操作" min-width="180"
+          ><template #default="{ row }">{{
+            operationNames[row.action] ?? '系统操作'
+          }}</template></el-table-column
+        ><el-table-column label="关联对象" min-width="240"
+          ><template #default="{ row }"
+            >{{ row.resourceName || contestName(row.resourceId)
+            }}<el-button text type="primary" @click="detail = row">详情</el-button></template
+          ></el-table-column
+        ><el-table-column label="操作人" prop="actorName" min-width="130" /><el-table-column
+          label="时间"
+          min-width="180"
           ><template #default="{ row }">{{ date(row.createdAt) }}</template></el-table-column
         ></el-table
       >
+      <ListPagination
+        v-model:page="logsPage.page.value"
+        v-model:size="logsPage.pageSize.value"
+        :total="logsPage.total.value"
+        :loading="logsPage.loading.value"
+      />
     </div>
   </div>
+  <el-dialog :model-value="!!detail" @close="detail = undefined" title="记录详情" width="720px">
+    <pre class="record-detail">{{ JSON.stringify(detail, null, 2) }}</pre>
+  </el-dialog>
   <el-dialog v-model="instanceDialog" title="Hydro / DOMjudge 接入配置" width="580px">
     <el-form label-position="top">
       <el-form-item label="名称" for="platform-name"
@@ -730,7 +939,7 @@ async function webhook() {
             ]"
             :key="s"
             :value="s" /></el-select></el-form-item
-      ><el-form-item label="可读人员字段"
+      ><el-form-item label="可读资料字段"
         ><el-select v-model="token.fields" multiple allow-create filterable style="width: 100%"
           ><el-option
             v-for="s in [
@@ -738,6 +947,8 @@ async function webhook() {
               'PERSON.email',
               'COACH.name',
               'COACH.email',
+              'REGISTRATION.organization',
+              'REGISTRATION.participationType',
               'SUPPORT.text',
               'SUPPORT.attachments',
               'FINANCE.summary',

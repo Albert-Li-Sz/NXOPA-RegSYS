@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile, mkdir } from 'node:fs/promises';
 import { redis } from '../../apps/server/src/auth.js';
+import { Client, until } from '../integrations/client.js';
 test.beforeAll(async () => {
   if (redis.status === 'end') await redis.connect();
   await redis.del('rate:login:::ffff:127.0.0.1', 'rate:login:127.0.0.1');
@@ -165,8 +166,35 @@ test('administrator downloads the selected current admission as ZIP in browser',
   const registration = await (
     await page.request.get(`/api/v1/registrations/${fixture.paid}`)
   ).json();
+  const admin = await new Client().login('admin');
+  const generated = await admin.api('/admissions/generate', 'POST', {
+    registrationIds: [registration.id],
+    room: 'A101',
+    seat: '2',
+  });
+  const documentId = generated.results[0].documentId;
+  const prepared = await until(
+    () => admin.api(`/registrations/${registration.id}`),
+    (value) =>
+      value.admissions.some(
+        (a: any) => a.id === documentId && ['READY', 'RELEASED', 'FAILED'].includes(a.state),
+      ),
+    45000,
+  );
+  expect(prepared.admissions.find((a: any) => a.id === documentId).state).toMatch(
+    /^(READY|RELEASED)$/,
+  );
+  await admin.api(`/admissions/${documentId}/release`, 'POST');
   await page.goto(`/admin/contests/${registration.contestId}?tab=registrations`);
   await expect(page.getByRole('button', { name: '下载准考证 ZIP', exact: true })).toBeVisible();
+  await page
+    .getByPlaceholder('搜索姓名或队名')
+    .fill(registration.teamName || registration.people[0].name);
+  const row = page
+    .locator('tr')
+    .filter({ has: page.locator(`a[href="/registrations/${registration.id}"]`) });
+  await expect(row).toBeVisible();
+  await row.locator('.el-checkbox').click();
   const pending = page.waitForEvent('download');
   await page.getByRole('button', { name: '下载准考证 ZIP', exact: true }).click();
   const download = await pending;

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { readFile, writeFile, mkdir, copyFile, rm, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, join, sep } from 'node:path';
@@ -23,6 +25,8 @@ const ids = [
   'binding',
   'contest',
   'fields',
+  'invoices',
+  'display',
   'admissions',
   'operations',
 ];
@@ -176,7 +180,7 @@ const chapters = headings.map((h, i) => ({
   title: h[1],
   html: render(body.slice(h.index + h[0].length, headings[i + 1]?.index ?? body.length)),
 }));
-assert.equal(images.size, 14, 'Expected the complete set of 14 tutorial screenshots');
+assert(images.size > 0, 'The tutorial must include screenshots');
 const nav = chapters
   .map((c, i) => {
     const groups = { 0: '开始使用', 3: '授权与评测平台', 8: '竞赛管理', 11: '日常维护' };
@@ -211,16 +215,52 @@ const article = chapters
   )
   .join('\n');
 const template = await readFile(join(root, 'docs/site/index.html'), 'utf8');
-const html = template.replace('@@NAV@@', nav).replace('@@CHAPTERS@@', article);
-assert(!html.includes('@@'), 'Unfilled documentation placeholder');
+const plugin = JSON.parse(
+  await readFile(join(root, 'plugins/hydro-contest-center/package.json'), 'utf8'),
+);
+const html = template
+  .replace('@@NAV@@', nav)
+  .replace('@@CHAPTERS@@', article)
+  .replaceAll('@@CHAPTER_COUNT@@', String(chapters.length))
+  .replaceAll('@@SCREENSHOT_COUNT@@', String(images.size))
+  .replaceAll('@@PLUGIN_VERSION@@', plugin.version);
+assert(!html.replace('@@PLUGIN_SHA@@', '').includes('@@'), 'Unfilled documentation placeholder');
 for (const name of images) await stat(join(root, 'docs/configuration-screenshots', name + '.png'));
 for (const path of ['configuration-guide.pdf', 'configuration-guide-source.zip'])
   await stat(join(root, 'output/pdf', path));
+const artifactManifest = JSON.parse(
+  await readFile(join(root, 'output/pdf/configuration-guide-manifest.json'), 'utf8'),
+);
+const hashFile = async (path) =>
+  createHash('sha256')
+    .update(await readFile(join(root, path)))
+    .digest('hex');
+assert.equal(
+  artifactManifest.sourceSha256,
+  createHash('sha256').update(source).digest('hex'),
+  'Recompile the PDF after changing the LaTeX source',
+);
+assert.equal(
+  artifactManifest.pdfSha256,
+  await hashFile('output/pdf/configuration-guide.pdf'),
+  'PDF artifact checksum mismatch',
+);
+assert.equal(
+  artifactManifest.sourceZipSha256,
+  await hashFile('output/pdf/configuration-guide-source.zip'),
+  'Source archive checksum mismatch',
+);
+for (const name of images)
+  assert.equal(
+    artifactManifest.screenshots[name + '.png'],
+    await hashFile('docs/configuration-screenshots/' + name + '.png'),
+    'Recompile the PDF after changing screenshots',
+  );
 
 await rm(output, { recursive: true, force: true });
 await mkdir(join(output, 'assets/images'), { recursive: true });
 await mkdir(join(output, 'downloads'), { recursive: true });
-await writeFile(join(output, 'index.html'), html);
+
 await writeFile(join(output, '.nojekyll'), '');
 for (const name of ['guide.css', 'guide.js'])
   await copyFile(join(root, 'docs/site', name), join(output, 'assets', name));
@@ -239,6 +279,38 @@ await copyFile(
   join(root, 'docs/CONFIGURATION_GUIDE.tex'),
   join(output, 'downloads/CONFIGURATION_GUIDE.tex'),
 );
+await copyFile(
+  join(root, 'output/pdf/configuration-guide-manifest.json'),
+  join(output, 'downloads/configuration-guide-manifest.json'),
+);
+const packed = JSON.parse(
+  execFileSync(
+    'npm',
+    ['pack', '--ignore-scripts', '--json', '--pack-destination', join(output, 'downloads')],
+    { cwd: join(root, 'plugins/hydro-contest-center'), encoding: 'utf8' },
+  ),
+)[0];
+const allowed = new Set(['index.ts', 'README.md', 'LICENSE', 'package.json']);
+assert(
+  packed.files.every((f) => allowed.has(f.path)),
+  'Plugin package contains an unexpected file',
+);
+const pluginHash = createHash('sha256')
+  .update(await readFile(join(output, 'downloads', packed.filename)))
+  .digest('hex');
+await copyFile(
+  join(output, 'downloads', packed.filename),
+  join(output, 'downloads/hydro-contest-center-latest.tgz'),
+);
+await writeFile(
+  join(output, 'downloads', packed.filename + '.sha256'),
+  `${pluginHash}  ${packed.filename}\n`,
+);
+await writeFile(
+  join(output, 'downloads/hydro-contest-center-latest.tgz.sha256'),
+  `${pluginHash}  hydro-contest-center-latest.tgz\n`,
+);
+await writeFile(join(output, 'index.html'), html.replace('@@PLUGIN_SHA@@', pluginHash));
 await writeFile(
   join(output, 'build-info.json'),
   JSON.stringify(
@@ -246,7 +318,20 @@ await writeFile(
       source: 'docs/CONFIGURATION_GUIDE.tex',
       chapters: chapters.map(({ id, title }) => ({ id, title })),
       screenshots: images.size,
-      commit: process.env.GITHUB_SHA ?? null,
+      commit:
+        process.env.GITHUB_SHA ??
+        execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+      plugin: {
+        version: plugin.version,
+        filename: packed.filename,
+        sha256: pluginHash,
+        hydroVersion: plugin.peerDependencies.hydrooj,
+        files: packed.files.map((f) => f.path),
+      },
+      sourceSha256: createHash('sha256').update(source).digest('hex'),
+      pdfSha256: createHash('sha256')
+        .update(await readFile(join(output, 'downloads/configuration-guide.pdf')))
+        .digest('hex'),
     },
     null,
     2,

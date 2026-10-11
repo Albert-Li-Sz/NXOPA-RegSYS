@@ -63,7 +63,9 @@ try {
     title: `社团程序设计竞赛（配置示例第 ${(await db.contest.count({ where: { title: { startsWith: '社团程序设计竞赛（配置示例' } } })) + 1} 版）`,
     season: '2026',
     location: '南京晓庄学院',
-    description: '用于配置教程截图的虚构竞赛，未对外发布。',
+    description:
+      '## 参赛须知\n\n| 项目 | 说明 |\n| --- | --- |\n| 报名方式 | 团队报名 |\n| 参赛要求 | 在校学生 |\n\n> 请核对报名信息后提交。\n\n```text\n报名 → 审核 → 缴费 → 入场\n```',
+    descriptionFormat: 'MARKDOWN',
     startsAt: '2026-11-15T09:00:00+08:00',
     opensAt: '2026-10-12T00:00:00+08:00',
     closesAt: '2026-11-10T23:59:00+08:00',
@@ -71,6 +73,9 @@ try {
       mode: 'TEAM',
       minMembers: 3,
       maxMembers: 3,
+      allowUnofficial: true,
+      platformProfiles: ['HYDRO_5_0_7', 'DOMJUDGE_9_0_1'],
+      invoiceTypes: ['NORMAL', 'SPECIAL'],
       feeMode: 'FIXED',
       feeCents: 15000,
       paymentInstructions: '线下转账后上传凭证，由管理员确认实际到账。',
@@ -161,11 +166,14 @@ try {
     .click();
   await page.locator('#binding-remote').fill('social-contest-2026');
   await page.locator('#binding-group').fill('1');
+  await page.locator('#binding-unofficial-group').fill('2');
   await shot('09-contest-binding', page.locator('.platform-bindings'));
   await page.goto(`http://localhost:5173/admin/contests/${contestId}`);
   await expect(page.locator('#contest-title')).toHaveValue(contest.title);
   await shot('10-contest-policy', page.locator('.panel .card').nth(1));
   await shot('11-contest-finance', page.locator('.panel .card').nth(2));
+  await page.locator('.markdown-editor').getByText('预览', { exact: true }).click();
+  await shot('23-markdown', page.locator('.markdown-editor'));
   await page.getByRole('tab', { name: '报名字段', exact: true }).click();
   await shot('12-fields', page.locator('.panel .card'));
   await page.getByRole('tab', { name: '准考证模板', exact: true }).click();

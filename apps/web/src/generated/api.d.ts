@@ -267,9 +267,26 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description 显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。 */
         get: operations["ApiController_registrationsList"];
         put?: never;
         post: operations["ApiController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/registrations/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ApiController_summary"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -301,6 +318,23 @@ export interface paths {
         };
         get: operations["ApiController_detail"];
         put: operations["ApiController_save"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/registrations/{id}/finance/{collection}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description 显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。 */
+        get: operations["ApiController_financeHistory"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -637,6 +671,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description 显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。 */
         get: operations["ApiController_supportList"];
         put?: never;
         post: operations["ApiController_ticket"];
@@ -909,6 +944,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description 显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。 */
         get: operations["ApiController_jobs"];
         put?: never;
         post?: never;
@@ -989,6 +1025,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description 显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。 */
         get: operations["ApiController_users"];
         put?: never;
         post?: never;
@@ -1022,6 +1059,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description 显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。 */
         get: operations["ApiController_authorizationInvitations"];
         put?: never;
         /** @description Create an account or role invitation for an existing user or specified email. Raw invitation URLs are returned only at creation; list and audit responses contain no token. */
@@ -1138,6 +1176,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description 显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。 */
         get: operations["ApiController_audit"];
         put?: never;
         post?: never;
@@ -1156,6 +1195,71 @@ export interface paths {
         };
         get: operations["ApiController_metrics"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/field-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ApiController_fieldTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/bindings/{id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ApiController_remoteMetadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/bindings/{id}/schools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description 显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。 */
+        get: operations["ApiController_schools"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/bindings/{id}/schools/{schoolId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["ApiController_confirmSchool"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1327,14 +1431,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        Value0___schema0: string | number | boolean | (null) | components["schemas"]["Value0___schema0"][] | {
-            [key: string]: components["schemas"]["Value0___schema0"];
+        PageResult: {
+            items: unknown[];
+            total: number;
+            page: number;
+            pageSize: 20 | 50 | 100;
+        };
+        Value1___schema0: string | number | boolean | (null) | components["schemas"]["Value1___schema0"][] | {
+            [key: string]: components["schemas"]["Value1___schema0"];
         };
         ContestInput: {
             version?: number;
             title: string;
             season: string;
             description: string;
+            /**
+             * @default TEXT
+             * @enum {string}
+             */
+            descriptionFormat: "TEXT" | "MARKDOWN";
             /** @default  */
             announcement: string;
             /** @default  */
@@ -1377,6 +1492,10 @@ export interface components {
                 maxCoaches: number;
                 /** @default true */
                 manualReview: boolean;
+                /** @default false */
+                allowUnofficial: boolean;
+                /** @default [] */
+                platformProfiles: ("HYDRO_5_0_7" | "DOMJUDGE_9_0_1")[];
                 /**
                  * @default FREE
                  * @enum {string}
@@ -1395,6 +1514,14 @@ export interface components {
                 refundsEnabled: boolean;
                 /** @default true */
                 invoicesEnabled: boolean;
+                /**
+                 * @default [
+                 *       "NORMAL"
+                 *     ]
+                 */
+                invoiceTypes: ("NORMAL" | "SPECIAL")[];
+                /** @default [] */
+                invoiceRequiredFields: ("contactName" | "phone" | "address" | "bankName" | "bankAccount")[];
                 /** @default [] */
                 uniquePersonFields: string[];
             };
@@ -1415,17 +1542,20 @@ export interface components {
                 help: string;
                 /** @default 基本信息 */
                 group: string;
+                /** @default false */
+                locked: boolean;
+                source?: string;
                 min?: number;
                 max?: number;
                 condition?: {
                     key: string;
-                    equals?: components["schemas"]["Value0___schema0"];
+                    equals?: components["schemas"]["Value1___schema0"];
                     includes?: string;
                 };
             }[];
         };
-        Value1___schema0: string | number | boolean | (null) | components["schemas"]["Value1___schema0"][] | {
-            [key: string]: components["schemas"]["Value1___schema0"];
+        Value2___schema0: string | number | boolean | (null) | components["schemas"]["Value2___schema0"][] | {
+            [key: string]: components["schemas"]["Value2___schema0"];
         };
         RegistrationInput: {
             version: number;
@@ -1433,9 +1563,18 @@ export interface components {
             teamName: string;
             /** @default  */
             teamEnglishName: string;
+            /** @enum {string} */
+            participationType?: "OFFICIAL" | "UNOFFICIAL";
+            organization?: {
+                name: string;
+                shortName: string;
+                country: string;
+                /** @default  */
+                icpcId: string;
+            } | null;
             /** @default {} */
             answers: {
-                [key: string]: components["schemas"]["Value1___schema0"];
+                [key: string]: components["schemas"]["Value2___schema0"];
             };
             people: {
                 /** Format: uuid */
@@ -1449,12 +1588,12 @@ export interface components {
                 captain: boolean;
                 /** @default {} */
                 answers: {
-                    [key: string]: components["schemas"]["Value1___schema0"];
+                    [key: string]: components["schemas"]["Value2___schema0"];
                 };
             }[];
         };
-        Value2___schema0: string | number | boolean | (null) | components["schemas"]["Value2___schema0"][] | {
-            [key: string]: components["schemas"]["Value2___schema0"];
+        Value3___schema0: string | number | boolean | (null) | components["schemas"]["Value3___schema0"][] | {
+            [key: string]: components["schemas"]["Value3___schema0"];
         };
         FieldDefinition: {
             key: string;
@@ -1473,19 +1612,22 @@ export interface components {
             help: string;
             /** @default 基本信息 */
             group: string;
+            /** @default false */
+            locked: boolean;
+            source?: string;
             min?: number;
             max?: number;
             condition?: {
                 key: string;
-                equals?: components["schemas"]["Value2___schema0"];
+                equals?: components["schemas"]["Value3___schema0"];
                 includes?: string;
             };
         };
-        Value3___schema0: string | number | boolean | (null) | components["schemas"]["Value3___schema0"][] | {
-            [key: string]: components["schemas"]["Value3___schema0"];
+        Value4___schema0: string | number | boolean | (null) | components["schemas"]["Value4___schema0"][] | {
+            [key: string]: components["schemas"]["Value4___schema0"];
         };
-        Value3___schema1: string | number | boolean | (null) | components["schemas"]["Value3___schema1"][] | {
-            [key: string]: components["schemas"]["Value3___schema1"];
+        Value4___schema1: string | number | boolean | (null) | components["schemas"]["Value4___schema1"][] | {
+            [key: string]: components["schemas"]["Value4___schema1"];
         };
         RegistrationEnvelopeV1: {
             /** @enum {number} */
@@ -1504,6 +1646,15 @@ export interface components {
             };
             teamName: string;
             teamEnglishName?: string;
+            /** @enum {string} */
+            participationType?: "OFFICIAL" | "UNOFFICIAL";
+            organization?: {
+                name: string;
+                shortName: string;
+                country: string;
+                /** @default  */
+                icpcId: string;
+            };
             people: {
                 /** Format: uuid */
                 id?: string;
@@ -1511,7 +1662,7 @@ export interface components {
                 captain: boolean;
                 email?: string;
                 answers?: {
-                    [key: string]: components["schemas"]["Value3___schema0"];
+                    [key: string]: components["schemas"]["Value4___schema0"];
                 };
             }[];
             form?: {
@@ -1533,16 +1684,19 @@ export interface components {
                     help: string;
                     /** @default 基本信息 */
                     group: string;
+                    /** @default false */
+                    locked: boolean;
+                    source?: string;
                     min?: number;
                     max?: number;
                     condition?: {
                         key: string;
-                        equals?: components["schemas"]["Value3___schema1"];
+                        equals?: components["schemas"]["Value4___schema1"];
                         includes?: string;
                     };
                 }[];
                 answers: {
-                    [key: string]: components["schemas"]["Value3___schema0"];
+                    [key: string]: components["schemas"]["Value4___schema0"];
                 };
             };
             coaches?: {
@@ -1551,7 +1705,7 @@ export interface components {
                 name?: string;
                 email?: string;
                 answers: {
-                    [key: string]: components["schemas"]["Value3___schema0"];
+                    [key: string]: components["schemas"]["Value4___schema0"];
                 };
             }[];
             qualification?: {
@@ -1560,6 +1714,9 @@ export interface components {
                 feeCents?: number;
                 netPaidCents?: number;
             };
+        };
+        Value5___schema0: string | number | boolean | (null) | components["schemas"]["Value5___schema0"][] | {
+            [key: string]: components["schemas"]["Value5___schema0"];
         };
         ProvisioningResultV1: {
             /** @enum {number} */
@@ -1572,6 +1729,9 @@ export interface components {
             remoteTeamId?: string;
             username?: string;
             error?: string;
+            verification?: {
+                [key: string]: components["schemas"]["Value5___schema0"];
+            };
         };
         AccountInvitationInput: {
             /** @enum {string} */
@@ -1637,6 +1797,9 @@ export interface components {
         Error: {
             message: string;
             statusCode?: number;
+        };
+        Value56___schema0: string | number | boolean | (null) | components["schemas"]["Value56___schema0"][] | {
+            [key: string]: components["schemas"]["Value56___schema0"];
         };
     };
     responses: never;
@@ -3017,18 +3180,30 @@ export interface operations {
     };
     ApiController_registrationsList: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                status?: string;
+                review?: string;
+                participationType?: string;
+                from?: string;
+                to?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description 分页结果或兼容数组 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
             };
             /** @description Validation failed */
             400: {
@@ -3107,6 +3282,77 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3389,6 +3635,89 @@ export interface operations {
             };
         };
     };
+    ApiController_financeHistory: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                status?: string;
+                review?: string;
+                participationType?: string;
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 分页结果或兼容数组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     ApiController_submit: {
         parameters: {
             query?: never;
@@ -3487,6 +3816,8 @@ export interface operations {
                     version: number;
                     /** @enum {string} */
                     decision: "APPROVED" | "CORRECTION" | "REJECTED";
+                    /** @enum {string} */
+                    participationType?: "OFFICIAL" | "UNOFFICIAL";
                     reason?: string;
                 };
             };
@@ -4796,9 +5127,32 @@ export interface operations {
                 "application/json": {
                     amountCents: number;
                     title: string;
+                    /** @default  */
                     taxId: string;
                     /** Format: email */
                     email: string;
+                    /**
+                     * @default NORMAL
+                     * @enum {string}
+                     */
+                    invoiceType: "NORMAL" | "SPECIAL";
+                    /**
+                     * @default PERSON
+                     * @enum {string}
+                     */
+                    titleType: "PERSON" | "ENTERPRISE" | "ORGANIZATION";
+                    /** @default  */
+                    contactName: string;
+                    /** @default  */
+                    phone: string;
+                    /** @default  */
+                    address: string;
+                    /** @default  */
+                    bankName: string;
+                    /** @default  */
+                    bankAccount: string;
+                    /** @default  */
+                    remarks: string;
                 };
             };
         };
@@ -5105,18 +5459,30 @@ export interface operations {
     };
     ApiController_supportList: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                status?: string;
+                review?: string;
+                participationType?: string;
+                from?: string;
+                to?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description 分页结果或兼容数组 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
             };
             /** @description Validation failed */
             400: {
@@ -6545,7 +6911,13 @@ export interface operations {
                     remoteContestId: string;
                     domainId?: string;
                     groupIds?: string[];
-                    organizationId?: string;
+                    organizationId?: string | null;
+                    version?: number;
+                    /** @enum {string} */
+                    importMode?: "FOLLOW" | "FORCE_UNOFFICIAL";
+                    includeUnofficial?: boolean;
+                    nickname?: boolean;
+                    unofficialGroupId?: string | null;
                     automatic?: boolean;
                     enabled?: boolean;
                 };
@@ -6844,18 +7216,30 @@ export interface operations {
     };
     ApiController_jobs: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                status?: string;
+                review?: string;
+                participationType?: string;
+                from?: string;
+                to?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description 分页结果或兼容数组 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
             };
             /** @description Validation failed */
             400: {
@@ -7306,18 +7690,30 @@ export interface operations {
     };
     ApiController_users: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                status?: string;
+                review?: string;
+                participationType?: string;
+                from?: string;
+                to?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description 分页结果或兼容数组 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
             };
             /** @description Validation failed */
             400: {
@@ -7464,18 +7860,30 @@ export interface operations {
     };
     ApiController_authorizationInvitations: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                status?: string;
+                review?: string;
+                participationType?: string;
+                from?: string;
+                to?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description 分页结果或兼容数组 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
             };
             /** @description Validation failed */
             400: {
@@ -7633,6 +8041,8 @@ export interface operations {
                     name: string;
                     primaryColor: string;
                     footer?: string;
+                    /** Format: uri */
+                    publicUrl?: string;
                 };
             };
         };
@@ -8248,6 +8658,89 @@ export interface operations {
     };
     ApiController_audit: {
         parameters: {
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                status?: string;
+                review?: string;
+                participationType?: string;
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 分页结果或兼容数组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_metrics: {
+        parameters: {
             query?: never;
             header?: never;
             path?: never;
@@ -8317,7 +8810,7 @@ export interface operations {
             };
         };
     };
-    ApiController_metrics: {
+    ApiController_fieldTemplates: {
         parameters: {
             query?: never;
             header?: never;
@@ -8325,6 +8818,248 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_remoteMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_schools: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                status?: string;
+                review?: string;
+                participationType?: string;
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 分页结果或兼容数组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_confirmSchool: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    shortName: string;
+                    country: string;
+                    /** @default  */
+                    icpcId: string;
+                    version: number;
+                    remoteId?: string;
+                    create?: boolean;
+                };
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -8990,6 +9725,9 @@ export interface operations {
                         remoteTeamId?: string;
                         username?: string;
                         error?: string;
+                        verification?: {
+                            [key: string]: components["schemas"]["Value56___schema0"];
+                        };
                     };
                 };
             };

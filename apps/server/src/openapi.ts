@@ -10,6 +10,9 @@ import {
   invitationReturnPathSchema,
   mailSettingsSchema,
   mailSettingsViewSchema,
+  invoiceSchema,
+  organizationSchema,
+  participationSchema,
 } from '@contest-center/contracts';
 import type { OpenAPIObject } from '@nestjs/swagger';
 const id = z.string().uuid(),
@@ -46,6 +49,12 @@ export function describeApi(document: OpenAPIObject) {
     return replace(data);
   };
   const named: Record<string, z.ZodType> = {
+    PageResult: object({
+      items: z.array(z.unknown()),
+      total: z.number().int(),
+      page: z.number().int(),
+      pageSize: z.union([z.literal(20), z.literal(50), z.literal(100)]),
+    }),
     ContestInput: contestSchema,
     RegistrationInput: registrationSchema,
     FieldDefinition: fieldSchema,
@@ -109,6 +118,7 @@ export function describeApi(document: OpenAPIObject) {
     'post /api/v1/registrations/{id}/review': object({
       version,
       decision: z.enum(['APPROVED', 'CORRECTION', 'REJECTED']),
+      participationType: participationSchema.optional(),
       reason: text.optional(),
     }),
     'post /api/v1/registrations/{id}/invites': object({
@@ -147,12 +157,7 @@ export function describeApi(document: OpenAPIObject) {
       reference: text.optional(),
       attachmentId: id.optional(),
     }),
-    'post /api/v1/finance/{id}/invoices': object({
-      amountCents: cents,
-      title: text,
-      taxId: text,
-      email: z.email(),
-    }),
+    'post /api/v1/finance/{id}/invoices': invoiceSchema,
     'post /api/v1/finance/invoices/{id}/review': object({
       decision: z.enum(['ISSUED', 'REJECTED', 'VOID']),
       attachmentId: id.optional(),
@@ -208,11 +213,21 @@ export function describeApi(document: OpenAPIObject) {
       remoteContestId: text,
       domainId: text.optional(),
       groupIds: z.array(text).optional(),
-      organizationId: text.optional(),
+      organizationId: text.nullish(),
+      version: version.optional(),
+      importMode: z.enum(['FOLLOW', 'FORCE_UNOFFICIAL']).optional(),
+      includeUnofficial: z.boolean().optional(),
+      nickname: z.boolean().optional(),
+      unofficialGroupId: text.nullable().optional(),
       automatic: z.boolean().optional(),
       enabled: z.boolean().optional(),
     }),
     'post /api/v1/integrations/registrations/{id}/sync': object({ bindingId: id }),
+    'put /api/v1/integrations/bindings/{id}/schools/{schoolId}': organizationSchema.extend({
+      version,
+      remoteId: text.optional(),
+      create: z.boolean().optional(),
+    }),
     'post /api/v1/admin/tokens': object({
       name: text,
       contestIds: z.array(id),
@@ -235,6 +250,7 @@ export function describeApi(document: OpenAPIObject) {
       name: text,
       primaryColor: text,
       footer: text.optional(),
+      publicUrl: z.url().optional(),
     }),
     'put /api/v1/admin/mail': 'MailSettingsInput',
     'post /api/v1/admin/mail/probe': object({ version }),
@@ -301,6 +317,48 @@ export function describeApi(document: OpenAPIObject) {
             description: 'Same actor, method, URL and body replay the encrypted saved result.',
           },
         ];
+      if (
+        method === 'get' &&
+        ([
+          '/api/v1/admin/jobs',
+          '/api/v1/admin/users',
+          '/api/v1/admin/invitations',
+          '/api/v1/admin/audit',
+          '/api/v1/registrations',
+          '/api/v1/support',
+        ].includes(url) ||
+          url.endsWith('/finance/{collection}') ||
+          url.endsWith('/schools'))
+      ) {
+        op.parameters = [
+          ...(op.parameters ?? []).filter((p: any) => !['page', 'pageSize'].includes(p.name)),
+          { name: 'page', in: 'query', required: false, schema: { type: 'integer', minimum: 1 } },
+          {
+            name: 'pageSize',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', enum: [20, 50, 100], default: 20 },
+          },
+          ...['search', 'status', 'review', 'participationType', 'from', 'to'].map((name) => ({
+            name,
+            in: 'query' as const,
+            required: false,
+            schema: { type: 'string' },
+          })),
+        ];
+        op.description =
+          '显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。';
+        op.responses['200'] = {
+          description: '分页结果或兼容数组',
+          content: {
+            'application/json': {
+              schema: {
+                oneOf: [{ $ref: '#/components/schemas/PageResult' }, { type: 'array', items: {} }],
+              },
+            },
+          },
+        };
+      }
       const body = bodies[`${method} ${url}`];
       if (url === '/api/v1/admin/mail' && ['get', 'put'].includes(method)) {
         op.description =

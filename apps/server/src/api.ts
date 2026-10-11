@@ -57,7 +57,7 @@ export class ApiController {
     @Inject(MailService) private mail: MailService,
   ) {}
   @Get('contests/:id/statistics') statistics(@Req() r: AuthRequest, @Param('id') id: string) {
-    return this.registrations.statistics(user(r), id);
+    return this.registrations.statistics(user(r), id, r.query as Record<string, string>);
   }
   @Get('health') async health() {
     await db.$queryRaw`SELECT 1`;
@@ -131,16 +131,24 @@ export class ApiController {
     @Req() r: AuthRequest,
     @Query('contestId') id?: string,
     @Query('cursor') cursor?: string,
+    @Query() query: Record<string, string> = {},
   ) {
-    return this.registrations.list(user(r), id, cursor);
+    return this.registrations.list(user(r), id, cursor, 500, query);
   }
   @Post('registrations') create(@Req() r: AuthRequest, @Body() b: unknown) {
     return this.registrations.create(user(r), b);
+  }
+  @Get('registrations/summary') summary(
+    @Req() r: AuthRequest,
+    @Query() query: Record<string, string>,
+  ) {
+    return this.registrations.summary(user(r), query);
   }
   @Get('registrations/export') async export(
     @Req() r: AuthRequest,
     @Query('contestId') id: string,
     @Res() res: Response,
+    @Query() query: Record<string, string> = {},
   ) {
     const u = user(r);
     requireManager(u, id);
@@ -161,6 +169,8 @@ export class ApiController {
         csv([
           '报名ID',
           '队名',
+          '参赛性质',
+          '代表学校／单位',
           '姓名',
           '邮箱',
           '队长',
@@ -173,13 +183,19 @@ export class ApiController {
     );
     let cursor: string | undefined;
     while (!res.destroyed) {
-      const rows = await this.registrations.list(u, id, cursor);
+      const filtered = { ...query };
+      delete filtered.page;
+      delete filtered.pageSize;
+      const result = await this.registrations.list(u, id, cursor, 500, filtered);
+      const rows = Array.isArray(result) ? result : result.items;
       for (const x of rows)
         for (const p of x.people)
           res.write(
             csv([
               x.id,
               x.teamName,
+              x.participationType === 'UNOFFICIAL' ? '非正式' : '正式',
+              (x.organization as any)?.name ?? '',
               p.name,
               p.email,
               p.captain ? '是' : '否',
@@ -195,8 +211,20 @@ export class ApiController {
     }
     res.end();
   }
-  @Get('registrations/:id') detail(@Req() r: AuthRequest, @Param('id') id: string) {
-    return this.registrations.detail(user(r), id);
+  @Get('registrations/:id') detail(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Query('history') history?: string,
+  ) {
+    return this.registrations.detail(user(r), id, history !== 'false');
+  }
+  @Get('registrations/:id/finance/:collection') financeHistory(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Param('collection') collection: string,
+    @Query() query: Record<string, string>,
+  ) {
+    return this.finance.history(user(r), id, collection, query);
   }
   @Put('registrations/:id') save(
     @Req() r: AuthRequest,
@@ -352,8 +380,8 @@ export class ApiController {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.type(f.mime).send(f.buffer);
   }
-  @Get('support') supportList(@Req() r: AuthRequest) {
-    return this.support.list(user(r));
+  @Get('support') supportList(@Req() r: AuthRequest, @Query() query: Record<string, string>) {
+    return this.support.list(user(r), query);
   }
   @Post('support') ticket(@Req() r: AuthRequest, @Body() b: unknown) {
     return this.support.create(user(r), b);
@@ -485,8 +513,8 @@ export class ApiController {
   ) {
     return this.integrations.credentials(user(r), id);
   }
-  @Get('admin/jobs') jobs(@Req() r: AuthRequest) {
-    return this.integrations.jobs(user(r));
+  @Get('admin/jobs') jobs(@Req() r: AuthRequest, @Query() query: Record<string, string>) {
+    return this.integrations.jobs(user(r), query);
   }
   @Post('admin/jobs/:id/retry') retry(@Req() r: AuthRequest, @Param('id') id: string) {
     return this.integrations.retry(user(r), id);
@@ -503,14 +531,17 @@ export class ApiController {
   @Post('admin/webhooks') webhook(@Req() r: AuthRequest, @Body() b: unknown) {
     return this.integrations.webhook(user(r), b);
   }
-  @Get('admin/users') users(@Req() r: AuthRequest) {
-    return this.admin.users(user(r));
+  @Get('admin/users') users(@Req() r: AuthRequest, @Query() query: Record<string, string>) {
+    return this.admin.users(user(r), query);
   }
   @Post('admin/roles') role(@Req() r: AuthRequest, @Body() b: unknown) {
     return this.invitations.role(user(r), b);
   }
-  @Get('admin/invitations') authorizationInvitations(@Req() r: AuthRequest) {
-    return this.invitations.list(user(r));
+  @Get('admin/invitations') authorizationInvitations(
+    @Req() r: AuthRequest,
+    @Query() query: Record<string, string>,
+  ) {
+    return this.invitations.list(user(r), query);
   }
   @Post('admin/invitations') createAuthorizationInvitation(
     @Req() r: AuthRequest,
@@ -542,11 +573,40 @@ export class ApiController {
   @Post('admin/fields') fieldDefinition(@Req() r: AuthRequest, @Body() b: unknown) {
     return this.admin.field(user(r), b);
   }
-  @Get('admin/audit') audit(@Req() r: AuthRequest, @Query('contestId') id?: string) {
-    return this.admin.logs(user(r), id);
+  @Get('admin/audit') audit(
+    @Req() r: AuthRequest,
+    @Query('contestId') id?: string,
+    @Query() query: Record<string, string> = {},
+  ) {
+    return this.admin.logs(user(r), id, query);
   }
   @Get('admin/metrics') metrics(@Req() r: AuthRequest) {
     return this.admin.metrics(user(r));
+  }
+  @Get('integrations/field-templates') async fieldTemplates(@Req() r: AuthRequest) {
+    user(r);
+    return (await import('@contest-center/contracts')).platformTemplates;
+  }
+  @Get('integrations/bindings/:id/metadata') remoteMetadata(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return this.integrations.remoteMetadata(user(r), id);
+  }
+  @Get('integrations/bindings/:id/schools') schools(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Query() query: Record<string, string>,
+  ) {
+    return this.integrations.schools(user(r), id, query);
+  }
+  @Put('integrations/bindings/:id/schools/:schoolId') confirmSchool(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Param('schoolId') schoolId: string,
+    @Body() b: unknown,
+  ) {
+    return this.integrations.confirmSchool(user(r), id, schoolId, b);
   }
 }
 @ApiTags('Automation / Federation')

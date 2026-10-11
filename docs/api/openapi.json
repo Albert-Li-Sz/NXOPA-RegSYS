@@ -1695,10 +1695,97 @@
     "/api/v1/registrations": {
       "get": {
         "operationId": "ApiController_registrationsList",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                20,
+                50,
+                100
+              ],
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participationType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "分页结果或兼容数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PageResult"
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    }
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation failed",
@@ -1768,7 +1855,8 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
       },
       "post": {
         "operationId": "ApiController_create",
@@ -1886,6 +1974,85 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/registrations/summary": {
+      "get": {
+        "operationId": "ApiController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "registrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ]
       }
     },
     "/api/v1/registrations/export": {
@@ -2152,6 +2319,173 @@
         }
       }
     },
+    "/api/v1/registrations/{id}/finance/{collection}": {
+      "get": {
+        "operationId": "ApiController_financeHistory",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                20,
+                50,
+                100
+              ],
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participationType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页结果或兼容数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PageResult"
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "registrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
+      }
+    },
     "/api/v1/registrations/{id}/submit": {
       "post": {
         "operationId": "ApiController_submit",
@@ -2385,6 +2719,13 @@
                       "APPROVED",
                       "CORRECTION",
                       "REJECTED"
+                    ]
+                  },
+                  "participationType": {
+                    "type": "string",
+                    "enum": [
+                      "OFFICIAL",
+                      "UNOFFICIAL"
                     ]
                   },
                   "reason": {
@@ -4301,25 +4642,84 @@
                     "type": "integer",
                     "minimum": 0,
                     "exclusiveMinimum": true,
-                    "maximum": 9007199254740991
+                    "maximum": 100000000
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
                   },
                   "taxId": {
-                    "type": "string"
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 100
                   },
                   "email": {
                     "type": "string",
                     "format": "email",
                     "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "invoiceType": {
+                    "default": "NORMAL",
+                    "type": "string",
+                    "enum": [
+                      "NORMAL",
+                      "SPECIAL"
+                    ]
+                  },
+                  "titleType": {
+                    "default": "PERSON",
+                    "type": "string",
+                    "enum": [
+                      "PERSON",
+                      "ENTERPRISE",
+                      "ORGANIZATION"
+                    ]
+                  },
+                  "contactName": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "phone": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "address": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "bankName": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "bankAccount": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "remarks": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
                   }
                 },
                 "required": [
                   "amountCents",
                   "title",
                   "taxId",
-                  "email"
+                  "email",
+                  "invoiceType",
+                  "titleType",
+                  "contactName",
+                  "phone",
+                  "address",
+                  "bankName",
+                  "bankAccount",
+                  "remarks"
                 ],
                 "additionalProperties": false
               }
@@ -4657,10 +5057,97 @@
     "/api/v1/support": {
       "get": {
         "operationId": "ApiController_supportList",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                20,
+                50,
+                100
+              ],
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participationType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "分页结果或兼容数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PageResult"
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    }
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation failed",
@@ -4730,7 +5217,8 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
       },
       "post": {
         "operationId": "ApiController_ticket",
@@ -6748,6 +7236,29 @@
                     }
                   },
                   "organizationId": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "importMode": {
+                    "type": "string",
+                    "enum": [
+                      "FOLLOW",
+                      "FORCE_UNOFFICIAL"
+                    ]
+                  },
+                  "includeUnofficial": {
+                    "type": "boolean"
+                  },
+                  "nickname": {
+                    "type": "boolean"
+                  },
+                  "unofficialGroupId": {
+                    "nullable": true,
                     "type": "string"
                   },
                   "automatic": {
@@ -7068,10 +7579,97 @@
     "/api/v1/admin/jobs": {
       "get": {
         "operationId": "ApiController_jobs",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                20,
+                50,
+                100
+              ],
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participationType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "分页结果或兼容数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PageResult"
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    }
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation failed",
@@ -7141,7 +7739,8 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
       }
     },
     "/api/v1/admin/jobs/{id}/retry": {
@@ -7689,10 +8288,97 @@
     "/api/v1/admin/users": {
       "get": {
         "operationId": "ApiController_users",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                20,
+                50,
+                100
+              ],
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participationType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "分页结果或兼容数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PageResult"
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    }
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation failed",
@@ -7762,7 +8448,8 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
       }
     },
     "/api/v1/admin/roles": {
@@ -7902,10 +8589,97 @@
     "/api/v1/admin/invitations": {
       "get": {
         "operationId": "ApiController_authorizationInvitations",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                20,
+                50,
+                100
+              ],
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participationType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "分页结果或兼容数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PageResult"
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    }
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation failed",
@@ -7975,7 +8749,8 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
       },
       "post": {
         "operationId": "ApiController_createAuthorizationInvitation",
@@ -8208,6 +8983,10 @@
                   },
                   "footer": {
                     "type": "string"
+                  },
+                  "publicUrl": {
+                    "type": "string",
+                    "format": "uri"
                   }
                 },
                 "required": [
@@ -8953,10 +9732,97 @@
     "/api/v1/admin/audit": {
       "get": {
         "operationId": "ApiController_audit",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                20,
+                50,
+                100
+              ],
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participationType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "分页结果或兼容数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PageResult"
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    }
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation failed",
@@ -9026,7 +9892,8 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
       }
     },
     "/api/v1/admin/metrics": {
@@ -9106,6 +9973,479 @@
             "cookie": []
           }
         ]
+      }
+    },
+    "/api/v1/integrations/field-templates": {
+      "get": {
+        "operationId": "ApiController_fieldTemplates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "integrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/integrations/bindings/{id}/metadata": {
+      "get": {
+        "operationId": "ApiController_remoteMetadata",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "integrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/integrations/bindings/{id}/schools": {
+      "get": {
+        "operationId": "ApiController_schools",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                20,
+                50,
+                100
+              ],
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participationType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页结果或兼容数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PageResult"
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "integrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
+      }
+    },
+    "/api/v1/integrations/bindings/{id}/schools/{schoolId}": {
+      "put": {
+        "operationId": "ApiController_confirmSchool",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "integrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "shortName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "country": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{3}$"
+                  },
+                  "icpcId": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "remoteId": {
+                    "type": "string"
+                  },
+                  "create": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "shortName",
+                  "country",
+                  "icpcId",
+                  "version"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/automation/v1/contests": {
@@ -9903,6 +11243,12 @@
                       "error": {
                         "type": "string",
                         "maxLength": 1500
+                      },
+                      "verification": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "$ref": "#/components/schemas/Value56___schema0"
+                        }
                       }
                     },
                     "required": [
@@ -10034,7 +11380,55 @@
       }
     },
     "schemas": {
-      "Value0___schema0": {
+      "PageResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {}
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "page": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  20
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  50
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  100
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "additionalProperties": false
+      },
+      "Value1___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -10055,13 +11449,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value0___schema0"
+              "$ref": "#/components/schemas/Value1___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value0___schema0"
+              "$ref": "#/components/schemas/Value1___schema0"
             }
           }
         ]
@@ -10086,6 +11480,14 @@
           "description": {
             "type": "string",
             "maxLength": 30000
+          },
+          "descriptionFormat": {
+            "default": "TEXT",
+            "type": "string",
+            "enum": [
+              "TEXT",
+              "MARKDOWN"
+            ]
           },
           "announcement": {
             "default": "",
@@ -10180,6 +11582,21 @@
                 "default": true,
                 "type": "boolean"
               },
+              "allowUnofficial": {
+                "default": false,
+                "type": "boolean"
+              },
+              "platformProfiles": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "HYDRO_5_0_7",
+                    "DOMJUDGE_9_0_1"
+                  ]
+                }
+              },
               "feeMode": {
                 "default": "FREE",
                 "type": "string",
@@ -10216,6 +11633,34 @@
                 "default": true,
                 "type": "boolean"
               },
+              "invoiceTypes": {
+                "default": [
+                  "NORMAL"
+                ],
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "NORMAL",
+                    "SPECIAL"
+                  ]
+                }
+              },
+              "invoiceRequiredFields": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "contactName",
+                    "phone",
+                    "address",
+                    "bankName",
+                    "bankAccount"
+                  ]
+                }
+              },
               "uniquePersonFields": {
                 "default": [],
                 "maxItems": 5,
@@ -10233,12 +11678,16 @@
               "coachMode",
               "maxCoaches",
               "manualReview",
+              "allowUnofficial",
+              "platformProfiles",
               "feeMode",
               "feeCents",
               "paymentSequence",
               "paymentInstructions",
               "refundsEnabled",
               "invoicesEnabled",
+              "invoiceTypes",
+              "invoiceRequiredFields",
               "uniquePersonFields"
             ],
             "additionalProperties": false
@@ -10308,6 +11757,14 @@
                   "type": "string",
                   "maxLength": 100
                 },
+                "locked": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "source": {
+                  "type": "string",
+                  "maxLength": 80
+                },
                 "min": {
                   "type": "number"
                 },
@@ -10323,7 +11780,7 @@
                     "equals": {
                       "allOf": [
                         {
-                          "$ref": "#/components/schemas/Value0___schema0"
+                          "$ref": "#/components/schemas/Value1___schema0"
                         }
                       ]
                     },
@@ -10346,7 +11803,8 @@
                 "sensitive",
                 "options",
                 "help",
-                "group"
+                "group",
+                "locked"
               ],
               "additionalProperties": false
             }
@@ -10356,6 +11814,7 @@
           "title",
           "season",
           "description",
+          "descriptionFormat",
           "announcement",
           "location",
           "startsAt",
@@ -10369,7 +11828,7 @@
         ],
         "additionalProperties": false
       },
-      "Value1___schema0": {
+      "Value2___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -10390,13 +11849,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value1___schema0"
+              "$ref": "#/components/schemas/Value2___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value1___schema0"
+              "$ref": "#/components/schemas/Value2___schema0"
             }
           }
         ]
@@ -10420,11 +11879,50 @@
             "type": "string",
             "maxLength": 100
           },
+          "participationType": {
+            "type": "string",
+            "enum": [
+              "OFFICIAL",
+              "UNOFFICIAL"
+            ]
+          },
+          "organization": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "shortName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "country": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              "icpcId": {
+                "default": "",
+                "type": "string",
+                "maxLength": 40
+              }
+            },
+            "required": [
+              "name",
+              "shortName",
+              "country",
+              "icpcId"
+            ],
+            "additionalProperties": false
+          },
           "answers": {
             "default": {},
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value1___schema0"
+              "$ref": "#/components/schemas/Value2___schema0"
             }
           },
           "people": {
@@ -10474,7 +11972,7 @@
                   "default": {},
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/Value1___schema0"
+                    "$ref": "#/components/schemas/Value2___schema0"
                   }
                 }
               },
@@ -10497,7 +11995,7 @@
         ],
         "additionalProperties": false
       },
-      "Value2___schema0": {
+      "Value3___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -10518,13 +12016,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value2___schema0"
+              "$ref": "#/components/schemas/Value3___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value2___schema0"
+              "$ref": "#/components/schemas/Value3___schema0"
             }
           }
         ]
@@ -10591,6 +12089,14 @@
             "type": "string",
             "maxLength": 100
           },
+          "locked": {
+            "default": false,
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 80
+          },
           "min": {
             "type": "number"
           },
@@ -10606,7 +12112,7 @@
               "equals": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/Value2___schema0"
+                    "$ref": "#/components/schemas/Value3___schema0"
                   }
                 ]
               },
@@ -10629,11 +12135,12 @@
           "sensitive",
           "options",
           "help",
-          "group"
+          "group",
+          "locked"
         ],
         "additionalProperties": false
       },
-      "Value3___schema0": {
+      "Value4___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -10654,18 +12161,18 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value3___schema0"
+              "$ref": "#/components/schemas/Value4___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value3___schema0"
+              "$ref": "#/components/schemas/Value4___schema0"
             }
           }
         ]
       },
-      "Value3___schema1": {
+      "Value4___schema1": {
         "anyOf": [
           {
             "type": "string"
@@ -10686,13 +12193,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value3___schema1"
+              "$ref": "#/components/schemas/Value4___schema1"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value3___schema1"
+              "$ref": "#/components/schemas/Value4___schema1"
             }
           }
         ]
@@ -10753,6 +12260,44 @@
           "teamEnglishName": {
             "type": "string"
           },
+          "participationType": {
+            "type": "string",
+            "enum": [
+              "OFFICIAL",
+              "UNOFFICIAL"
+            ]
+          },
+          "organization": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "shortName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "country": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              "icpcId": {
+                "default": "",
+                "type": "string",
+                "maxLength": 40
+              }
+            },
+            "required": [
+              "name",
+              "shortName",
+              "country",
+              "icpcId"
+            ],
+            "additionalProperties": false
+          },
           "people": {
             "type": "array",
             "items": {
@@ -10775,7 +12320,7 @@
                 "answers": {
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/Value3___schema0"
+                    "$ref": "#/components/schemas/Value4___schema0"
                   }
                 }
               },
@@ -10858,6 +12403,14 @@
                       "type": "string",
                       "maxLength": 100
                     },
+                    "locked": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "string",
+                      "maxLength": 80
+                    },
                     "min": {
                       "type": "number"
                     },
@@ -10873,7 +12426,7 @@
                         "equals": {
                           "allOf": [
                             {
-                              "$ref": "#/components/schemas/Value3___schema1"
+                              "$ref": "#/components/schemas/Value4___schema1"
                             }
                           ]
                         },
@@ -10896,7 +12449,8 @@
                     "sensitive",
                     "options",
                     "help",
-                    "group"
+                    "group",
+                    "locked"
                   ],
                   "additionalProperties": false
                 }
@@ -10904,7 +12458,7 @@
               "answers": {
                 "type": "object",
                 "additionalProperties": {
-                  "$ref": "#/components/schemas/Value3___schema0"
+                  "$ref": "#/components/schemas/Value4___schema0"
                 }
               }
             },
@@ -10934,7 +12488,7 @@
                 "answers": {
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/Value3___schema0"
+                    "$ref": "#/components/schemas/Value4___schema0"
                   }
                 }
               },
@@ -10983,6 +12537,38 @@
         ],
         "additionalProperties": false
       },
+      "Value5___schema0": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              null
+            ]
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Value5___schema0"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Value5___schema0"
+            }
+          }
+        ]
+      },
       "ProvisioningResultV1": {
         "type": "object",
         "properties": {
@@ -11021,6 +12607,12 @@
           "error": {
             "type": "string",
             "maxLength": 1500
+          },
+          "verification": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Value5___schema0"
+            }
           }
         },
         "required": [
@@ -11295,6 +12887,38 @@
           "message"
         ],
         "additionalProperties": false
+      },
+      "Value56___schema0": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              null
+            ]
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Value56___schema0"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Value56___schema0"
+            }
+          }
+        ]
       }
     }
   }

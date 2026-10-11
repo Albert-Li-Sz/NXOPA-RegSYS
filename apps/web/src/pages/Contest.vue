@@ -1,21 +1,33 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, auth, date, money, label } from '../api';
+import MarkdownContent from '../components/MarkdownContent.vue';
+import ListPagination from '../components/ListPagination.vue';
+import { usePagedList } from '../composables/usePagedList';
 import type { ContestView, RegistrationView } from '../types';
 const route = useRoute(),
   router = useRouter();
+const list = usePagedList<RegistrationView>('contest-detail', () =>
+  auth.user ? `/registrations?contestId=${route.params.id}` : '',
+);
 const c = ref<ContestView>(),
-  registrations = ref<RegistrationView[]>([]),
+  registrations = list.items,
   tab = ref('info'),
   busy = ref(false),
   error = ref('');
 onMounted(async () => {
   try {
     c.value = await api(`/contests/${route.params.id}`);
-    if (auth.user) registrations.value = await api(`/registrations?contestId=${route.params.id}`);
   } catch (e) {
     error.value = e instanceof Error ? e.message : '竞赛无法加载';
+  }
+});
+let loaded = false;
+watch(tab, async (current) => {
+  if (auth.user && ['registrations', 'admissions', 'finance'].includes(current) && !loaded) {
+    await list.load();
+    loaded = !list.error.value;
   }
 });
 async function create() {
@@ -39,7 +51,7 @@ async function create() {
     animated
   /><template v-else>
     <div class="crumb">
-      <router-link to="/">比赛列表</router-link><span>/</span><span>竞赛报名</span>
+      <router-link to="/contests">比赛列表</router-link><span>/</span><span>竞赛报名</span>
     </div>
     <h1 class="detail-title">{{ c.title }}</h1>
     <p class="subtitle">比赛时间：{{ date(c.startsAt) }}</p>
@@ -82,7 +94,7 @@ async function create() {
               </div>
               <div class="card">
                 <h3>竞赛介绍</h3>
-                <div class="pre-line">{{ c.description }}</div>
+                <MarkdownContent :content="c.description" :format="c.descriptionFormat" />
               </div>
             </div>
             <aside class="card">
@@ -188,6 +200,14 @@ async function create() {
         </div></el-tab-pane
       >
     </el-tabs>
+    <el-alert v-if="list.error.value" :title="list.error.value" type="error" :closable="false" />
+    <ListPagination
+      v-if="auth.user && ['registrations', 'admissions', 'finance'].includes(tab)"
+      v-model:page="list.page.value"
+      v-model:size="list.pageSize.value"
+      :total="list.total.value"
+      :loading="list.loading.value"
+    />
   </template>
 </template>
 <style scoped>
