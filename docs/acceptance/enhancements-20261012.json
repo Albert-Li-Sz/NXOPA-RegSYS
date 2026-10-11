@@ -117,7 +117,7 @@
     },
     "hydro-enhancements": {
       "platform": "HYDRO",
-      "at": "2026-10-11T20:40:29.454Z",
+      "at": "2026-10-11T21:19:02.096Z",
       "version": "5.0.7",
       "pluginVersion": "0.2.0",
       "status": "PASS",
@@ -143,7 +143,7 @@
     },
     "hydro-recovery": {
       "platform": "HYDRO",
-      "at": "2026-10-11T20:43:18.722Z",
+      "at": "2026-10-11T21:20:19.404Z",
       "status": "PASS",
       "checks": [
         "个人报名姓名映射，真实远端创建后丢失响应，自动重试且账号／队伍没有重复",
@@ -241,10 +241,148 @@
       "typecheck": "PASS",
       "productionBuild": "PASS",
       "unitTests": 4
+    },
+    "onlineTutorial": {
+      "passed": true,
+      "base": "https://albert-li-sz.github.io/NXOPA-RegSYS/",
+      "checks": [
+        "14 Chinese chapters and all 23 actual screenshots rendered from LaTeX; template variables are intact",
+        "Every image, stylesheet, script and favicon resolves below /NXOPA-RegSYS/",
+        "Chapter anchors and active navigation work; copied commands match the LaTeX source",
+        "Screenshot viewer opens the correct original image and closes with Escape",
+        "PDF, source ZIP and LaTeX downloads have the exact hashes of the delivered artifacts",
+        "Versioned and stable Hydro 0.2.0 downloads match the whitelist, supported version and SHA-256",
+        "390px mobile layout has no horizontal overflow; menu navigation and Escape work without script or asset failures"
+      ],
+      "errors": [],
+      "failedResources": [],
+      "checkedAt": "2026-10-11T21:17:27.561Z"
     }
   },
   "publication": {
-    "status": "PENDING",
-    "url": "https://albert-li-sz.github.io/NXOPA-RegSYS/"
+    "status": "PASS",
+    "url": "https://albert-li-sz.github.io/NXOPA-RegSYS/",
+    "workflowUrl": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38175622995",
+    "build": {
+      "source": "docs/CONFIGURATION_GUIDE.tex",
+      "chapters": [
+        {
+          "id": "deployment",
+          "title": "首次部署与管理员初始化"
+        },
+        {
+          "id": "site",
+          "title": "首页、登录与站点设置"
+        },
+        {
+          "id": "mail",
+          "title": "邮件服务：保存、检测与实际收件"
+        },
+        {
+          "id": "invitations",
+          "title": "通过链接授予账号身份"
+        },
+        {
+          "id": "permissions",
+          "title": "授权确认与范围检查"
+        },
+        {
+          "id": "hydro",
+          "title": "接入 Hydro 评测平台"
+        },
+        {
+          "id": "domjudge",
+          "title": "接入 DOMjudge 评测平台"
+        },
+        {
+          "id": "binding",
+          "title": "比赛绑定与报名同步"
+        },
+        {
+          "id": "contest",
+          "title": "竞赛报名规则与线下财务"
+        },
+        {
+          "id": "fields",
+          "title": "配置报名字段"
+        },
+        {
+          "id": "invoices",
+          "title": "发票申请与审核"
+        },
+        {
+          "id": "display",
+          "title": "分页、Markdown 与页面使用"
+        },
+        {
+          "id": "admissions",
+          "title": "配置准考证模板与发放"
+        },
+        {
+          "id": "operations",
+          "title": "模板语法、任务与维护"
+        }
+      ],
+      "screenshots": 23,
+      "commit": "3a91134f09e0cff5839aa404bae0c8b035c46b66",
+      "plugin": {
+        "version": "0.2.0",
+        "filename": "hydro-contest-center-0.2.0.tgz",
+        "sha256": "833983aab8f7891486e6e17808cc3ea9f734d056a883204829bc2e12f563d318",
+        "hydroVersion": "5.0.7",
+        "files": ["LICENSE", "README.md", "index.ts", "package.json"]
+      },
+      "sourceSha256": "1abb4959ddc4bc45cd8548457ecaeebdd2f514519bb8437126dffbf9127ae0fb",
+      "pdfSha256": "049d9a7e7d9916846cbd63af4b0a3e6e0078cad07a837cdf017261b33f218d23"
+    },
+    "installedPlugin": {
+      "pluginVersion": "0.2.0",
+      "hydroVersion": "5.0.7",
+      "indexSha256": "1e92a3ae37d4161b033b715d0d7a8bb24cdcca10b6a010bad9fb0af17e872791"
+    },
+    "probe": {
+      "version": "5.0.7",
+      "pluginVersion": "0.2.0",
+      "capabilities": [
+        "provision",
+        "query",
+        "independent_team_account",
+        "nickname",
+        "unofficial",
+        "contest_linkage"
+      ]
+    },
+    "verifiedAt": "2026-10-11T21:21:40.577071+00:00",
+    "downloadedPluginRegistrationChecks": {
+      "platform": "HYDRO",
+      "at": "2026-10-11T21:19:02.096Z",
+      "version": "5.0.7",
+      "pluginVersion": "0.2.0",
+      "status": "PASS",
+      "checks": [
+        "昵称／队名、组织、非正式状态／分组读回，实际登录与比赛访问，重复同步复用",
+        "远端提交后失败恢复不重复创建账号与队伍",
+        "审核调整为正式参赛后更新同一远端对象",
+        "全部非正式导入策略、过期绑定任务拒绝且不覆盖最新映射"
+      ]
+    },
+    "downloadedPluginRecoveryChecks": {
+      "platform": "HYDRO",
+      "at": "2026-10-11T21:20:19.404Z",
+      "status": "PASS",
+      "checks": [
+        "个人报名姓名映射，真实远端创建后丢失响应，自动重试且账号／队伍没有重复",
+        "禁用非正式导入时跳过，重新启用后复用原账号并恢复非正式关联"
+      ],
+      "lostResponses": 1,
+      "attempts": 2
+    },
+    "legacyEnvelopeHydro": {
+      "version": "5.0.7",
+      "login": "PASS",
+      "contestAccess": "PASS",
+      "repeatSync": "PASS",
+      "failureRecovery": "PASS"
+    }
   }
 }
