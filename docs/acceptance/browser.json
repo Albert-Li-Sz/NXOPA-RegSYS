@@ -1,0 +1,110 @@
+{
+  "startedAt": "2026-10-11T12:53:40.606Z",
+  "durationMs": 46742.212,
+  "passed": 10,
+  "failed": 0,
+  "skipped": 0,
+  "flaky": 0,
+  "cases": [
+    {
+      "name": "three invited members, required teacher confirmation, teacher submits, unlink revokes access",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 9352
+        }
+      ]
+    },
+    {
+      "name": "manual team, optional teacher, review first, receipt and partial/full confirmation",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 9050
+        }
+      ]
+    },
+    {
+      "name": "payment first blocks review until actual receipt confirmation",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 6019
+        }
+      ]
+    },
+    {
+      "name": "system administrator configures both platforms and preserves saved credentials",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 7723
+        }
+      ]
+    },
+    {
+      "name": "contest administrator binds an authorized platform without accessing instance secrets",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 2776
+        }
+      ]
+    },
+    {
+      "name": "desktop home, filters and account center",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 1938
+        }
+      ]
+    },
+    {
+      "name": "individual registration is completed in browser",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 1543
+        }
+      ]
+    },
+    {
+      "name": "admin and contest configuration pages, financial and support views",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 3831
+        }
+      ]
+    },
+    {
+      "name": "mobile layout and empty/error states",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 1612
+        }
+      ]
+    },
+    {
+      "name": "administrator downloads the selected current admission as ZIP in browser",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 1258
+        }
+      ]
+    }
+  ]
+}

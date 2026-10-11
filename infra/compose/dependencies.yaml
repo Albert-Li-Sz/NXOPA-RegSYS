@@ -1,0 +1,26 @@
+name: contest-center-dev
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_USER: contest
+      POSTGRES_PASSWORD: contest_local_only
+      POSTGRES_DB: contest_center
+    ports: ['127.0.0.1:55432:5432']
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U contest -d contest_center']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7.4.5-alpine
+    ports: ['127.0.0.1:56379:6379']
+    volumes: [redis:/data]
+    command: ['redis-server', '--appendonly', 'yes']
+  mailpit:
+    image: axllent/mailpit:v1.27.8
+    ports: ['127.0.0.1:51025:1025', '127.0.0.1:58025:8025']
+volumes:
+  postgres:
+  redis:

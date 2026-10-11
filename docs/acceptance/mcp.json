@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "tools": [
+    "list_contests",
+    "list_registrations",
+    "get_registration",
+    "get_finance_summary",
+    "get_support_ticket"
+  ],
+  "scopeDenial": "PASS",
+  "fieldFiltering": "PASS"
+}

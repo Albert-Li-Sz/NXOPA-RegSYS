@@ -1,0 +1,15 @@
+
+Running 8 tests using 1 worker
+
+(node:77155) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/e2e/platform-settings.spec.ts:37:1 › system administrator configures both platforms and preserves saved credentials (8.6s)
+  ✓  2 tests/e2e/platform-settings.spec.ts:106:1 › contest administrator binds an authorized platform without accessing instance secrets (2.9s)
+  ✓  3 tests/e2e/site.spec.ts:17:1 › desktop home, filters and account center (1.7s)
+  ✓  4 tests/e2e/site.spec.ts:87:1 › admin and contest configuration pages, financial and support views (3.9s)
+  ✓  5 tests/e2e/site.spec.ts:119:1 › mobile layout and empty/error states (1.8s)
+  ✓  6 tests/e2e/system-settings.spec.ts:26:1 › public landing, login redirect and original contest return on desktop and mobile (2.3s)
+  ✓  7 tests/e2e/system-settings.spec.ts:63:1 › administrator saves SMTP in Chinese, tests delivery, and sees saved values after reload (4.3s)
+  ✓  8 tests/e2e/system-settings.spec.ts:103:1 › contest administrators cannot open system mail configuration; sync action is Chinese (1.6s)
+
+  8 passed (30.0s)

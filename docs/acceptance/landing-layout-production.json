@@ -1,0 +1,96 @@
+{
+  "checkedAt": "2026-10-11T13:31:58.846Z",
+  "baseURL": "http://localhost:8080",
+  "checks": [
+    {
+      "name": "wide",
+      "layout": {
+        "width": 3008,
+        "height": 1568,
+        "scrollWidth": 3008,
+        "scrollHeight": 1568,
+        "headerNavigation": 0,
+        "headerAccount": 0,
+        "oldDecorations": 0,
+        "heroColumns": 2,
+        "logosColumns": 2,
+        "teamName": "南京晓庄学院程序设计竞赛集训队",
+        "registrationModeNote": false,
+        "logoImages": [
+          {
+            "alt": "开放原子社 Logo",
+            "loaded": true
+          },
+          {
+            "alt": "南京晓庄学院 ICPC 集训队 Logo",
+            "loaded": true
+          }
+        ]
+      },
+      "entryAndReturn": true,
+      "deepRefresh": true,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "name": "laptop",
+      "layout": {
+        "width": 1366,
+        "height": 768,
+        "scrollWidth": 1366,
+        "scrollHeight": 768,
+        "headerNavigation": 0,
+        "headerAccount": 0,
+        "oldDecorations": 0,
+        "heroColumns": 2,
+        "logosColumns": 2,
+        "teamName": "南京晓庄学院程序设计竞赛集训队",
+        "registrationModeNote": false,
+        "logoImages": [
+          {
+            "alt": "开放原子社 Logo",
+            "loaded": true
+          },
+          {
+            "alt": "南京晓庄学院 ICPC 集训队 Logo",
+            "loaded": true
+          }
+        ]
+      },
+      "entryAndReturn": true,
+      "deepRefresh": true,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "name": "mobile",
+      "layout": {
+        "width": 390,
+        "height": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 1068,
+        "headerNavigation": 0,
+        "headerAccount": 0,
+        "oldDecorations": 0,
+        "heroColumns": 1,
+        "logosColumns": 2,
+        "teamName": "南京晓庄学院程序设计竞赛集训队",
+        "registrationModeNote": false,
+        "logoImages": [
+          {
+            "alt": "开放原子社 Logo",
+            "loaded": true
+          },
+          {
+            "alt": "南京晓庄学院 ICPC 集训队 Logo",
+            "loaded": true
+          }
+        ]
+      },
+      "entryAndReturn": true,
+      "deepRefresh": true,
+      "errors": [],
+      "passed": true
+    }
+  ]
+}

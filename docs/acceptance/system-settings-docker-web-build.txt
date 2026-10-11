@@ -1,0 +1,164 @@
+ Image contest-center-web Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.52kB done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.22kB 0.0s done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node:24.12.0-bookworm-slim
+#3 DONE 0.1s
+
+#4 [internal] load metadata for docker.io/library/caddy:2.10.2-alpine
+#4 DONE 0.1s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 138B done
+#5 DONE 0.0s
+
+#6 [web 1/3] FROM docker.io/library/caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+#6 resolve docker.io/library/caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d 0.0s done
+#6 DONE 0.0s
+
+#7 [build  1/18] FROM docker.io/library/node:24.12.0-bookworm-slim@sha256:7326fb2dbdce998edd72140946851be64ef4a643e8715e138ca467e8e9d92c99
+#7 resolve docker.io/library/node:24.12.0-bookworm-slim@sha256:7326fb2dbdce998edd72140946851be64ef4a643e8715e138ca467e8e9d92c99 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 375.36kB 0.1s done
+#8 DONE 0.1s
+
+#9 [build  9/18] COPY packages/contracts/package.json ./packages/contracts/package.json
+#9 CACHED
+
+#10 [build  2/18] RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates python3 make g++ && rm -rf /var/lib/apt/lists/*
+#10 CACHED
+
+#11 [build 11/18] COPY plugins/hydro-contest-center/package.json ./plugins/hydro-contest-center/package.json
+#11 CACHED
+
+#12 [build  8/18] COPY apps/mcp-adapter/package.json ./apps/mcp-adapter/package.json
+#12 CACHED
+
+#13 [build  6/18] COPY apps/server/package.json ./apps/server/package.json
+#13 CACHED
+
+#14 [build  3/18] RUN npm install -g pnpm@11.25.0
+#14 CACHED
+
+#15 [build  7/18] COPY apps/web/package.json ./apps/web/package.json
+#15 CACHED
+
+#16 [build  4/18] WORKDIR /app
+#16 CACHED
+
+#17 [build  5/18] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+#17 CACHED
+
+#18 [build 10/18] COPY packages/connectors/package.json ./packages/connectors/package.json
+#18 CACHED
+
+#19 [build 12/18] RUN pnpm install --frozen-lockfile
+#19 CACHED
+
+#20 [build 13/18] COPY apps ./apps
+#20 DONE 0.3s
+
+#21 [build 14/18] COPY packages ./packages
+#21 DONE 0.1s
+
+#22 [build 15/18] COPY plugins ./plugins
+#22 DONE 0.2s
+
+#23 [build 16/18] COPY scripts ./scripts
+#23 DONE 0.0s
+
+#24 [build 17/18] RUN DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm --filter @contest-center/server db:generate
+#24 0.970 $ prisma generate
+#24 2.350 Loaded Prisma config from prisma.config.ts.
+#24 2.350 
+#24 2.791 Prisma schema loaded from prisma/schema.prisma.
+#24 3.449 
+#24 3.449 ✔ Generated Prisma Client (v7.10.0) to ./../../node_modules/.pnpm/@prisma+client@7.10.0_prisma@7.10.0_@types+react@19.3.0_react-dom@19.3.0_react@19.3.0___c7ac93cca1def29352176ce6211966e0/node_modules/@prisma/client in 554ms
+#24 3.449 
+#24 3.449 Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+#24 3.449 
+#24 3.449 
+#24 DONE 3.6s
+
+#25 [build 18/18] RUN pnpm build
+#25 0.601 $ pnpm -r build
+#25 0.926 Scope: 6 of 7 workspace projects
+#25 0.939 apps/mcp-adapter build$ tsc --noEmit
+#25 0.940 packages/contracts build$ tsc --noEmit
+#25 0.940 plugins/hydro-contest-center build$ node -e "console.log('Hydro loads the TypeScript plugin directly')"
+#25 0.963 plugins/hydro-contest-center build: Hydro loads the TypeScript plugin directly
+#25 0.965 plugins/hydro-contest-center build: Done
+#25 2.044 packages/contracts build: Done
+#25 2.045 apps/web build$ vue-tsc --noEmit && vite build
+#25 2.045 packages/connectors build$ tsc --noEmit
+#25 2.058 apps/mcp-adapter build: Done
+#25 2.532 packages/connectors build: Done
+#25 2.533 apps/server build$ tsc --noEmit
+#25 5.100 apps/web build: vite v8.3.4 building client environment for production...
+#25 5.147 apps/web build: transforming...
+#25 5.162 apps/server build: Done
+#25 5.725 apps/web build: ✓ 1736 modules transformed.
+#25 5.866 apps/web build: rendering chunks...
+#25 6.094 apps/web build: computing gzip size...
+#25 6.103 apps/web build: dist/index.html                                      0.95 kB │ gzip:   0.60 kB
+#25 6.103 apps/web build: dist/assets/Contest-BhHheiO8.css                     0.15 kB │ gzip:   0.13 kB
+#25 6.103 apps/web build: dist/assets/Admin-C70aRFqT.css                       0.53 kB │ gzip:   0.26 kB
+#25 6.103 apps/web build: dist/assets/Invite-C1YwDhkS.css                      0.55 kB │ gzip:   0.26 kB
+#25 6.103 apps/web build: dist/assets/Account-Bo_7Lnm5.css                     0.81 kB │ gzip:   0.35 kB
+#25 6.103 apps/web build: dist/assets/Contests-B_beMqTm.css                    1.60 kB │ gzip:   0.58 kB
+#25 6.103 apps/web build: dist/assets/Home-DRrPkVLm.css                        4.51 kB │ gzip:   1.30 kB
+#25 6.103 apps/web build: dist/assets/index-CgbxY29y.css                     367.14 kB │ gzip:  49.85 kB
+#25 6.103 apps/web build: dist/assets/_plugin-vue_export-helper-BDNMzG2s.js    0.08 kB │ gzip:   0.09 kB
+#25 6.103 apps/web build: dist/assets/NotFound-DqQIwiCl.js                     0.47 kB │ gzip:   0.35 kB
+#25 6.103 apps/web build: dist/assets/Home-7kD1r6Uo.js                         2.61 kB │ gzip:   1.37 kB
+#25 6.103 apps/web build: dist/assets/DynamicFields-CakMnd-e.js                3.13 kB │ gzip:   1.29 kB
+#25 6.103 apps/web build: dist/assets/MyRegistrations-BXk8W4TX.js              3.57 kB │ gzip:   1.81 kB
+#25 6.103 apps/web build: dist/assets/Contests-CIYDpjPM.js                     4.53 kB │ gzip:   2.19 kB
+#25 6.103 apps/web build: dist/assets/Invite-C3sDYD7b.js                       4.68 kB │ gzip:   2.35 kB
+#25 6.104 apps/web build: dist/assets/Support-D7_Nkrp5.js                      6.14 kB │ gzip:   2.53 kB
+#25 6.104 apps/web build: dist/assets/Contest-BpT_Cmsy.js                      6.48 kB │ gzip:   2.66 kB
+#25 6.104 apps/web build: dist/assets/Account-gv6cVHYN.js                      7.76 kB │ gzip:   3.23 kB
+#25 6.104 apps/web build: dist/assets/Registration-BTrtG1zq.js                24.78 kB │ gzip:   7.75 kB
+#25 6.104 apps/web build: dist/assets/ContestEditor-aHD0AtM3.js               25.58 kB │ gzip:   7.72 kB
+#25 6.104 apps/web build: dist/assets/Admin-BEyzWJVV.js                       38.07 kB │ gzip:  11.14 kB
+#25 6.104 apps/web build: dist/assets/runtime-core.esm-bundler-DmYqK58L.js    65.40 kB │ gzip:  25.65 kB
+#25 6.104 apps/web build: dist/assets/api-BYVWzWp7.js                         94.35 kB │ gzip:  34.59 kB
+#25 6.104 apps/web build: dist/assets/index-Dr1WzPSK.js                      967.56 kB │ gzip: 305.99 kB
+#25 6.104 apps/web build: ✓ built in 1.00s
+#25 6.105 apps/web build: [plugin builtin:vite-reporter] 
+#25 6.105 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#25 6.105 apps/web build: - Using dynamic import() to code-split the application
+#25 6.105 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#25 6.105 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#25 6.159 apps/web build: Done
+#25 DONE 6.2s
+
+#6 [web 1/3] FROM docker.io/library/caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+#6 CACHED
+
+#26 [web 2/3] COPY --from=build /app/apps/web/dist /srv
+#26 DONE 0.0s
+
+#27 [web 3/3] COPY infra/compose/Caddyfile /etc/caddy/Caddyfile
+#27 DONE 0.0s
+
+#28 exporting to image
+#28 exporting layers 0.1s done
+#28 exporting manifest sha256:a9edbb734829bcd2e37490e8189339410559ae3e224828bd2e4f8704c679f171 done
+#28 exporting config sha256:2a872018c8e54229188e56ff7f4015055661731326f45132170034c517fea427 done
+#28 exporting attestation manifest sha256:436f01d7c8e9d01ee804be7250f215cca90dac855967bf616de2e9914e568cb8 done
+#28 exporting manifest list sha256:e8a6fd0ee5175e9ee0dded430f7075e28b5f3b0e8faf266761da7f066d05f23c done
+#28 naming to docker.io/library/contest-center-web:latest done
+#28 unpacking to docker.io/library/contest-center-web:latest 0.0s done
+#28 DONE 0.1s
+
+#29 resolving provenance for metadata file
+#29 DONE 0.0s
+ Image contest-center-web Built 

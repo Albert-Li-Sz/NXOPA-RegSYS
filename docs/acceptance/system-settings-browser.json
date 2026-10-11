@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "passedTests": 8,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "retries": 0,
+  "tests": [
+    "tests/e2e/platform-settings.spec.ts:37:1 › system administrator configures both platforms and preserves saved credentials (8.6s)",
+    "tests/e2e/platform-settings.spec.ts:106:1 › contest administrator binds an authorized platform without accessing instance secrets (2.9s)",
+    "tests/e2e/site.spec.ts:17:1 › desktop home, filters and account center (1.7s)",
+    "tests/e2e/site.spec.ts:87:1 › admin and contest configuration pages, financial and support views (3.9s)",
+    "tests/e2e/site.spec.ts:119:1 › mobile layout and empty/error states (1.8s)",
+    "tests/e2e/system-settings.spec.ts:26:1 › public landing, login redirect and original contest return on desktop and mobile (2.3s)",
+    "tests/e2e/system-settings.spec.ts:63:1 › administrator saves SMTP in Chinese, tests delivery, and sees saved values after reload (4.3s)",
+    "tests/e2e/system-settings.spec.ts:103:1 › contest administrators cannot open system mail configuration; sync action is Chinese (1.6s)"
+  ],
+  "source": "system-settings-browser-output.txt",
+  "checkedAt": "2026-10-11T18:39:05.042359+00:00"
+}

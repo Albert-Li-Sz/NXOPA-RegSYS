@@ -1,0 +1,33 @@
+{
+  "checkedAt": "2026-10-11T13:31:57.521Z",
+  "stats": {
+    "startTime": "2026-10-11T13:29:29.535Z",
+    "duration": 5878.243,
+    "expected": 2,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "tests": [
+    {
+      "name": "desktop home, filters and account center",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 2547
+        }
+      ]
+    },
+    {
+      "name": "mobile layout and empty/error states",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 1849
+        }
+      ]
+    }
+  ]
+}

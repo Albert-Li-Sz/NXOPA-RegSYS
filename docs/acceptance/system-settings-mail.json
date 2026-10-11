@@ -1,0 +1,13 @@
+{
+  "report": [
+    "Only system administrators can read, save, probe or test mail settings",
+    "Passwords encrypted at rest and absent from read responses, public settings and audit logs",
+    "Real authenticated SMTP connection verified against isolated Mailpit",
+    "Persistent worker sends a real test email using saved credentials and deduplicates request replay",
+    "Blank password preserves credentials; changed sender applies without restarting API or worker",
+    "Concurrent edits and stale test requests cannot overwrite or test a different configuration",
+    "Invalid settings rejected; authentication and required-TLS failures return sanitized Chinese messages",
+    "Disabled service rejects test sends; worker rejects jobs targeting an obsolete settings version",
+    "Clearing authentication removes its secret; normal public registration still delivers and verifies email"
+  ]
+}

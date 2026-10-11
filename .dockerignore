@@ -1,0 +1,11 @@
+node_modules
+.runtime
+.env
+.env.*
+!.env.example
+apps/web/dist
+test-results
+playwright-report
+.git
+tmp
+output

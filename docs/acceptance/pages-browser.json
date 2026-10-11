@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "base": "http://localhost:5184/NXOPA-RegSYS/",
+  "checks": [
+    "12 Chinese chapters and all 14 actual screenshots rendered from LaTeX; template variables are intact",
+    "Every image, stylesheet, script and favicon resolves below /NXOPA-RegSYS/",
+    "Chapter anchors and active navigation work; copied commands match the LaTeX source",
+    "Screenshot viewer opens the correct original image and closes with Escape",
+    "PDF, source ZIP and LaTeX downloads have the exact hashes of the delivered artifacts",
+    "390px mobile layout has no horizontal overflow; menu navigation and Escape work without script or asset failures"
+  ],
+  "errors": [],
+  "failedResources": [],
+  "checkedAt": "2026-10-11T19:05:36.563Z"
+}

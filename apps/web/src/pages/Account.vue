@@ -1,0 +1,300 @@
+<script setup lang="ts">
+import { ref, reactive, onMounted, computed } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { ElMessage } from 'element-plus';
+import { defaultFields, invitationReturnPathSchema } from '@contest-center/contracts';
+import { api, auth, loadAuth, date } from '../api';
+import type { Data } from '../types';
+import DynamicFields from '../components/DynamicFields.vue';
+const route = useRoute(),
+  router = useRouter(),
+  mode = ref(route.query.mode === 'register' ? 'register' : 'login'),
+  busy = ref(false),
+  notice = ref('');
+const form = reactive({ account: '', email: '', username: '', name: '', password: '' });
+const profile = reactive<Data>({});
+const sessions = ref<Data[]>([]);
+const action = computed(() => String(route.params.action ?? ''));
+const invitationReturn = computed(() => {
+  const result = invitationReturnPathSchema.safeParse(route.query.next);
+  return result.success ? result.data : undefined;
+});
+onMounted(async () => {
+  if (action.value === 'verify') {
+    busy.value = true;
+    try {
+      await api('/auth/verify', 'POST', { token: route.query.token });
+      await loadAuth();
+      notice.value = '邮箱已验证，现在可以报名或确认授权。';
+      if (auth.user && invitationReturn.value) {
+        await router.replace(invitationReturn.value);
+        return;
+      }
+    } finally {
+      busy.value = false;
+    }
+  }
+  if (action.value === 'reset') mode.value = 'reset';
+  if (auth.user) {
+    Object.assign(profile, JSON.parse(JSON.stringify(auth.user)));
+    sessions.value = await api('/auth/sessions');
+  }
+});
+async function submit() {
+  busy.value = true;
+  try {
+    if (mode.value === 'forgot') {
+      await api('/auth/forgot', 'POST', { email: form.email });
+      notice.value = '如果邮箱已注册，我们会发送重置邮件。';
+      return;
+    }
+    if (mode.value === 'reset') {
+      await api('/auth/reset', 'POST', { token: route.query.token, password: form.password });
+      ElMessage.success('密码已重置，请登录');
+      router.push('/login');
+      return;
+    }
+    const data = await api(
+      `/auth/${mode.value === 'register' ? 'register' : 'login'}`,
+      'POST',
+      mode.value === 'register'
+        ? { ...form, next: invitationReturn.value }
+        : { account: form.account, password: form.password },
+    );
+    auth.user = data.user;
+    auth.csrf = data.csrf;
+    const next = String(route.query.next ?? '/contests');
+    router.push(next.startsWith('/') && !next.startsWith('//') ? next : '/');
+  } finally {
+    busy.value = false;
+  }
+}
+async function save() {
+  busy.value = true;
+  try {
+    await api('/auth/profile', 'PUT', {
+      version: profile.version,
+      name: profile.name,
+      email: profile.email,
+      profile: profile.profile,
+    });
+    await loadAuth();
+    Object.assign(profile, JSON.parse(JSON.stringify(auth.user)));
+    ElMessage.success('资料已保存');
+  } finally {
+    busy.value = false;
+  }
+}
+async function resend() {
+  await api('/auth/resend', 'POST', { next: invitationReturn.value });
+  ElMessage.success('验证邮件已发送');
+}
+</script>
+<template>
+  <div v-if="notice" class="notice">{{ notice }}</div>
+  <div v-if="invitationReturn && action !== 'verify'" class="notice">
+    您正在通过邀请链接确认账号或授权，登录并验证邮箱后即可继续。<router-link
+      v-if="auth.user?.verified"
+      :to="invitationReturn"
+      >返回邀请确认</router-link
+    >
+  </div>
+  <div v-if="!auth.user || mode === 'reset'" class="auth-layout">
+    <div class="auth-intro">
+      <span class="eyebrow">OPENATOM CLUB · NANXIAO</span>
+      <h1>每一次竞赛，<br />从这里开始。</h1>
+      <p>个人报名、团队协作、指导老师关联，<br />在同一个地方管理您的参赛旅程。</p>
+      <router-link to="/contests">浏览竞赛 →</router-link>
+    </div>
+    <div class="auth-card card">
+      <h2>
+        {{
+          mode === 'register'
+            ? '创建账号'
+            : mode === 'forgot'
+              ? '找回密码'
+              : mode === 'reset'
+                ? '设置新密码'
+                : '欢迎回来'
+        }}
+      </h2>
+      <p class="subtitle" style="margin-bottom: 25px">
+        {{
+          mode === 'register' ? '使用邮箱注册，验证后即可报名' : '登录南晓开放原子社在线报名系统'
+        }}
+      </p>
+      <el-form label-position="top" @submit.prevent="submit">
+        <el-form-item v-if="mode === 'login'" label="用户名或邮箱" for="account"
+          ><el-input
+            id="account"
+            v-model="form.account"
+            autocomplete="username"
+            placeholder="输入用户名或邮箱"
+        /></el-form-item>
+        <el-form-item v-if="['register', 'forgot'].includes(mode)" label="邮箱" for="email"
+          ><el-input id="email" v-model="form.email" type="email" autocomplete="email"
+        /></el-form-item>
+        <template v-if="mode === 'register'"
+          ><el-form-item label="用户名" for="username"
+            ><el-input
+              id="username"
+              v-model="form.username"
+              placeholder="3–32 位字母、数字或下划线"
+              autocomplete="username" /></el-form-item
+          ><el-form-item label="姓名" for="name"
+            ><el-input id="name" v-model="form.name" autocomplete="name" /></el-form-item
+        ></template>
+        <el-form-item v-if="mode !== 'forgot'" label="密码" for="password"
+          ><el-input
+            id="password"
+            v-model="form.password"
+            type="password"
+            show-password
+            :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+            placeholder="至少 10 位"
+        /></el-form-item>
+        <el-button
+          type="primary"
+          native-type="submit"
+          :loading="busy"
+          style="width: 100%; height: 42px"
+          >{{
+            mode === 'register'
+              ? '注册账号'
+              : mode === 'forgot'
+                ? '发送重置邮件'
+                : mode === 'reset'
+                  ? '重置密码'
+                  : '登录'
+          }}</el-button
+        >
+      </el-form>
+      <div class="auth-links">
+        <el-button text @click="mode = mode === 'register' ? 'login' : 'register'">{{
+          mode === 'register' ? '已有账号？登录' : '创建账号'
+        }}</el-button
+        ><el-button text @click="mode = 'forgot'">忘记密码</el-button>
+      </div>
+    </div>
+  </div>
+  <template v-else
+    ><div class="page-heading">
+      <div>
+        <h1>账号中心</h1>
+        <p class="subtitle">完善个人资料，管理邮箱和登录会话</p>
+      </div>
+      <el-tag :type="auth.user.verified ? 'success' : 'warning'">{{
+        auth.user.verified ? '邮箱已验证' : '邮箱未验证'
+      }}</el-tag>
+    </div>
+    <div v-if="!auth.user.verified" class="notice">
+      请验证邮箱后提交报名。
+      <el-button text type="primary" @click="resend">重新发送验证邮件</el-button>
+    </div>
+    <div class="profile-layout">
+      <div class="card">
+        <h3>个人资料</h3>
+        <el-form label-position="top"
+          ><div class="form-grid">
+            <el-form-item label="姓名" for="profile-name"
+              ><el-input id="profile-name" v-model="profile.name" /></el-form-item
+            ><el-form-item label="邮箱" for="profile-email"
+              ><el-input id="profile-email" v-model="profile.email"
+            /></el-form-item>
+          </div>
+          <DynamicFields
+            :fields="defaultFields"
+            scope="PERSON"
+            :answers="profile.profile || {}"
+            prefix="profile"
+          /><el-form-item label="指导老师身份"
+            ><el-tag :type="auth.user?.isCoach ? 'success' : 'info'">{{
+              auth.user?.isCoach ? '已获授权' : '尚未授权'
+            }}</el-tag
+            ><span class="form-help" style="margin-left: 10px"
+              >由管理员生成邀请链接，确认后生效。</span
+            ></el-form-item
+          ><el-button type="primary" :loading="busy" @click="save">保存资料</el-button></el-form
+        >
+      </div>
+    </div>
+    <div class="card">
+      <h3>登录会话</h3>
+      <el-table :data="sessions"
+        ><el-table-column label="设备" prop="userAgent" min-width="220" /><el-table-column
+          label="登录时间"
+          width="190"
+          ><template #default="{ row }">{{ date(row.createdAt) }}</template></el-table-column
+        ><el-table-column label="操作" width="100"
+          ><template #default="{ row }"
+            ><el-button
+              text
+              type="danger"
+              @click="
+                api(`/auth/sessions/${row.id}`, 'DELETE').then(
+                  () => (sessions = sessions.filter((x) => x.id !== row.id)),
+                )
+              "
+              >撤销</el-button
+            ></template
+          ></el-table-column
+        ></el-table
+      >
+    </div></template
+  >
+</template>
+<style scoped>
+.auth-layout {
+  display: grid;
+  grid-template-columns: 1fr 440px;
+  gap: 70px;
+  max-width: 1050px;
+  margin: 50px auto;
+}
+.auth-intro {
+  padding-top: 75px;
+}
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: #2080f0;
+}
+.auth-intro h1 {
+  font-size: 40px;
+  line-height: 1.5;
+  font-weight: 600;
+  margin: 20px 0;
+}
+.auth-intro p {
+  color: #909399;
+  line-height: 2;
+  margin-bottom: 32px;
+}
+.auth-card {
+  padding: 34px;
+}
+.auth-links {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+@media (max-width: 760px) {
+  .auth-layout {
+    grid-template-columns: 1fr;
+    margin: 10px auto;
+    gap: 22px;
+  }
+  .auth-intro {
+    padding: 0;
+  }
+  .auth-intro h1 {
+    font-size: 27px;
+  }
+  .auth-intro p {
+    display: none;
+  }
+  .auth-card {
+    padding: 24px;
+  }
+}
+</style>

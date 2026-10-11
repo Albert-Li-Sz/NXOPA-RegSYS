@@ -1,0 +1,50 @@
+$ pnpm -r build
+Scope: 6 of 7 workspace projects
+apps/mcp-adapter build$ tsc --noEmit
+plugins/hydro-contest-center build$ node -e "console.log('Hydro loads the TypeScript plugin directly')"
+packages/contracts build$ tsc --noEmit
+plugins/hydro-contest-center build: Hydro loads the TypeScript plugin directly
+plugins/hydro-contest-center build: Done
+packages/contracts build: Done
+packages/connectors build$ tsc --noEmit
+apps/web build$ vue-tsc --noEmit && vite build
+apps/mcp-adapter build: Done
+packages/connectors build: Done
+apps/server build$ tsc --noEmit
+apps/server build: Done
+apps/web build: vite v8.3.4 building client environment for production...
+apps/web build: transforming...
+apps/web build: ✓ 1733 modules transformed.
+apps/web build: rendering chunks...
+apps/web build: computing gzip size...
+apps/web build: dist/index.html                                      0.95 kB │ gzip:   0.60 kB
+apps/web build: dist/assets/Contest-BhHheiO8.css                     0.15 kB │ gzip:   0.13 kB
+apps/web build: dist/assets/Admin-8xU2dpbh.css                       0.16 kB │ gzip:   0.13 kB
+apps/web build: dist/assets/Invite-C1YwDhkS.css                      0.55 kB │ gzip:   0.26 kB
+apps/web build: dist/assets/Account-Bo_7Lnm5.css                     0.81 kB │ gzip:   0.35 kB
+apps/web build: dist/assets/Contests-B_beMqTm.css                    1.60 kB │ gzip:   0.58 kB
+apps/web build: dist/assets/Home-DRrPkVLm.css                        4.51 kB │ gzip:   1.30 kB
+apps/web build: dist/assets/index-CgbxY29y.css                     367.14 kB │ gzip:  49.85 kB
+apps/web build: dist/assets/_plugin-vue_export-helper-BDNMzG2s.js    0.08 kB │ gzip:   0.09 kB
+apps/web build: dist/assets/NotFound-DqQIwiCl.js                     0.47 kB │ gzip:   0.35 kB
+apps/web build: dist/assets/Home-D_ngLtMn.js                         2.61 kB │ gzip:   1.37 kB
+apps/web build: dist/assets/DynamicFields-CXKvnd84.js                3.13 kB │ gzip:   1.29 kB
+apps/web build: dist/assets/MyRegistrations-IqMF4c5e.js              3.57 kB │ gzip:   1.81 kB
+apps/web build: dist/assets/Contests-D7VdlABo.js                     4.53 kB │ gzip:   2.19 kB
+apps/web build: dist/assets/Invite-ZYglMg1t.js                       4.68 kB │ gzip:   2.35 kB
+apps/web build: dist/assets/Support-CGHQe3MD.js                      6.14 kB │ gzip:   2.53 kB
+apps/web build: dist/assets/Contest-BbaFH31Q.js                      6.48 kB │ gzip:   2.66 kB
+apps/web build: dist/assets/Account-WcuzS-Vv.js                      7.76 kB │ gzip:   3.23 kB
+apps/web build: dist/assets/Registration-iNSRZpjJ.js                24.72 kB │ gzip:   7.73 kB
+apps/web build: dist/assets/ContestEditor-HJafuDSy.js               25.54 kB │ gzip:   7.72 kB
+apps/web build: dist/assets/Admin-BIrwMyjG.js                       31.09 kB │ gzip:   9.03 kB
+apps/web build: dist/assets/runtime-core.esm-bundler-DmYqK58L.js    65.40 kB │ gzip:  25.65 kB
+apps/web build: dist/assets/api-BEvhfOFi.js                         94.12 kB │ gzip:  34.39 kB
+apps/web build: dist/assets/index-CvsgZT1A.js                      967.03 kB │ gzip: 305.74 kB
+apps/web build: ✓ built in 698ms
+apps/web build: [plugin builtin:vite-reporter] 
+apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+apps/web build: - Using dynamic import() to code-split the application
+apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+apps/web build: Done

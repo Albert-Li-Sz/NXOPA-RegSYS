@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "compiler": "XeLaTeX, two passes, shell escape disabled",
+  "pages": 13,
+  "screenshots": 14,
+  "renderEngine": "PDFium",
+  "visualReview": "All 13 pages reviewed; Chinese text, screenshot readability, pagination and code checked",
+  "warnings": [],
+  "artifacts": [
+    {
+      "path": "output/pdf/configuration-guide.pdf",
+      "bytes": 1521276,
+      "sha256": "4f77f7826d21b235474bb1c11b10bc1e7a60140a015e493ca7810195412034a3"
+    },
+    {
+      "path": "output/pdf/configuration-guide-source.zip",
+      "bytes": 1194310,
+      "sha256": "cec605a363cebed113d81ba186818b94cbae138f8b5ac808da7713f1e928c118"
+    },
+    {
+      "path": "docs/CONFIGURATION_GUIDE.tex",
+      "bytes": 16902,
+      "sha256": "fadfdc1e6c13000c0bfc741f8c57d296229f67072a795d74c63d4ea289538a0a"
+    }
+  ],
+  "checkedAt": "2026-10-11T18:38:26.296237+00:00"
+}

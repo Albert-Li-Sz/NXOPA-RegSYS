@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "checkedAt": "2026-10-11T18:39:05.042359+00:00",
+  "scope": "Login continuation, administrator SMTP configuration, Chinese labels and screenshot LaTeX tutorial",
+  "typecheck": "passed",
+  "productionBuild": "passed",
+  "format": "passed",
+  "unitTests": 4,
+  "mailChecks": 9,
+  "browserTests": 8,
+  "authenticationChecks": 3,
+  "invitationChecks": 14,
+  "dockerSettingsChecks": 5,
+  "tutorial": {
+    "pages": 13,
+    "screenshots": 14
+  },
+  "buildWarnings": ["Existing web bundle chunk exceeds 500 kB; build completed successfully"],
+  "notRerun": [
+    "Complete OJ account creation acceptance",
+    "10,000-registration load test",
+    "Full backup restoration acceptance"
+  ]
+}

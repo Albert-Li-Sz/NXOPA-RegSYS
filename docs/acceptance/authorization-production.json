@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "checks": [
+    "Production health, six applied migrations and existing initialized administrator login",
+    "Public email signup and real container Worker / Mailpit verification retain invitation return path",
+    "Explicit URL acceptance grants only the selected contest in the production API",
+    "Production revocation immediately blocks access and used URL replay cannot restore the role",
+    "API healthy, Worker and web running; development and Compose pages reachable"
+  ],
+  "migrations": [
+    "202610110001_initial",
+    "202610110002_scope_and_documents",
+    "202610110003_coach_identity",
+    "202610110004_oauth_auth_method",
+    "202610110005_society_brand",
+    "202610110006_authorization_invitations"
+  ],
+  "durationMs": 2178,
+  "checkedAt": "2026-10-11T17:41:31.292Z"
+}

@@ -1,0 +1,14 @@
+name: contest-center-dev
+services:
+  latex:
+    build: ../latex-runner
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1200m
+    cpus: 1
+    pids_limit: 64
+    tmpfs: [/tmp:size=64m]
+    volumes: [../../.runtime/latex:/jobs]

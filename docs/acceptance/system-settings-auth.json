@@ -1,0 +1,7 @@
+{
+  "report": [
+    "Mailpit delivery, email verification and single-use token",
+    "password recovery and revocation of previous sessions",
+    "Retired third-party login, binding, callback and administrator configuration routes return 404"
+  ]
+}

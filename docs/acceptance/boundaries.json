@@ -1,0 +1,13 @@
+{
+  "report": [
+    "Unchanged save preserves review, qualification and version",
+    "Federation envelope applies contest and field permissions",
+    "Federation callback verifies remote IDs and rejects invented results",
+    "Token revocation and encrypted idempotency replay records",
+    "Real webhook signature, durable failure and retry",
+    "XeLaTeX no network, read-only container, private per-job UID, no shell execution (SUCCESS)",
+    "Runaway TeX compilation terminates within CPU/time limits",
+    "Worker heartbeat and persisted queue metrics",
+    "Chinese PDF with authorized photo assets, batch seat assignment and versioned regeneration"
+  ]
+}

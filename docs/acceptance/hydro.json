@@ -1,0 +1,18 @@
+{
+  "platform": "HYDRO",
+  "startedAt": "2026-10-11T12:48:42.471Z",
+  "version": "5.0.7",
+  "result": {
+    "state": "VERIFIED",
+    "username": "cc_306490dc7835c0c976f27786",
+    "remoteTeamId": "4",
+    "remoteUserId": "4",
+    "schemaVersion": 1,
+    "registrationId": "0867960f-337d-4379-aca2-1b51f14ef80a"
+  },
+  "repeatSync": "PASS",
+  "contestAccess": "PASS",
+  "login": "PASS",
+  "failureRecovery": "PASS",
+  "status": "PASS"
+}

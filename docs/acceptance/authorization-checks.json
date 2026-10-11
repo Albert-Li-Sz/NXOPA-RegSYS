@@ -1,0 +1,48 @@
+{
+  "checkedAt": "2026-10-11T17:46:09.271828+00:00",
+  "passed": true,
+  "steps": [
+    {
+      "command": "pnpm typecheck",
+      "exitCode": 0,
+      "log": "authorization-typecheck.txt"
+    },
+    {
+      "command": "pnpm build",
+      "exitCode": 0,
+      "log": "authorization-build.txt"
+    },
+    {
+      "command": "pnpm test",
+      "exitCode": 0,
+      "log": "authorization-unit.txt"
+    },
+    {
+      "command": "pnpm format:check",
+      "exitCode": 0,
+      "log": "authorization-format.txt"
+    },
+    {
+      "command": "docker compose build api worker web",
+      "exitCode": 0,
+      "log": "authorization-docker-build.txt"
+    },
+    {
+      "command": "docker compose run --rm --build initialize",
+      "exitCode": 0,
+      "log": "authorization-docker-migrate.txt"
+    },
+    {
+      "command": "docker compose up -d --no-deps api worker web",
+      "exitCode": 0,
+      "log": "authorization-docker-start.txt"
+    }
+  ],
+  "unitCases": 4,
+  "authorizationGroups": 14,
+  "businessRegressionGroups": 14,
+  "browserCases": 6,
+  "mailReturnFlowRetest": 1,
+  "productionChecks": 5,
+  "migrationCount": 6
+}

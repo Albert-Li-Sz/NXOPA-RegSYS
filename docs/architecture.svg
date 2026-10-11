@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1500" viewBox="0 0 1500 1500" role="img" aria-labelledby="title desc">
+<title id="title">竞赛报名中心系统结构图</title>
+<desc id="desc">用户与只读 MCP 通过官网和统一 API 访问报名系统。API 使用 PostgreSQL、Redis 和私有文件卷；Worker 完成评测平台、邮件和隔离 LaTeX 编译任务。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7890ae"/></marker></defs>
+<rect width="1500" height="1500" fill="#f6f8fc"/>
+<style>text{font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif}.heading{font-size:29px;font-weight:650;fill:#20344e}.sub{font-size:18px;fill:#697b91}.label{font-size:21px;font-weight:600;fill:#304b6f}.body{font-size:18px;fill:#506b8b}.small{font-size:16px;fill:#667c95}.edge{fill:none;stroke:#7890ae;stroke-width:2.3;marker-end:url(#arrow);stroke-linejoin:round}.tag{font-size:15px;fill:#5d7592}</style>
+
+<text x="64" y="66" class="heading" text-anchor="start">竞赛报名中心系统结构图</text>
+<text x="64" y="104" class="sub" text-anchor="start">单站点多竞赛 · Vue 3 + NestJS · Docker 自托管</text>
+<rect x="64" y="152" width="800" height="88" rx="12" fill="#fff" stroke="#dce5f1"/>
+<text x="88" y="187" class="label" text-anchor="start">官网与后台访问者</text>
+<text x="88" y="218" class="body" text-anchor="start">参赛者  /  指导老师  /  竞赛管理员  /  系统管理员</text>
+<rect x="936" y="152" width="500" height="88" rx="12" fill="#edf5ff" stroke="#bdd7fa"/>
+<text x="960" y="187" class="label" text-anchor="start">只读 MCP 适配器</text>
+<text x="960" y="218" class="body" text-anchor="start">授权查询 API；后期机器人复用接口</text>
+<rect x="64" y="288" width="800" height="94" rx="12" fill="#fff" stroke="#dce5f1"/>
+<text x="88" y="324" class="label" text-anchor="start">Caddy HTTPS 入口</text>
+<text x="88" y="354" class="body" text-anchor="start">Vue 3 官网与管理后台 · API 同域代理</text>
+<rect x="936" y="288" width="500" height="94" rx="12" fill="#fff" stroke="#dce5f1"/>
+<text x="960" y="324" class="label" text-anchor="start">第三方身份服务</text>
+<text x="960" y="354" class="body" text-anchor="start">通用 OAuth2 / OIDC · 登录与账号绑定</text>
+<rect x="64" y="446" width="800" height="280" rx="12" fill="#fff" stroke="#bdd7fa"/>
+<text x="88" y="487" class="label" text-anchor="start">NestJS API 统一业务与权限</text>
+<text x="88" y="518" class="small" text-anchor="start">网页、老师代办、联合注册与自动化使用同一套业务规则</text>
+<rect x="88" y="540" width="234" height="41" rx="7" fill="#f1f6fc" stroke="#e4ecf6"/>
+<text x="205" y="567" class="body" text-anchor="middle">账号与身份</text>
+<rect x="338" y="540" width="234" height="41" rx="7" fill="#f1f6fc" stroke="#e4ecf6"/>
+<text x="455" y="567" class="body" text-anchor="middle">竞赛与公告</text>
+<rect x="588" y="540" width="234" height="41" rx="7" fill="#f1f6fc" stroke="#e4ecf6"/>
+<text x="705" y="567" class="body" text-anchor="middle">全局字段与表单</text>
+<rect x="88" y="593" width="234" height="41" rx="7" fill="#f1f6fc" stroke="#e4ecf6"/>
+<text x="205" y="620" class="body" text-anchor="middle">个人与团队报名</text>
+<rect x="338" y="593" width="234" height="41" rx="7" fill="#f1f6fc" stroke="#e4ecf6"/>
+<text x="455" y="620" class="body" text-anchor="middle">指导老师与审核</text>
+<rect x="588" y="593" width="234" height="41" rx="7" fill="#f1f6fc" stroke="#e4ecf6"/>
+<text x="705" y="620" class="body" text-anchor="middle">线下财务与账簿</text>
+<rect x="88" y="646" width="234" height="41" rx="7" fill="#f1f6fc" stroke="#e4ecf6"/>
+<text x="205" y="673" class="body" text-anchor="middle">工单与准考证</text>
+<rect x="338" y="646" width="234" height="41" rx="7" fill="#f1f6fc" stroke="#e4ecf6"/>
+<text x="455" y="673" class="body" text-anchor="middle">平台与开放 API</text>
+<rect x="588" y="646" width="234" height="41" rx="7" fill="#f1f6fc" stroke="#e4ecf6"/>
+<text x="705" y="673" class="body" text-anchor="middle">文件、审计与事件</text>
+<rect x="936" y="446" width="500" height="110" rx="12" fill="#edf5ff" stroke="#bdd7fa"/>
+<text x="960" y="484" class="label" text-anchor="start">Worker 异步任务</text>
+<text x="960" y="515" class="body" text-anchor="start">平台同步 · 邮件 · PDF · 批量导出</text>
+<text x="960" y="540" class="small" text-anchor="start">逐步记录结果，支持去重、重试与读回验证</text>
+<rect x="936" y="632" width="500" height="244" rx="12" fill="#fff" stroke="#dce5f1"/>
+<text x="960" y="672" class="label" text-anchor="start">平台与邮件服务</text>
+<text x="960" y="703" class="body" text-anchor="start">Hydro 桥接插件</text>
+<text x="960" y="723" class="tag" text-anchor="start">创建比赛账号，加入域与比赛</text>
+<text x="960" y="747" class="body" text-anchor="start">DOMjudge 版本化 API</text>
+<text x="960" y="767" class="tag" text-anchor="start">创建队伍与用户，确认目标竞赛资格</text>
+<text x="960" y="791" class="body" text-anchor="start">后续竞赛平台</text>
+<text x="960" y="811" class="tag" text-anchor="start">联合注册协议与 Connector 扩展</text>
+<text x="960" y="835" class="body" text-anchor="start">SMTP 邮箱服务</text>
+<text x="960" y="855" class="tag" text-anchor="start">验证邮件、审核与工单通知</text>
+<rect x="64" y="802" width="250" height="130" rx="12" fill="#fff" stroke="#dce5f1"/>
+<text x="84" y="839" class="label" text-anchor="start">PostgreSQL</text>
+<text x="84" y="870" class="body" text-anchor="start">报名、财务与权限</text>
+<text x="84" y="897" class="body" text-anchor="start">配置快照与 Outbox</text>
+<rect x="339" y="802" width="250" height="130" rx="12" fill="#fff" stroke="#dce5f1"/>
+<text x="359" y="839" class="label" text-anchor="start">Redis + BullMQ</text>
+<text x="359" y="870" class="body" text-anchor="start">会话与任务队列</text>
+<text x="359" y="897" class="body" text-anchor="start">数据库事件可恢复</text>
+<rect x="614" y="802" width="250" height="130" rx="12" fill="#fff" stroke="#dce5f1"/>
+<text x="634" y="839" class="label" text-anchor="start">私有文件卷</text>
+<text x="634" y="870" class="body" text-anchor="start">附件、凭证与 PDF</text>
+<text x="634" y="897" class="body" text-anchor="start">统一授权后下载</text>
+<rect x="64" y="1005" width="1372" height="110" rx="12" fill="#edf5ff" stroke="#bdd7fa"/>
+<text x="88" y="1041" class="label" text-anchor="start">独立 LaTeX 编译环境</text>
+<text x="88" y="1074" class="body" text-anchor="start">Worker 仅投递当前任务的资料与素材</text>
+<rect x="527" y="1028" width="259" height="63" rx="8" fill="#fff" stroke="#cadcf2"/>
+<text x="656.5" y="1066" class="label" text-anchor="middle">专用任务卷</text>
+<rect x="842" y="1028" width="564" height="63" rx="8" fill="#fff" stroke="#cadcf2"/>
+<text x="867" y="1054" class="body" text-anchor="start">XeLaTeX Runner · 每任务文件沙箱</text>
+<text x="867" y="1078" class="small" text-anchor="start">无网络，禁用 shell escape，无数据库或生产附件访问</text>
+<path d="M464 240 V288" class="edge"/>
+<path d="M464 382 V446" class="edge"/>
+<path d="M936 196 H906 V499 H864" class="edge"/>
+<text x="896" y="430" class="tag" text-anchor="end">查询</text>
+<path d="M936 335 H888 V602 H864" class="edge"/>
+<path d="M864 679 H912 V503 H936" class="edge"/>
+<text x="880" y="707" class="tag" text-anchor="start">事件与任务</text>
+<path d="M1186 556 V632" class="edge"/>
+<text x="1201" y="600" class="tag" text-anchor="start">适配器与通知</text>
+<path d="M189 726 V802" class="edge"/>
+<path d="M464 726 V802" class="edge"/>
+<path d="M739 726 V802" class="edge"/>
+<path d="M936 532 H920 V766 H464" class="edge"/>
+<text x="105" y="770" class="tag" text-anchor="start">业务与持久化</text>
+<path d="M936 514 H928 V962 H656 V1028" class="edge"/>
+<text x="954" y="959" class="tag" text-anchor="start">编译资料与结果通过任务卷交付</text>
+<path d="M786 1060 H842" class="edge"/>
+<text x="64" y="1161" class="label" text-anchor="start">实现原则</text>
+<text x="64" y="1196" class="body" text-anchor="start">审核、实际收款、平台同步与准考证分别记录；参赛资格由竞赛规则统一计算。</text>
+<text x="64" y="1285" class="label">完整项目实施顺序</text>
+<rect x="64" y="1316" width="215" height="99" rx="10" fill="#fff" stroke="#dce5f1"/>
+<text x="83" y="1354" class="label">P0</text>
+<text x="83" y="1389" class="body">界面与账号</text>
+<path d="M279 1365 H292" class="edge"/>
+<rect x="293" y="1316" width="215" height="99" rx="10" fill="#fff" stroke="#dce5f1"/>
+<text x="312" y="1354" class="label">P1</text>
+<text x="312" y="1389" class="body">报名与审核</text>
+<path d="M508 1365 H521" class="edge"/>
+<rect x="522" y="1316" width="215" height="99" rx="10" fill="#fff" stroke="#dce5f1"/>
+<text x="541" y="1354" class="label">P2</text>
+<text x="541" y="1389" class="body">线下财务</text>
+<path d="M737 1365 H750" class="edge"/>
+<rect x="751" y="1316" width="215" height="99" rx="10" fill="#fff" stroke="#dce5f1"/>
+<text x="770" y="1354" class="label">P3</text>
+<text x="770" y="1389" class="body">工单与准考证</text>
+<path d="M966 1365 H979" class="edge"/>
+<rect x="980" y="1316" width="215" height="99" rx="10" fill="#fff" stroke="#dce5f1"/>
+<text x="999" y="1354" class="label">P4</text>
+<text x="999" y="1389" class="body">平台与接口</text>
+<path d="M1195 1365 H1208" class="edge"/>
+<rect x="1209" y="1316" width="215" height="99" rx="10" fill="#fff" stroke="#dce5f1"/>
+<text x="1228" y="1354" class="label">P5</text>
+<text x="1228" y="1389" class="body">发布验收</text>
+<text x="64" y="1465" class="small">首版线下缴费；后续在线支付、更多平台与机器人通过已预留的接口扩展。</text>
+</svg>

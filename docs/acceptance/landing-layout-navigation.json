@@ -1,0 +1,32 @@
+{
+  "anonymousHome": {
+    "navigation": 0,
+    "login": 0,
+    "account": 0,
+    "role": 0,
+    "avatar": 0
+  },
+  "administratorHome": {
+    "navigation": 0,
+    "login": 0,
+    "account": 0,
+    "role": 0,
+    "avatar": 0
+  },
+  "entered": {
+    "path": "/contests",
+    "navigation": 1,
+    "login": 0,
+    "account": 1,
+    "role": 1,
+    "avatar": 1
+  },
+  "returnedHome": {
+    "navigation": 0,
+    "login": 0,
+    "account": 0,
+    "role": 0,
+    "avatar": 0
+  },
+  "errors": []
+}

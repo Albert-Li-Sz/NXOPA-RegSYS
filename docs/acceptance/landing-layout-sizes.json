@@ -1,0 +1,912 @@
+[
+  {
+    "name": "desktop",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "document": {
+      "width": 1280,
+      "height": 900
+    },
+    "header": {
+      "x": 76.796875,
+      "y": 0,
+      "width": 1126.390625,
+      "height": 80,
+      "right": 1203.1875,
+      "bottom": 80
+    },
+    "brand": {
+      "x": 127.984375,
+      "y": 17.5,
+      "width": 178,
+      "height": 45,
+      "right": 305.984375,
+      "bottom": 62.5
+    },
+    "hero": {
+      "x": 76.796875,
+      "y": 108,
+      "width": 1126.390625,
+      "height": 626.8125,
+      "right": 1203.1875,
+      "bottom": 734.8125
+    },
+    "title": {
+      "x": 128.984375,
+      "y": 272.34375,
+      "width": 497.25,
+      "height": 138.53125,
+      "right": 626.234375,
+      "bottom": 410.875
+    },
+    "logos": {
+      "x": 677.421875,
+      "y": 283.90625,
+      "width": 473.578125,
+      "height": 274.984375,
+      "right": 1151,
+      "bottom": 558.890625
+    },
+    "footer": {
+      "x": 76.796875,
+      "y": 805.40625,
+      "width": 1126.390625,
+      "height": 94.59375,
+      "right": 1203.1875,
+      "bottom": 900
+    },
+    "headerNavigation": 0,
+    "headerAccount": 0,
+    "oldDecorations": 0,
+    "journeySections": 0,
+    "teamName": "南京晓庄学院程序设计竞赛集训队",
+    "registrationModeNote": false,
+    "logoImages": [
+      {
+        "alt": "开放原子社 Logo",
+        "loaded": true
+      },
+      {
+        "alt": "南京晓庄学院 ICPC 集训队 Logo",
+        "loaded": true
+      }
+    ],
+    "labels": [
+      {
+        "text": "南晓开放原子社",
+        "height": 20.796875,
+        "lineHeight": 20.8,
+        "bottom": 537.5
+      },
+      {
+        "text": "南京晓庄学院程序设计竞赛集训队",
+        "height": 20.796875,
+        "lineHeight": 20.8,
+        "bottom": 537.5
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "name": "fullscreen",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "document": {
+      "width": 1920,
+      "height": 1080
+    },
+    "header": {
+      "x": 115.203125,
+      "y": 0,
+      "width": 1689.59375,
+      "height": 81,
+      "right": 1804.796875,
+      "bottom": 81
+    },
+    "brand": {
+      "x": 192,
+      "y": 18,
+      "width": 178,
+      "height": 45,
+      "right": 370,
+      "bottom": 63
+    },
+    "hero": {
+      "x": 115.203125,
+      "y": 114.390625,
+      "width": 1689.59375,
+      "height": 791.4375,
+      "right": 1804.796875,
+      "bottom": 905.828125
+    },
+    "title": {
+      "x": 193,
+      "y": 298.5,
+      "width": 746.359375,
+      "height": 207.8125,
+      "right": 939.359375,
+      "bottom": 506.3125
+    },
+    "logos": {
+      "x": 1016.15625,
+      "y": 315.203125,
+      "width": 710.84375,
+      "height": 389.796875,
+      "right": 1727,
+      "bottom": 705
+    },
+    "footer": {
+      "x": 115.203125,
+      "y": 985.40625,
+      "width": 1689.59375,
+      "height": 94.59375,
+      "right": 1804.796875,
+      "bottom": 1080
+    },
+    "headerNavigation": 0,
+    "headerAccount": 0,
+    "oldDecorations": 0,
+    "journeySections": 0,
+    "teamName": "南京晓庄学院程序设计竞赛集训队",
+    "registrationModeNote": false,
+    "logoImages": [
+      {
+        "alt": "开放原子社 Logo",
+        "loaded": true
+      },
+      {
+        "alt": "南京晓庄学院 ICPC 集训队 Logo",
+        "loaded": true
+      }
+    ],
+    "labels": [
+      {
+        "text": "南晓开放原子社",
+        "height": 27.640625,
+        "lineHeight": 27.648,
+        "bottom": 678.03125
+      },
+      {
+        "text": "南京晓庄学院程序设计竞赛集训队",
+        "height": 27.640625,
+        "lineHeight": 27.648,
+        "bottom": 678.03125
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "name": "wide",
+    "viewport": {
+      "width": 3008,
+      "height": 1568
+    },
+    "document": {
+      "width": 3008,
+      "height": 1568
+    },
+    "header": {
+      "x": 404,
+      "y": 0,
+      "width": 2200,
+      "height": 106,
+      "right": 2604,
+      "bottom": 106
+    },
+    "brand": {
+      "x": 492,
+      "y": 30.5,
+      "width": 178,
+      "height": 45,
+      "right": 670,
+      "bottom": 75.5
+    },
+    "hero": {
+      "x": 404,
+      "y": 154.03125,
+      "width": 2200,
+      "height": 1225.15625,
+      "right": 2604,
+      "bottom": 1379.1875
+    },
+    "title": {
+      "x": 493,
+      "y": 538.203125,
+      "width": 986.484375,
+      "height": 232.3125,
+      "right": 1479.484375,
+      "bottom": 770.515625
+    },
+    "logos": {
+      "x": 1575.484375,
+      "y": 542.703125,
+      "width": 939.515625,
+      "height": 447.796875,
+      "right": 2515,
+      "bottom": 990.5
+    },
+    "footer": {
+      "x": 404,
+      "y": 1473.40625,
+      "width": 2200,
+      "height": 94.59375,
+      "right": 2604,
+      "bottom": 1568
+    },
+    "headerNavigation": 0,
+    "headerAccount": 0,
+    "oldDecorations": 0,
+    "journeySections": 0,
+    "teamName": "南京晓庄学院程序设计竞赛集训队",
+    "registrationModeNote": false,
+    "logoImages": [
+      {
+        "alt": "开放原子社 Logo",
+        "loaded": true
+      },
+      {
+        "alt": "南京晓庄学院 ICPC 集训队 Logo",
+        "loaded": true
+      }
+    ],
+    "labels": [
+      {
+        "text": "南晓开放原子社",
+        "height": 32,
+        "lineHeight": 32,
+        "bottom": 962.703125
+      },
+      {
+        "text": "南京晓庄学院程序设计竞赛集训队",
+        "height": 32,
+        "lineHeight": 32,
+        "bottom": 962.703125
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "name": "comment-viewport",
+    "viewport": {
+      "width": 2343,
+      "height": 1472
+    },
+    "document": {
+      "width": 2343,
+      "height": 1472
+    },
+    "header": {
+      "x": 140.578125,
+      "y": 0,
+      "width": 2061.828125,
+      "height": 106,
+      "right": 2202.40625,
+      "bottom": 106
+    },
+    "brand": {
+      "x": 228.578125,
+      "y": 30.5,
+      "width": 178,
+      "height": 45,
+      "right": 406.578125,
+      "bottom": 75.5
+    },
+    "hero": {
+      "x": 140.578125,
+      "y": 151.15625,
+      "width": 2061.828125,
+      "height": 1134.90625,
+      "right": 2202.40625,
+      "bottom": 1286.0625
+    },
+    "title": {
+      "x": 229.578125,
+      "y": 490.203125,
+      "width": 916.875,
+      "height": 232.3125,
+      "right": 1146.453125,
+      "bottom": 722.515625
+    },
+    "logos": {
+      "x": 1240.171875,
+      "y": 494.703125,
+      "width": 873.234375,
+      "height": 447.796875,
+      "right": 2113.40625,
+      "bottom": 942.5
+    },
+    "footer": {
+      "x": 140.578125,
+      "y": 1377.40625,
+      "width": 2061.828125,
+      "height": 94.59375,
+      "right": 2202.40625,
+      "bottom": 1472
+    },
+    "headerNavigation": 0,
+    "headerAccount": 0,
+    "oldDecorations": 0,
+    "journeySections": 0,
+    "teamName": "南京晓庄学院程序设计竞赛集训队",
+    "registrationModeNote": false,
+    "logoImages": [
+      {
+        "alt": "开放原子社 Logo",
+        "loaded": true
+      },
+      {
+        "alt": "南京晓庄学院 ICPC 集训队 Logo",
+        "loaded": true
+      }
+    ],
+    "labels": [
+      {
+        "text": "南晓开放原子社",
+        "height": 32,
+        "lineHeight": 32,
+        "bottom": 914.703125
+      },
+      {
+        "text": "南京晓庄学院程序设计竞赛集训队",
+        "height": 32,
+        "lineHeight": 32,
+        "bottom": 914.703125
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "name": "laptop",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "document": {
+      "width": 1366,
+      "height": 768
+    },
+    "header": {
+      "x": 81.953125,
+      "y": 0,
+      "width": 1202.078125,
+      "height": 80,
+      "right": 1284.03125,
+      "bottom": 80
+    },
+    "brand": {
+      "x": 136.578125,
+      "y": 17.5,
+      "width": 178,
+      "height": 45,
+      "right": 314.578125,
+      "bottom": 62.5
+    },
+    "hero": {
+      "x": 81.953125,
+      "y": 105,
+      "width": 1202.078125,
+      "height": 500.8125,
+      "right": 1284.03125,
+      "bottom": 605.8125
+    },
+    "title": {
+      "x": 137.578125,
+      "y": 205.5,
+      "width": 530.734375,
+      "height": 147.8125,
+      "right": 668.3125,
+      "bottom": 353.3125
+    },
+    "logos": {
+      "x": 722.9375,
+      "y": 220.46875,
+      "width": 505.46875,
+      "height": 269.859375,
+      "right": 1228.40625,
+      "bottom": 490.328125
+    },
+    "footer": {
+      "x": 81.953125,
+      "y": 673.40625,
+      "width": 1202.078125,
+      "height": 94.59375,
+      "right": 1284.03125,
+      "bottom": 768
+    },
+    "headerNavigation": 0,
+    "headerAccount": 0,
+    "oldDecorations": 0,
+    "journeySections": 0,
+    "teamName": "南京晓庄学院程序设计竞赛集训队",
+    "registrationModeNote": false,
+    "logoImages": [
+      {
+        "alt": "开放原子社 Logo",
+        "loaded": true
+      },
+      {
+        "alt": "南京晓庄学院 ICPC 集训队 Logo",
+        "loaded": true
+      }
+    ],
+    "labels": [
+      {
+        "text": "南晓开放原子社",
+        "height": 20.796875,
+        "lineHeight": 20.8,
+        "bottom": 468.9375
+      },
+      {
+        "text": "南京晓庄学院程序设计竞赛集训队",
+        "height": 20.796875,
+        "lineHeight": 20.8,
+        "bottom": 468.9375
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "name": "short-desktop",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "document": {
+      "width": 1280,
+      "height": 720
+    },
+    "header": {
+      "x": 76.796875,
+      "y": 0,
+      "width": 1126.390625,
+      "height": 80,
+      "right": 1203.1875,
+      "bottom": 80
+    },
+    "brand": {
+      "x": 127.984375,
+      "y": 17.5,
+      "width": 178,
+      "height": 45,
+      "right": 305.984375,
+      "bottom": 62.5
+    },
+    "hero": {
+      "x": 76.796875,
+      "y": 105,
+      "width": 1126.390625,
+      "height": 452.8125,
+      "right": 1203.1875,
+      "bottom": 557.8125
+    },
+    "title": {
+      "x": 128.984375,
+      "y": 186.140625,
+      "width": 497.25,
+      "height": 138.53125,
+      "right": 626.234375,
+      "bottom": 324.671875
+    },
+    "logos": {
+      "x": 677.421875,
+      "y": 202.71875,
+      "width": 473.578125,
+      "height": 257.375,
+      "right": 1151,
+      "bottom": 460.09375
+    },
+    "footer": {
+      "x": 76.796875,
+      "y": 625.40625,
+      "width": 1126.390625,
+      "height": 94.59375,
+      "right": 1203.1875,
+      "bottom": 720
+    },
+    "headerNavigation": 0,
+    "headerAccount": 0,
+    "oldDecorations": 0,
+    "journeySections": 0,
+    "teamName": "南京晓庄学院程序设计竞赛集训队",
+    "registrationModeNote": false,
+    "logoImages": [
+      {
+        "alt": "开放原子社 Logo",
+        "loaded": true
+      },
+      {
+        "alt": "南京晓庄学院 ICPC 集训队 Logo",
+        "loaded": true
+      }
+    ],
+    "labels": [
+      {
+        "text": "南晓开放原子社",
+        "height": 20.796875,
+        "lineHeight": 20.8,
+        "bottom": 438.703125
+      },
+      {
+        "text": "南京晓庄学院程序设计竞赛集训队",
+        "height": 20.796875,
+        "lineHeight": 20.8,
+        "bottom": 438.703125
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "name": "short-wide",
+    "viewport": {
+      "width": 1920,
+      "height": 800
+    },
+    "document": {
+      "width": 1920,
+      "height": 800
+    },
+    "header": {
+      "x": 115.203125,
+      "y": 0,
+      "width": 1689.59375,
+      "height": 80,
+      "right": 1804.796875,
+      "bottom": 80
+    },
+    "brand": {
+      "x": 192,
+      "y": 17.5,
+      "width": 178,
+      "height": 45,
+      "right": 370,
+      "bottom": 62.5
+    },
+    "hero": {
+      "x": 115.203125,
+      "y": 105,
+      "width": 1689.59375,
+      "height": 529.21875,
+      "right": 1804.796875,
+      "bottom": 634.21875
+    },
+    "title": {
+      "x": 193,
+      "y": 218.703125,
+      "width": 746.359375,
+      "height": 147.8125,
+      "right": 939.359375,
+      "bottom": 366.515625
+    },
+    "logos": {
+      "x": 1016.15625,
+      "y": 224.296875,
+      "width": 710.84375,
+      "height": 290.609375,
+      "right": 1727,
+      "bottom": 514.90625
+    },
+    "footer": {
+      "x": 115.203125,
+      "y": 705.40625,
+      "width": 1689.59375,
+      "height": 94.59375,
+      "right": 1804.796875,
+      "bottom": 800
+    },
+    "headerNavigation": 0,
+    "headerAccount": 0,
+    "oldDecorations": 0,
+    "journeySections": 0,
+    "teamName": "南京晓庄学院程序设计竞赛集训队",
+    "registrationModeNote": false,
+    "logoImages": [
+      {
+        "alt": "开放原子社 Logo",
+        "loaded": true
+      },
+      {
+        "alt": "南京晓庄学院 ICPC 集训队 Logo",
+        "loaded": true
+      }
+    ],
+    "labels": [
+      {
+        "text": "南晓开放原子社",
+        "height": 27.640625,
+        "lineHeight": 27.648,
+        "bottom": 487.9375
+      },
+      {
+        "text": "南京晓庄学院程序设计竞赛集训队",
+        "height": 27.640625,
+        "lineHeight": 27.648,
+        "bottom": 487.9375
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "name": "tablet",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "document": {
+      "width": 768,
+      "height": 1041
+    },
+    "header": {
+      "x": 46.078125,
+      "y": 0,
+      "width": 675.828125,
+      "height": 80,
+      "right": 721.90625,
+      "bottom": 80
+    },
+    "brand": {
+      "x": 76.796875,
+      "y": 17.5,
+      "width": 178,
+      "height": 45,
+      "right": 254.796875,
+      "bottom": 62.5
+    },
+    "hero": {
+      "x": 46.078125,
+      "y": 111.71875,
+      "width": 675.828125,
+      "height": 737.34375,
+      "right": 721.90625,
+      "bottom": 849.0625
+    },
+    "title": {
+      "x": 77.796875,
+      "y": 196.71875,
+      "width": 612.390625,
+      "height": 116.15625,
+      "right": 690.1875,
+      "bottom": 312.875
+    },
+    "logos": {
+      "x": 113.984375,
+      "y": 542.875,
+      "width": 540,
+      "height": 265.1875,
+      "right": 653.984375,
+      "bottom": 808.0625
+    },
+    "footer": {
+      "x": 46.078125,
+      "y": 923.375,
+      "width": 675.828125,
+      "height": 117.390625,
+      "right": 721.90625,
+      "bottom": 1040.765625
+    },
+    "headerNavigation": 0,
+    "headerAccount": 0,
+    "oldDecorations": 0,
+    "journeySections": 0,
+    "teamName": "南京晓庄学院程序设计竞赛集训队",
+    "registrationModeNote": false,
+    "logoImages": [
+      {
+        "alt": "开放原子社 Logo",
+        "loaded": true
+      },
+      {
+        "alt": "南京晓庄学院 ICPC 集训队 Logo",
+        "loaded": true
+      }
+    ],
+    "labels": [
+      {
+        "text": "南晓开放原子社",
+        "height": 20.796875,
+        "lineHeight": 20.8,
+        "bottom": 786.671875
+      },
+      {
+        "text": "南京晓庄学院程序设计竞赛集训队",
+        "height": 20.796875,
+        "lineHeight": 20.8,
+        "bottom": 786.671875
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "name": "mobile",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "document": {
+      "width": 390,
+      "height": 1068
+    },
+    "header": {
+      "x": 16,
+      "y": 0,
+      "width": 358,
+      "height": 80,
+      "right": 374,
+      "bottom": 80
+    },
+    "brand": {
+      "x": 38,
+      "y": 20.5,
+      "width": 149,
+      "height": 39,
+      "right": 187,
+      "bottom": 59.5
+    },
+    "hero": {
+      "x": 16,
+      "y": 106.3125,
+      "width": 358,
+      "height": 668.34375,
+      "right": 374,
+      "bottom": 774.65625
+    },
+    "title": {
+      "x": 39,
+      "y": 185.3125,
+      "width": 312,
+      "height": 82.375,
+      "right": 351,
+      "bottom": 267.6875
+    },
+    "logos": {
+      "x": 39,
+      "y": 512.46875,
+      "width": 312,
+      "height": 227.1875,
+      "right": 351,
+      "bottom": 739.65625
+    },
+    "footer": {
+      "x": 16,
+      "y": 867.15625,
+      "width": 358,
+      "height": 200.59375,
+      "right": 374,
+      "bottom": 1067.75
+    },
+    "headerNavigation": 0,
+    "headerAccount": 0,
+    "oldDecorations": 0,
+    "journeySections": 0,
+    "teamName": "南京晓庄学院程序设计竞赛集训队",
+    "registrationModeNote": false,
+    "logoImages": [
+      {
+        "alt": "开放原子社 Logo",
+        "loaded": true
+      },
+      {
+        "alt": "南京晓庄学院 ICPC 集训队 Logo",
+        "loaded": true
+      }
+    ],
+    "labels": [
+      {
+        "text": "南晓开放原子社",
+        "height": 38.390625,
+        "lineHeight": 19.2,
+        "bottom": 719.859375
+      },
+      {
+        "text": "南京晓庄学院程序设计竞赛集训队",
+        "height": 38.390625,
+        "lineHeight": 19.2,
+        "bottom": 719.859375
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "name": "small-mobile",
+    "viewport": {
+      "width": 320,
+      "height": 740
+    },
+    "document": {
+      "width": 320,
+      "height": 1074
+    },
+    "header": {
+      "x": 16,
+      "y": 0,
+      "width": 288,
+      "height": 80,
+      "right": 304,
+      "bottom": 80
+    },
+    "brand": {
+      "x": 38,
+      "y": 20.5,
+      "width": 149,
+      "height": 39,
+      "right": 187,
+      "bottom": 59.5
+    },
+    "hero": {
+      "x": 16,
+      "y": 105,
+      "width": 288,
+      "height": 659.875,
+      "right": 304,
+      "bottom": 764.875
+    },
+    "title": {
+      "x": 39,
+      "y": 184,
+      "width": 242,
+      "height": 73.90625,
+      "right": 281,
+      "bottom": 257.90625
+    },
+    "logos": {
+      "x": 39,
+      "y": 502.6875,
+      "width": 242,
+      "height": 227.1875,
+      "right": 281,
+      "bottom": 729.875
+    },
+    "footer": {
+      "x": 16,
+      "y": 856.0625,
+      "width": 288,
+      "height": 217.59375,
+      "right": 304,
+      "bottom": 1073.65625
+    },
+    "headerNavigation": 0,
+    "headerAccount": 0,
+    "oldDecorations": 0,
+    "journeySections": 0,
+    "teamName": "南京晓庄学院程序设计竞赛集训队",
+    "registrationModeNote": false,
+    "logoImages": [
+      {
+        "alt": "开放原子社 Logo",
+        "loaded": true
+      },
+      {
+        "alt": "南京晓庄学院 ICPC 集训队 Logo",
+        "loaded": true
+      }
+    ],
+    "labels": [
+      {
+        "text": "南晓开放原子社",
+        "height": 38.390625,
+        "lineHeight": 19.2,
+        "bottom": 710.078125
+      },
+      {
+        "text": "南京晓庄学院程序设计竞赛集训队",
+        "height": 38.390625,
+        "lineHeight": 19.2,
+        "bottom": 710.078125
+      }
+    ],
+    "errors": [],
+    "passed": true
+  }
+]

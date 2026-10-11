@@ -1,0 +1,10 @@
+$ vitest run
+
+ RUN  v4.1.11 /Users/albert_li/data/Code/Contest_Center
+
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  01:32:03
+   Duration  374ms (transform 39ms, setup 0ms, import 242ms, tests 4ms, environment 0ms)
+

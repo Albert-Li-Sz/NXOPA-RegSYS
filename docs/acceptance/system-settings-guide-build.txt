@@ -1,0 +1,1 @@
+Created output/pdf/configuration-guide.pdf and source bundle.

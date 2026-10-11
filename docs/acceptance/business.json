@@ -1,0 +1,62 @@
+{
+  "run": "1791714261016",
+  "report": [
+    {
+      "case": "atomic HTTP idempotency / concurrent create",
+      "status": "PASS"
+    },
+    {
+      "case": "free individual, optional coach, review and eligibility",
+      "status": "PASS"
+    },
+    {
+      "case": "participant isolation and manager scope",
+      "status": "PASS"
+    },
+    {
+      "case": "optimistic concurrency and critical edits invalidate qualification",
+      "status": "PASS"
+    },
+    {
+      "case": "invited team, confirmed teacher link, teacher edits and submits",
+      "status": "PASS"
+    },
+    {
+      "case": "Chinese individual / shared team PDF, release and download authorization",
+      "status": "PASS",
+      "details": ["c8217b10-4681-45c3-b220-14846d48f0b8", "ff63fd99-fc8d-4f33-a3aa-2191ea233f74"]
+    },
+    {
+      "case": "teacher unlink immediately revokes access and admission",
+      "status": "PASS"
+    },
+    {
+      "case": "manual team, per-person fee, review first, partial payment, duplicate confirmation",
+      "status": "PASS"
+    },
+    {
+      "case": "invoice request, admin uploads invoice, authorized download and void",
+      "status": "PASS"
+    },
+    {
+      "case": "payment first, rejection, actual offline refund is idempotent",
+      "status": "PASS"
+    },
+    {
+      "case": "scoped support, attachments, replies and status",
+      "status": "PASS"
+    },
+    {
+      "case": "automation token contest and field boundaries",
+      "status": "PASS"
+    },
+    {
+      "case": "compiler failures persisted and queryable",
+      "status": "PASS"
+    },
+    {
+      "case": "template version invalidates previously issued admission",
+      "status": "PASS"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "report": [
+    "Production Compose health, four migrations, formal administrator bootstrap and login",
+    "Development demo accounts absent in production database",
+    "Production private volumes, Outbox worker and isolated Chinese PDF generation",
+    "PostgreSQL, Redis, API and Worker restart preserves sessions, registration and private attachment",
+    "Tampered encrypted backup is rejected before changing database or private files",
+    "AES-256-GCM encrypted backup restores database versions, ledger, private files and original session"
+  ]
+}

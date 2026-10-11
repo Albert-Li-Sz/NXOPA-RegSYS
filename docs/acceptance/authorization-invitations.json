@@ -1,0 +1,63 @@
+{
+  "passed": true,
+  "report": [
+    {
+      "case": "only system administrators issue invitations; recipient and scope validation",
+      "status": "PASS"
+    },
+    {
+      "case": "grant endpoint returns a URL; opening it grants nothing; wrong account is rejected",
+      "status": "PASS"
+    },
+    {
+      "case": "ten concurrent confirmations grant one contest role once; other contests remain forbidden",
+      "status": "PASS"
+    },
+    {
+      "case": "revocation is immediate, cancels pending links, and replaying a used link cannot restore permissions",
+      "status": "PASS"
+    },
+    {
+      "case": "expired and withdrawn invitations are unusable; recipients cannot manage administrator invitations",
+      "status": "PASS"
+    },
+    {
+      "case": "invitation creation is idempotent; database, list and audit never reveal raw invitation tokens",
+      "status": "PASS"
+    },
+    {
+      "case": "deleted competition cannot be authorized",
+      "status": "PASS"
+    },
+    {
+      "case": "teacher identity requires explicit invitation confirmation; profile cannot self-grant roles",
+      "status": "PASS"
+    },
+    {
+      "case": "system administrator confirms before granting; revoked issuer links cannot revive after reauthorization",
+      "status": "PASS"
+    },
+    {
+      "case": "new account invitation supports public signup, Mailpit verification, safe return URL and later role acceptance",
+      "status": "PASS"
+    },
+    {
+      "case": "public email registration remains open without an invitation and grants no extra role",
+      "status": "PASS"
+    },
+    {
+      "case": "existing member links remain single-use under competing accounts and do not duplicate members",
+      "status": "PASS"
+    },
+    {
+      "case": "teacher role revocation immediately removes access, association, eligibility and all pending teacher links",
+      "status": "PASS"
+    },
+    {
+      "case": "concurrent teacher association and role revocation cannot leave residual access",
+      "status": "PASS"
+    }
+  ],
+  "durationMs": 4557,
+  "checkedAt": "2026-10-11T17:42:27.967Z"
+}

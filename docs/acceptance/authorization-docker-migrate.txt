@@ -1,0 +1,116 @@
+ Container contest-center-postgres-1 Running 
+ Container contest-center-redis-1 Running 
+ Image contest-center-initialize Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 597B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.22kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node:24.12.0-bookworm-slim
+#3 DONE 0.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 138B done
+#4 DONE 0.0s
+
+#5 [build  1/18] FROM docker.io/library/node:24.12.0-bookworm-slim@sha256:7326fb2dbdce998edd72140946851be64ef4a643e8715e138ca467e8e9d92c99
+#5 resolve docker.io/library/node:24.12.0-bookworm-slim@sha256:7326fb2dbdce998edd72140946851be64ef4a643e8715e138ca467e8e9d92c99 done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 15.54kB 0.0s done
+#6 DONE 0.0s
+
+#7 [build  7/18] COPY apps/web/package.json ./apps/web/package.json
+#7 CACHED
+
+#8 [build  6/18] COPY apps/server/package.json ./apps/server/package.json
+#8 CACHED
+
+#9 [build  2/18] RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates python3 make g++ && rm -rf /var/lib/apt/lists/*
+#9 CACHED
+
+#10 [build  9/18] COPY packages/contracts/package.json ./packages/contracts/package.json
+#10 CACHED
+
+#11 [build 15/18] COPY plugins ./plugins
+#11 CACHED
+
+#12 [build 17/18] RUN DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm --filter @contest-center/server db:generate
+#12 CACHED
+
+#13 [build  3/18] RUN npm install -g pnpm@11.25.0
+#13 CACHED
+
+#14 [build 14/18] COPY packages ./packages
+#14 CACHED
+
+#15 [build 18/18] RUN pnpm build
+#15 CACHED
+
+#16 [build  4/18] WORKDIR /app
+#16 CACHED
+
+#17 [build  5/18] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+#17 CACHED
+
+#18 [build  8/18] COPY apps/mcp-adapter/package.json ./apps/mcp-adapter/package.json
+#18 CACHED
+
+#19 [build 12/18] RUN pnpm install --frozen-lockfile
+#19 CACHED
+
+#20 [build 11/18] COPY plugins/hydro-contest-center/package.json ./plugins/hydro-contest-center/package.json
+#20 CACHED
+
+#21 [build 10/18] COPY packages/connectors/package.json ./packages/connectors/package.json
+#21 CACHED
+
+#22 [build 13/18] COPY apps ./apps
+#22 CACHED
+
+#23 [build 16/18] COPY scripts ./scripts
+#23 CACHED
+
+#24 [runtime 1/1] WORKDIR /app/apps/server
+#24 CACHED
+
+#25 exporting to image
+#25 exporting layers done
+#25 exporting manifest sha256:233fd4712e0b81d3061997a3ed815e8a9f862422e725096036ab67d7934f3ce8 done
+#25 exporting config sha256:5500327b268f7c0dd67d9188240ff6f1fd1eef904f88027ec6fec0f974be8efc done
+#25 exporting attestation manifest sha256:4f8747d1cd8b538af3481c83b3595b75c8f827390a12280e3a8ef71d58af4912 done
+#25 exporting manifest list sha256:b6a9b439af9ce4915134afd17f54c74efcf1d96156cde517e91a8f848689e02a done
+#25 naming to docker.io/library/contest-center-initialize:latest done
+#25 unpacking to docker.io/library/contest-center-initialize:latest done
+#25 DONE 0.0s
+
+#26 resolving provenance for metadata file
+#26 DONE 0.0s
+ Image contest-center-initialize Built 
+ Container contest-center-redis-1 Waiting 
+ Container contest-center-postgres-1 Waiting 
+ Container contest-center-postgres-1 Healthy 
+ Container contest-center-redis-1 Healthy 
+ Container contest-center-initialize-run-53b82c0a9825 Creating 
+ Container contest-center-initialize-run-53b82c0a9825 Created 
+$ prisma migrate deploy
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+Datasource "db": PostgreSQL database "contest_center", schema "public" at "postgres:5432"
+
+6 migrations found in prisma/migrations
+
+Applying migration `202610110006_authorization_invitations`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 202610110006_authorization_invitations/
+    └─ migration.sql
+
+All migrations have been successfully applied.

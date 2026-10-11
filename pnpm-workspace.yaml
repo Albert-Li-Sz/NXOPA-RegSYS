@@ -1,0 +1,15 @@
+packages:
+  - apps/*
+  - packages/*
+  - plugins/*
+minimumReleaseAgeExclude:
+  - '@vue/language-core@3.3.13'
+  - vue-tsc@3.3.13
+allowBuilds:
+  '@nestjs/core': true
+  '@prisma/engines': true
+  argon2: true
+  esbuild: true
+  prisma: true
+  msgpackr-extract: true
+  '@scarf/scarf': false

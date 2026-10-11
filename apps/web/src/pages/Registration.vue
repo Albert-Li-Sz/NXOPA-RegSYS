@@ -1,0 +1,715 @@
+<script setup lang="ts">
+import { ref, shallowRef, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { api, auth, money, date, label, upload } from '../api';
+import type { RegistrationView, PersonView, Data } from '../types';
+import DynamicFields from '../components/DynamicFields.vue';
+const route = useRoute(),
+  r = shallowRef<RegistrationView>(),
+  form = ref<{ teamName: string; teamEnglishName: string; answers: Data; people: PersonView[] }>({
+    teamName: '',
+    teamEnglishName: '',
+    answers: {},
+    people: [],
+  }),
+  tab = ref(String(route.query.tab ?? 'registration')),
+  busy = ref(false),
+  loadError = ref(''),
+  link = ref(''),
+  credentials = ref<Data[]>([]),
+  bindings = ref<Data[]>([]);
+const invoiceTotal = computed(
+  () =>
+    r.value?.invoices
+      .filter((i) => i.status === 'ISSUED')
+      .reduce((n: number, i: Data) => n + Number(i.amountCents), 0) ?? 0,
+);
+const manager = computed(
+  () => !!r.value && (auth.user?.isAdmin || auth.user?.contestIds.includes(r.value.contestId)),
+);
+const editor = computed(
+  () =>
+    manager.value ||
+    r.value?.ownerId === auth.user?.id ||
+    r.value?.coaches.some((c) => c.userId === auth.user?.id),
+);
+const policy = computed(() => r.value?.policySnapshot ?? r.value?.contest.policy);
+const canSave = computed(
+  () => editor.value && !['CANCELLED', 'CANCEL_REQUESTED'].includes(r.value?.status ?? ''),
+);
+async function refresh() {
+  try {
+    loadError.value = '';
+    r.value = await api(`/registrations/${route.params.id}`);
+    const x = r.value!;
+    form.value = JSON.parse(
+      JSON.stringify({
+        teamName: x.teamName,
+        teamEnglishName: x.teamEnglishName,
+        answers: { registration: {}, team: {}, ...x.answers },
+        people: x.people,
+      }),
+    );
+    if (manager.value)
+      bindings.value = await api(`/integrations/bindings?contestId=${x.contestId}`);
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : '报名暂时无法加载';
+    r.value = undefined;
+  }
+}
+onMounted(refresh);
+async function action(path: string, body: Data = {}) {
+  busy.value = true;
+  try {
+    const result = await api(path, 'POST', body);
+    await refresh();
+    return result;
+  } finally {
+    busy.value = false;
+  }
+}
+async function save() {
+  busy.value = true;
+  try {
+    await api(`/registrations/${r.value!.id}`, 'PUT', { ...form.value, version: r.value!.version });
+    await refresh();
+    ElMessage.success('报名草稿已保存');
+  } finally {
+    busy.value = false;
+  }
+}
+async function submit() {
+  await save();
+  await action(`/registrations/${r.value!.id}/submit`, { version: r.value!.version });
+  ElMessage.success('报名已提交');
+}
+async function review(decision: string) {
+  let reason = '';
+  if (decision !== 'APPROVED') {
+    const answer = await ElMessageBox.prompt('请填写审核意见', '审核报名', {
+      inputType: 'textarea',
+    });
+    reason = answer.value;
+  }
+  await action(`/registrations/${r.value!.id}/review`, {
+    version: r.value!.version,
+    decision,
+    reason,
+  });
+}
+async function cancel() {
+  await ElMessageBox.confirm('确认取消此报名？已收款的报名将进入退款处理流程。', '取消报名');
+  await action(`/registrations/${r.value!.id}/cancel`, { version: r.value!.version });
+}
+async function invite(kind: string) {
+  const result = await action(`/registrations/${r.value!.id}/invites`, { kind });
+  link.value = result.url;
+}
+async function copy() {
+  await navigator.clipboard.writeText(link.value);
+  ElMessage.success('链接已复制');
+}
+async function removeCoach(id: string) {
+  await api(`/registrations/${r.value!.id}/coaches/${id}`, 'DELETE', { version: r.value!.version });
+  await refresh();
+}
+function addPerson() {
+  form.value.people.push({ name: '', email: '', captain: false, confirmed: true, answers: {} });
+}
+const voucher = ref<Data>({
+    amount: 0,
+    channel: '银行转账',
+    payer: '',
+    reference: '',
+    paidAt: new Date().toISOString(),
+    attachmentId: '',
+  }),
+  voucherDialog = ref(false);
+async function attach(e: Event, model: Data) {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (file) {
+    const f = await upload(file, r.value!.id);
+    model.attachmentId = f.id;
+    ElMessage.success('文件已上传');
+  }
+}
+async function sendVoucher() {
+  await action(`/finance/${r.value!.id}/vouchers`, {
+    ...voucher.value,
+    amountCents: Math.round(voucher.value.amount * 100),
+  });
+  voucherDialog.value = false;
+}
+async function financialRequest(type: 'refunds' | 'invoices') {
+  const { value } = await ElMessageBox.prompt(
+    type === 'refunds' ? '输入退款金额（元）' : '输入开票金额（元）',
+    type === 'refunds' ? '申请退款' : '申请开票',
+    { inputPattern: /^\d+(\.\d{1,2})?$/, inputErrorMessage: '请填写有效金额' },
+  );
+  const amountCents = Math.round(Number(value) * 100);
+  if (type === 'refunds') {
+    const result = await ElMessageBox.prompt('说明退款原因', '退款原因');
+    await action(`/finance/${r.value!.id}/refunds`, { amountCents, reason: result.value });
+  } else {
+    const result = await ElMessageBox.prompt('填写发票抬头', '发票信息');
+    const tax = await ElMessageBox.prompt('填写税号，个人可留空', '发票信息');
+    await action(`/finance/${r.value!.id}/invoices`, {
+      amountCents,
+      title: result.value,
+      taxId: tax.value,
+      email: auth.user!.email,
+    });
+  }
+}
+const invoiceFile = ref<Data>({}),
+  invoiceDialog = ref(false),
+  selectedInvoice = ref('');
+async function issue() {
+  await action(`/finance/invoices/${selectedInvoice.value}/review`, {
+    decision: 'ISSUED',
+    attachmentId: invoiceFile.value.attachmentId,
+  });
+  invoiceDialog.value = false;
+}
+async function completeRefund(id: string) {
+  const { value } = await ElMessageBox.prompt('记录已实际退款的银行 / 渠道参考号', '记录线下退款');
+  await action(`/finance/refunds/${id}/review`, { decision: 'COMPLETED', reference: value });
+}
+async function confirmVoucher(id: string) {
+  const { value } = await ElMessageBox.prompt('输入实际核实到账金额（元）', '核账确认', {
+    inputPattern: /^\d+(\.\d{1,2})?$/,
+    inputErrorMessage: '请填写有效金额',
+  });
+  await action(`/finance/vouchers/${id}/review`, {
+    decision: 'CONFIRMED',
+    amountCents: Math.round(Number(value) * 100),
+  });
+}
+async function rejectVoucher(id: string) {
+  const { value } = await ElMessageBox.prompt('请填写原因', '拒绝凭证');
+  await action(`/finance/vouchers/${id}/review`, { decision: 'REJECTED', reason: value });
+}
+async function reverse(id: string) {
+  const { value } = await ElMessageBox.prompt('请说明冲正原因，系统会保留原始账目', '冲正确认');
+  await action(`/finance/ledger/${id}/reverse`, { reason: value });
+}
+async function generate() {
+  const { value } = await ElMessageBox.prompt('填写考场 / 座位，例如 A101 / 12', '生成准考证');
+  const [room, seat] = value.split('/').map((x) => x.trim());
+  await action('/admissions/generate', { registrationIds: [r.value!.id], room, seat });
+  ElMessage.success('生成任务已入队，请刷新查看结果');
+}
+async function memberSave(id: string, index: number) {
+  await api(`/registrations/${r.value!.id}/people/${id}`, 'PUT', {
+    version: r.value!.version,
+    name: form.value.people[index].name,
+    answers: form.value.people[index].answers,
+  });
+  await refresh();
+}
+</script>
+<template>
+  <el-result v-if="loadError" icon="warning" title="无法查看报名" :sub-title="loadError"
+    ><template #extra
+      ><el-button @click="refresh">重新加载</el-button
+      ><router-link to="/"><el-button type="primary">返回首页</el-button></router-link></template
+    ></el-result
+  >
+  <div v-else-if="!r" class="loading"><el-skeleton :rows="8" animated /></div>
+  <template v-else
+    ><div class="crumb">
+      <router-link to="/">比赛列表</router-link><span>／</span
+      ><router-link :to="`/contests/${r.contestId}`">{{ r.contest.title }}</router-link
+      ><span>／</span><span>我的报名</span>
+    </div>
+    <h1 class="detail-title">{{ r.teamName || r.people[0]?.name || '报名资料' }}</h1>
+    <p class="subtitle">
+      比赛时间：{{ date(r.contest.startsAt) }} ·
+      {{ policy?.mode === 'TEAM' ? '团队报名' : '个人报名' }}
+    </p>
+    <div class="toolbar">
+      <el-tag>{{ label(r.status) }}</el-tag
+      ><el-tag
+        :type="r.review === 'APPROVED' ? 'success' : r.review === 'REJECTED' ? 'danger' : 'warning'"
+        >{{ label(r.review) }}</el-tag
+      ><el-tag :type="r.eligible ? 'success' : 'info'">{{
+        r.eligible ? '已取得参赛资格' : '暂未取得参赛资格'
+      }}</el-tag
+      ><el-button text @click="refresh">刷新状态</el-button>
+    </div>
+    <div v-if="r.formUpdated" class="notice">报名表单已更新，请检查新增字段并填写后再提交。</div>
+    <div v-if="r.reviewReason" class="notice">审核意见：{{ r.reviewReason }}</div>
+    <el-tabs v-model="tab"
+      ><el-tab-pane label="报名资料" name="registration" /><el-tab-pane
+        label="准考证"
+        name="admissions" /><el-tab-pane label="财务" name="finance" /><el-tab-pane
+        label="比赛账号"
+        name="accounts"
+    /></el-tabs>
+    <div class="panel" v-if="tab === 'registration'">
+      <div class="stats">
+        <div class="stat">
+          <span>参赛人数</span>
+          <div class="value">{{ r.people.length }}</div>
+          <span class="hint">{{ policy?.minMembers }}–{{ policy?.maxMembers }} 人</span>
+        </div>
+        <div class="stat">
+          <span>关联老师</span>
+          <div class="value">{{ r.coaches.length }}</div>
+          <span class="hint">{{
+            policy?.coachMode === 'REQUIRED'
+              ? '必须关联'
+              : policy?.coachMode === 'DISABLED'
+                ? '无需老师'
+                : '可选老师'
+          }}</span>
+        </div>
+        <div class="stat">
+          <span>应付金额</span>
+          <div class="value">{{ money(r.feeCents) }}</div>
+          <span class="hint">提交时确定费用</span>
+        </div>
+        <div class="stat">
+          <span>净到账金额</span>
+          <div class="value">{{ money(r.netPaidCents) }}</div>
+          <span class="hint">以实际核账为准</span>
+        </div>
+      </div>
+      <el-form label-position="top"
+        ><div class="card" v-if="policy?.mode === 'TEAM'">
+          <h3>队伍信息</h3>
+          <div class="form-grid">
+            <el-form-item label="队伍名称" required for="team-name"
+              ><el-input
+                id="team-name"
+                v-model="form.teamName"
+                :disabled="!canSave" /></el-form-item
+            ><el-form-item label="英文队名" for="team-english"
+              ><el-input id="team-english" v-model="form.teamEnglishName" :disabled="!canSave"
+            /></el-form-item>
+          </div>
+          <DynamicFields
+            :fields="r.fields"
+            scope="TEAM"
+            :answers="form.answers.team"
+            :registration-id="r.id"
+            :disabled="!canSave"
+          />
+        </div>
+        <div class="card" v-if="r.fields.some((f) => f.scope === 'REGISTRATION')">
+          <h3>报名信息</h3>
+          <DynamicFields
+            :fields="r.fields"
+            scope="REGISTRATION"
+            :answers="form.answers.registration"
+            :registration-id="r.id"
+            :disabled="!canSave"
+          />
+        </div>
+        <div v-for="(person, index) in form.people" :key="person.id || index" class="card">
+          <div class="member-heading">
+            <h3>
+              {{ policy?.mode === 'TEAM' ? `成员 ${index + 1}` : '参赛者信息' }}
+              <el-tag v-if="person.captain" size="small">队长</el-tag>
+            </h3>
+            <el-button
+              v-if="!person.captain && canSave"
+              text
+              type="danger"
+              @click="form.people.splice(index, 1)"
+              >移除成员</el-button
+            >
+          </div>
+          <div class="form-grid">
+            <el-form-item label="姓名" required :for="`person-${index}-name`"
+              ><el-input
+                :id="`person-${index}-name`"
+                v-model="person.name"
+                :disabled="!canSave && person.userId !== auth.user?.id" /></el-form-item
+            ><el-form-item label="邮箱" :for="`person-${index}-email`"
+              ><el-input
+                :id="`person-${index}-email`"
+                v-model="person.email"
+                :disabled="!!person.userId || !canSave"
+            /></el-form-item>
+          </div>
+          <DynamicFields
+            :fields="r.fields"
+            scope="PERSON"
+            :answers="person.answers"
+            :prefix="`member-${index}`"
+            :registration-id="r.id"
+            :disabled="!canSave && person.userId !== auth.user?.id"
+          /><el-button
+            v-if="!editor && person.userId === auth.user?.id"
+            type="primary"
+            @click="memberSave(person.id!, index)"
+            >保存我的信息</el-button
+          >
+        </div>
+        <div
+          class="actions"
+          v-if="
+            canSave && policy?.mode === 'TEAM' && form.people.length < (policy?.maxMembers ?? 0)
+          "
+        >
+          <el-button v-if="policy?.memberMode === 'MANUAL'" @click="addPerson"
+            >添加代填成员</el-button
+          ><el-button v-else @click="invite('MEMBER')">生成成员邀请链接</el-button>
+        </div>
+        <div class="card" v-if="policy?.coachMode !== 'DISABLED'">
+          <div class="member-heading">
+            <h3>指导老师</h3>
+            <el-button
+              v-if="canSave && r.coaches.length < (policy?.maxCoaches ?? 0)"
+              @click="invite('COACH')"
+              >邀请老师确认</el-button
+            >
+          </div>
+          <el-empty
+            v-if="!r.coaches.length"
+            :description="
+              policy?.coachMode === 'REQUIRED' ? '请关联一位指导老师后提交' : '可以不关联指导老师'
+            "
+            :image-size="55"
+          />
+          <div v-for="coach in r.coaches" :key="coach.id">
+            <div class="member-heading">
+              <span
+                >{{ coach.user?.name || coach.name || '指导老师' }} · {{ coach.user?.email }}</span
+              ><el-button v-if="editor" text type="danger" @click="removeCoach(coach.id)"
+                >解除关联</el-button
+              >
+            </div>
+            <DynamicFields
+              :fields="r.fields"
+              scope="COACH"
+              :answers="coach.answers"
+              :prefix="coach.id"
+              :registration-id="r.id"
+              :disabled="!canSave"
+            /><el-button
+              v-if="canSave && r.fields.some((f) => f.scope === 'COACH')"
+              size="small"
+              @click="
+                api(`/registrations/${r.id}/coaches/${coach.id}`, 'PUT', {
+                  version: r.version,
+                  answers: coach.answers,
+                }).then(refresh)
+              "
+              >保存老师信息</el-button
+            >
+          </div>
+          <p class="form-help">
+            也可使用老师提供的关联链接。老师确认关联后可以代填和提交，解除后立即失去访问权限。
+          </p>
+        </div>
+        <div v-if="link" class="card">
+          <h3>邀请链接</h3>
+          <div class="copy-link">
+            <el-input :model-value="link" readonly /><el-button @click="copy">复制</el-button>
+          </div>
+          <p class="form-help">受邀者登录并确认后关联生效，有效期 7 天。</p>
+        </div>
+        <div v-if="canSave" class="actions">
+          <el-button type="primary" :loading="busy" @click="submit">提交报名</el-button
+          ><el-button :loading="busy" @click="save">保存草稿</el-button
+          ><el-button
+            v-if="r.status === 'SUBMITTED'"
+            @click="action(`/registrations/${r.id}/withdraw`, { version: r.version })"
+            >撤回为草稿</el-button
+          ><el-button text type="danger" @click="cancel">取消报名</el-button>
+        </div>
+      </el-form>
+      <div v-if="manager && r.status === 'SUBMITTED'" class="card">
+        <h3>竞赛管理员审核</h3>
+        <div class="actions">
+          <el-button type="success" @click="review('APPROVED')">审核通过</el-button
+          ><el-button type="warning" @click="review('CORRECTION')">要求补正</el-button
+          ><el-button type="danger" @click="review('REJECTED')">审核拒绝</el-button>
+        </div>
+      </div>
+      <el-button v-if="manager && r.status === 'CANCEL_REQUESTED'" type="danger" @click="cancel"
+        >管理员完成取消</el-button
+      ><router-link :to="`/support?registrationId=${r.id}&contestId=${r.contestId}`"
+        ><el-button text type="primary">对此报名提起工单</el-button></router-link
+      >
+    </div>
+    <div class="panel" v-if="tab === 'finance'">
+      <div class="stats">
+        <div class="stat">
+          <span>应付金额</span>
+          <div class="value">{{ money(r.feeCents) }}</div>
+        </div>
+        <div class="stat">
+          <span>净到账金额</span>
+          <div class="value">{{ money(r.netPaidCents) }}</div>
+        </div>
+        <div class="stat">
+          <span>已开票金额</span>
+          <div class="value">{{ money(invoiceTotal) }}</div>
+        </div>
+        <div class="stat">
+          <span>待付金额</span>
+          <div class="value">{{ money(Math.max(0, r.feeCents - r.netPaidCents)) }}</div>
+        </div>
+      </div>
+      <div class="notice" v-if="policy?.feeMode === 'FREE'">本竞赛免费，无需缴费。</div>
+      <template v-else
+        ><div class="card">
+          <h3>线下缴费说明</h3>
+          <p class="pre-line">
+            {{ policy?.paymentInstructions || '请按照主办方公布的收款方式缴费。' }}
+          </p>
+          <p class="muted">
+            {{
+              policy?.paymentSequence === 'REVIEW_FIRST'
+                ? '先审核通过，再上传凭证'
+                : '先缴费并核账，再审核资料'
+            }}。上传凭证后须等待管理员确认实际到账。
+          </p>
+          <div v-if="editor" class="actions">
+            <el-button type="primary" @click="voucherDialog = true">上传收款凭证</el-button
+            ><el-button v-if="policy?.refundsEnabled" @click="financialRequest('refunds')"
+              >申请退款</el-button
+            ><el-button v-if="policy?.invoicesEnabled" @click="financialRequest('invoices')"
+              >申请开票</el-button
+            >
+          </div>
+        </div></template
+      >
+      <div class="card">
+        <h3>收款凭证</h3>
+        <el-table :data="r.vouchers"
+          ><el-table-column label="付款人" prop="payer" /><el-table-column label="金额"
+            ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
+          ><el-table-column label="状态"
+            ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
+          ><el-table-column label="操作" min-width="180"
+            ><template #default="{ row }"
+              ><a :href="`/api/v1/files/${row.attachmentId}`" target="_blank">查看凭证</a
+              ><template v-if="manager && row.status === 'PENDING'"
+                ><el-button text type="primary" @click="confirmVoucher(row.id)">核账</el-button
+                ><el-button text type="danger" @click="rejectVoucher(row.id)"
+                  >拒绝</el-button
+                ></template
+              ><span v-if="row.reason"> {{ row.reason }}</span></template
+            ></el-table-column
+          ></el-table
+        >
+      </div>
+      <div class="card">
+        <h3>账簿</h3>
+        <el-table :data="r.ledger"
+          ><el-table-column label="时间" min-width="170"
+            ><template #default="{ row }">{{ date(row.createdAt) }}</template></el-table-column
+          ><el-table-column label="类型"
+            ><template #default="{ row }">{{
+              ({ RECEIVABLE: '应收', PAYMENT: '收款', REFUND: '退款', REVERSAL: '冲正' } as Data)[
+                row.kind
+              ]
+            }}</template></el-table-column
+          ><el-table-column label="金额"
+            ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
+          ><el-table-column label="说明" prop="note" min-width="160" /><el-table-column
+            v-if="manager"
+            label="操作"
+            ><template #default="{ row }"
+              ><el-button v-if="row.kind === 'PAYMENT'" text type="danger" @click="reverse(row.id)"
+                >冲正</el-button
+              ></template
+            ></el-table-column
+          ></el-table
+        >
+      </div>
+      <div class="card">
+        <h3>退款记录</h3>
+        <el-table :data="r.refunds"
+          ><el-table-column label="金额"
+            ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
+          ><el-table-column label="原因" prop="reason" min-width="150" /><el-table-column
+            label="状态"
+            ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
+          ><el-table-column label="实际退款参考号" prop="reference" /><el-table-column
+            v-if="manager"
+            label="操作"
+            min-width="180"
+            ><template #default="{ row }"
+              ><template v-if="row.status === 'REQUESTED'"
+                ><el-button
+                  text
+                  @click="action(`/finance/refunds/${row.id}/review`, { decision: 'APPROVED' })"
+                  >同意</el-button
+                ><el-button
+                  text
+                  type="danger"
+                  @click="action(`/finance/refunds/${row.id}/review`, { decision: 'REJECTED' })"
+                  >拒绝</el-button
+                ></template
+              ><el-button
+                v-if="row.status === 'APPROVED'"
+                text
+                type="primary"
+                @click="completeRefund(row.id)"
+                >记录实际退款</el-button
+              ></template
+            ></el-table-column
+          ></el-table
+        >
+      </div>
+      <div class="card">
+        <h3>开票记录</h3>
+        <el-table :data="r.invoices"
+          ><el-table-column label="抬头" prop="title" min-width="160" /><el-table-column
+            label="金额"
+            ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
+          ><el-table-column label="状态"
+            ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
+          ><el-table-column label="操作" min-width="160"
+            ><template #default="{ row }"
+              ><a
+                v-if="row.attachmentId"
+                :href="`/api/v1/files/${row.attachmentId}`"
+                target="_blank"
+                >下载发票</a
+              ><el-button
+                v-if="manager && row.status === 'REQUESTED'"
+                text
+                type="primary"
+                @click="
+                  selectedInvoice = row.id;
+                  invoiceDialog = true;
+                "
+                >上传发票</el-button
+              ><el-button
+                v-if="manager && row.status === 'ISSUED'"
+                text
+                type="danger"
+                @click="
+                  action(`/finance/invoices/${row.id}/review`, {
+                    decision: 'VOID',
+                    reason: '管理员作废',
+                  })
+                "
+                >作废</el-button
+              ></template
+            ></el-table-column
+          ></el-table
+        >
+      </div>
+    </div>
+    <div v-if="tab === 'admissions'" class="panel">
+      <div class="notice">
+        {{
+          policy?.mode === 'TEAM' ? '全队共用一张准考证' : '个人报名一人一张准考证'
+        }}。资料或资格变更后，原准考证会失效。
+      </div>
+      <div v-if="manager" class="actions">
+        <el-button type="primary" @click="generate">生成准考证</el-button
+        ><router-link :to="`/admin/contests/${r.contestId}?tab=templates`"
+          ><el-button>配置模板</el-button></router-link
+        >
+      </div>
+      <div class="card">
+        <el-table :data="r.admissions"
+          ><el-table-column label="准考证号" prop="number" min-width="220" /><el-table-column
+            label="考场"
+            prop="room"
+          /><el-table-column label="座位" prop="seat" /><el-table-column label="状态"
+            ><template #default="{ row }">{{ label(row.state) }}</template></el-table-column
+          ><el-table-column label="操作" min-width="160"
+            ><template #default="{ row }"
+              ><el-button
+                v-if="manager && row.state === 'READY'"
+                text
+                type="primary"
+                @click="action(`/admissions/${row.id}/release`)"
+                >发放</el-button
+              ><a
+                v-if="row.state === 'RELEASED' || (manager && row.state === 'READY')"
+                :href="`/api/v1/admissions/${row.id}/download`"
+                target="_blank"
+                >下载 PDF</a
+              ></template
+            ></el-table-column
+          ></el-table
+        >
+      </div>
+    </div>
+    <div v-if="tab === 'accounts'" class="panel">
+      <div class="notice">比赛账号与本站账号分别管理。请妥善保存比赛账号。</div>
+      <div v-if="manager" class="actions">
+        <el-button
+          v-for="b in bindings"
+          :key="b.id"
+          @click="action(`/integrations/registrations/${r.id}/sync`, { bindingId: b.id })"
+          >同步比赛账号{{
+            bindings.length > 1 ? `（评测平台 ${bindings.indexOf(b) + 1}）` : ''
+          }}</el-button
+        >
+      </div>
+      <div class="card">
+        <el-table :data="r.mappings"
+          ><el-table-column label="账号" prop="username" min-width="200" /><el-table-column
+            label="同步状态"
+            ><template #default="{ row }">{{ label(row.state) }}</template></el-table-column
+          ><el-table-column label="远端队伍" prop="remoteTeamId" /><el-table-column
+            label="远端用户"
+            prop="remoteUserId"
+        /></el-table>
+        <div class="actions">
+          <el-button
+            type="primary"
+            :disabled="!r.eligible && !manager"
+            @click="
+              api(`/integrations/registrations/${r.id}/credentials`).then((v) => (credentials = v))
+            "
+            >查看获授权的比赛账号</el-button
+          >
+        </div>
+        <div v-for="c in credentials" :key="c.id" class="notice">
+          用户名：{{ c.username }}<br />密码：<code>{{ c.password }}</code>
+        </div>
+        <p v-if="r.mappings.some((m) => m.state === 'REVOKED_LOCALLY')" class="error-state">
+          本站已撤销资格。当前平台不支持自动停用，管理员需要在评测系统中手动处理原账号。
+        </p>
+      </div>
+    </div>
+    <el-dialog v-model="voucherDialog" title="上传收款凭证" width="520px"
+      ><el-form label-position="top"
+        ><el-form-item label="申报金额（元）"
+          ><el-input-number v-model="voucher.amount" :min="0.01" :precision="2" /></el-form-item
+        ><el-form-item label="付款人"><el-input v-model="voucher.payer" /></el-form-item
+        ><el-form-item label="渠道"><el-input v-model="voucher.channel" /></el-form-item
+        ><el-form-item label="流水 / 参考号"><el-input v-model="voucher.reference" /></el-form-item
+        ><el-form-item label="付款时间"
+          ><el-date-picker
+            v-model="voucher.paidAt"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ssZ" /></el-form-item
+        ><el-form-item label="凭证文件"
+          ><input
+            type="file"
+            accept=".pdf,.png,.jpg"
+            @change="attach($event, voucher)" /></el-form-item></el-form
+      ><template #footer
+        ><el-button
+          type="primary"
+          :loading="busy"
+          :disabled="!voucher.attachmentId"
+          @click="sendVoucher"
+          >提交凭证</el-button
+        ></template
+      ></el-dialog
+    >
+    <el-dialog v-model="invoiceDialog" title="上传实际发票" width="450px"
+      ><input type="file" accept=".pdf,.png,.jpg" @change="attach($event, invoiceFile)" /><template
+        #footer
+        ><el-button type="primary" :disabled="!invoiceFile.attachmentId" @click="issue"
+          >确认上传</el-button
+        ></template
+      ></el-dialog
+    >
+  </template>
+</template>

@@ -1,0 +1,22 @@
+{
+  "updatedAt": "2026-10-11T12:53:40.606Z",
+  "siteName": "南晓开放原子社在线报名系统",
+  "routes": {
+    "landing": "/",
+    "contests": "/contests",
+    "platformConfiguration": "/admin"
+  },
+  "checks": {
+    "typecheck": "PASS",
+    "productionBuild": "PASS",
+    "unitTests": 4,
+    "browserTests": 10,
+    "authenticationChecks": 3,
+    "productionBrowserChecks": 5,
+    "databaseMigrations": 5,
+    "hydroVersion": "5.0.7",
+    "domjudgeVersion": "9.0.1"
+  },
+  "thirdPartyLogin": "REMOVED",
+  "images": "Original supplied club and ICPC team logos"
+}

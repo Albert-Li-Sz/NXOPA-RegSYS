@@ -1,0 +1,17 @@
+{
+  "name": "hydro-contest-center",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "build": "node -e \"console.log('Hydro loads the TypeScript plugin directly')\""
+  },
+  "peerDependencies": {
+    "hydrooj": "5.0.7"
+  },
+  "peerDependenciesMeta": {
+    "hydrooj": {
+      "optional": true
+    }
+  }
+}

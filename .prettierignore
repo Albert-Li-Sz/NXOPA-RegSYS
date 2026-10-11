@@ -1,0 +1,10 @@
+node_modules
+.runtime
+dist
+pnpm-lock.yaml
+apps/web/dist
+apps/web/src/generated
+docs/api/openapi.json
+playwright-report
+test-results
+*.svg

@@ -1,0 +1,409 @@
+import { z } from 'zod';
+
+export const defaultSite = {
+  name: '南晓开放原子社在线报名系统',
+  primaryColor: '#2080F0',
+  footer: '南晓开放原子社 · 南京晓庄学院 ICPC 集训队',
+};
+
+export const uuid = z.string().uuid();
+export const mailSettingsSchema = z.object({
+  version: z.number().int().min(0),
+  enabled: z.boolean(),
+  host: z
+    .string()
+    .trim()
+    .min(1)
+    .max(253)
+    .regex(/^[A-Za-z0-9._:-]+$/, '填写邮件服务器主机名，不含协议或路径'),
+  port: z.number().int().min(1).max(65535),
+  security: z.enum(['TLS', 'STARTTLS', 'NONE']),
+  authEnabled: z.boolean(),
+  username: z.string().trim().max(254),
+  password: z.string().max(2048).optional(),
+  fromAddress: z.email(),
+  fromName: z
+    .string()
+    .trim()
+    .max(80)
+    .regex(/^[^\r\n]*$/),
+});
+export type MailSettingsInput = z.infer<typeof mailSettingsSchema>;
+export const mailSettingsViewSchema = mailSettingsSchema.omit({ password: true }).extend({
+  passwordConfigured: z.boolean(),
+  source: z.enum(['DATABASE', 'ENVIRONMENT']),
+});
+export type MailSettingsView = z.infer<typeof mailSettingsViewSchema>;
+export const accountInvitationKinds = [
+  'ACCOUNT',
+  'SYSTEM_ADMIN',
+  'CONTEST_ADMIN',
+  'COACH_ROLE',
+] as const;
+export const accountInvitationLabels: Record<(typeof accountInvitationKinds)[number], string> = {
+  ACCOUNT: '账号邀请',
+  SYSTEM_ADMIN: '系统管理员',
+  CONTEST_ADMIN: '竞赛管理员',
+  COACH_ROLE: '指导老师',
+};
+export const accountInvitationSchema = z
+  .object({
+    kind: z.enum(accountInvitationKinds),
+    userId: uuid.optional(),
+    targetEmail: z.email().optional(),
+    contestId: uuid.optional(),
+    expiresInDays: z.number().int().min(1).max(30).default(7),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.userId && !value.targetEmail)
+      ctx.addIssue({ code: 'custom', message: '请指定受邀账号或邮箱', path: ['targetEmail'] });
+    if ((value.kind === 'CONTEST_ADMIN') !== !!value.contestId)
+      ctx.addIssue({
+        code: 'custom',
+        message: '仅竞赛管理员邀请需要指定竞赛',
+        path: ['contestId'],
+      });
+  });
+export type AccountInvitationInput = z.infer<typeof accountInvitationSchema>;
+export const invitationReturnPathSchema = z.string().regex(/^\/invite\/[A-Za-z0-9_-]{30,100}$/);
+export const answersSchema = z.record(z.string().max(80), z.json());
+export const fieldSchema = z.object({
+  key: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]{0,63}$/)
+    .refine((v) => !['constructor', 'prototype', '__proto__'].includes(v)),
+  label: z.string().min(1).max(100),
+  scope: z.enum(['PERSON', 'TEAM', 'COACH', 'REGISTRATION']),
+  type: z.enum([
+    'text',
+    'textarea',
+    'number',
+    'date',
+    'select',
+    'multiselect',
+    'boolean',
+    'file',
+    'photo',
+  ]),
+  required: z.boolean().default(false),
+  sensitive: z.boolean().default(false),
+  options: z.array(z.string().max(100)).max(100).default([]),
+  help: z.string().max(500).default(''),
+  group: z.string().max(100).default('基本信息'),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  condition: z
+    .object({ key: z.string(), equals: z.json().optional(), includes: z.string().optional() })
+    .optional(),
+});
+export type FieldDefinition = z.infer<typeof fieldSchema>;
+export const fieldsSchema = z
+  .array(fieldSchema)
+  .max(100)
+  .superRefine((fields, ctx) => {
+    const keys = new Set<string>();
+    fields.forEach((f, i) => {
+      const k = `${f.scope}:${f.key}`;
+      if (keys.has(k))
+        ctx.addIssue({ code: 'custom', path: [i, 'key'], message: '同一作用域字段键不能重复' });
+      keys.add(k);
+      if (['select', 'multiselect'].includes(f.type) && !f.options.length)
+        ctx.addIssue({ code: 'custom', path: [i, 'options'], message: '选项不能为空' });
+    });
+  });
+export const policySchema = z
+  .object({
+    mode: z.enum(['INDIVIDUAL', 'TEAM']).default('INDIVIDUAL'),
+    memberMode: z.enum(['INVITE', 'MANUAL']).default('INVITE'),
+    minMembers: z.number().int().min(1).max(30).default(1),
+    maxMembers: z.number().int().min(1).max(30).default(1),
+    coachMode: z.enum(['DISABLED', 'OPTIONAL', 'REQUIRED']).default('OPTIONAL'),
+    maxCoaches: z.number().int().min(0).max(10).default(1),
+    manualReview: z.boolean().default(true),
+    feeMode: z.enum(['FREE', 'FIXED', 'PER_PERSON']).default('FREE'),
+    feeCents: z.number().int().min(0).max(100_000_000).default(0),
+    paymentSequence: z.enum(['REVIEW_FIRST', 'PAYMENT_FIRST']).default('REVIEW_FIRST'),
+    paymentInstructions: z.string().max(10000).default(''),
+    refundsEnabled: z.boolean().default(true),
+    invoicesEnabled: z.boolean().default(true),
+    uniquePersonFields: z.array(z.string()).max(5).default([]),
+  })
+  .superRefine((p, ctx) => {
+    if (p.minMembers > p.maxMembers)
+      ctx.addIssue({ code: 'custom', message: '最少人数不能超过最多人数' });
+    if (p.mode === 'INDIVIDUAL' && (p.minMembers !== 1 || p.maxMembers !== 1))
+      ctx.addIssue({ code: 'custom', message: '个人赛固定一人' });
+    if (p.coachMode === 'REQUIRED' && !p.maxCoaches)
+      ctx.addIssue({ code: 'custom', message: '必需老师时至少允许一位老师' });
+  });
+export type ContestPolicy = z.infer<typeof policySchema>;
+export const contestSchema = z
+  .object({
+    version: z.number().int().optional(),
+    title: z.string().min(2).max(200),
+    season: z.string().max(40),
+    description: z.string().max(30000),
+    announcement: z.string().max(10000).default(''),
+    location: z.string().max(300).default(''),
+    startsAt: z.iso.datetime({ offset: true }),
+    opensAt: z.iso.datetime({ offset: true }),
+    closesAt: z.iso.datetime({ offset: true }),
+    correctionUntil: z.iso.datetime({ offset: true }).nullable().optional(),
+    published: z.boolean().default(false),
+    archived: z.boolean().default(false),
+    manuallyClosed: z.boolean().default(false),
+    policy: policySchema,
+    fields: fieldsSchema,
+  })
+  .refine((c) => new Date(c.opensAt) < new Date(c.closesAt), { message: '报名截止须晚于开放时间' });
+export const personSchema = z.object({
+  id: uuid.optional(),
+  userId: uuid.nullable().optional(),
+  name: z.string().trim().min(1).max(100),
+  email: z.union([z.email(), z.literal('')]).default(''),
+  captain: z.boolean().default(false),
+  answers: answersSchema.default({}),
+});
+export const registrationSchema = z.object({
+  version: z.number().int().positive(),
+  teamName: z.string().trim().max(100).default(''),
+  teamEnglishName: z.string().max(100).default(''),
+  answers: answersSchema.default({}),
+  people: z.array(personSchema).min(1).max(30),
+});
+export type PersonInput = z.infer<typeof personSchema>;
+export type Answers = z.infer<typeof answersSchema>;
+export interface Principal {
+  id: string;
+  email: string;
+  username: string;
+  name: string;
+  verified: boolean;
+  isAdmin: boolean;
+  isCoach: boolean;
+  hasPassword: boolean;
+  profile: Answers;
+  version: number;
+  contestIds: string[];
+}
+export type ContestStatus = 'UPCOMING' | 'OPEN' | 'CLOSED';
+export function contestStatus(
+  c: { opensAt: string | Date; closesAt: string | Date; manuallyClosed: boolean },
+  now = new Date(),
+): ContestStatus {
+  if (c.manuallyClosed || now >= new Date(c.closesAt)) return 'CLOSED';
+  return now < new Date(c.opensAt) ? 'UPCOMING' : 'OPEN';
+}
+export function quoteFee(p: ContestPolicy, n: number) {
+  return p.feeMode === 'FREE' ? 0 : p.feeCents * (p.feeMode === 'PER_PERSON' ? n : 1);
+}
+export function fieldVisible(f: FieldDefinition, answers: Answers) {
+  if (!f.condition) return true;
+  const value = answers[f.condition.key];
+  return f.condition.includes !== undefined
+    ? Array.isArray(value) && value.includes(f.condition.includes)
+    : JSON.stringify(value) === JSON.stringify(f.condition.equals);
+}
+export function fieldsJsonSchema(fields: FieldDefinition[], scope: FieldDefinition['scope']) {
+  const properties: Record<string, unknown> = {};
+  for (const f of fields.filter((f) => f.scope === scope)) {
+    const type = ['number', 'boolean'].includes(f.type)
+      ? f.type
+      : f.type === 'multiselect'
+        ? 'array'
+        : 'string';
+    properties[f.key] = {
+      type,
+      ...(f.type === 'select' ? { enum: f.options } : {}),
+      ...(f.type === 'multiselect'
+        ? { items: { type: 'string', enum: f.options }, uniqueItems: true }
+        : {}),
+      ...(f.type === 'date' ? { format: 'date' } : {}),
+      ...(type === 'number'
+        ? {
+            ...(f.min !== undefined ? { minimum: f.min } : {}),
+            ...(f.max !== undefined ? { maximum: f.max } : {}),
+          }
+        : type === 'string'
+          ? {
+              maxLength: f.max ?? (f.type === 'textarea' ? 10000 : 1000),
+              ...(f.min !== undefined ? { minLength: f.min } : {}),
+            }
+          : {}),
+    };
+  }
+  return { type: 'object', properties, additionalProperties: false };
+}
+export function registrationEligible(
+  r: {
+    status: string;
+    review: string;
+    feeCents: number;
+    netPaidCents: number;
+    people: { confirmed: boolean; active: boolean }[];
+    coaches: unknown[];
+  },
+  p: ContestPolicy,
+) {
+  const n = r.people.filter((x) => x.active).length;
+  return (
+    r.status === 'SUBMITTED' &&
+    r.review !== 'REJECTED' &&
+    (r.review === 'APPROVED' || !p.manualReview) &&
+    n >= p.minMembers &&
+    n <= p.maxMembers &&
+    r.people.filter((x) => x.active).every((x) => x.confirmed) &&
+    (p.coachMode !== 'REQUIRED' || r.coaches.length > 0) &&
+    (p.coachMode !== 'DISABLED' || r.coaches.length === 0) &&
+    r.coaches.length <= p.maxCoaches &&
+    r.netPaidCents >= r.feeCents
+  );
+}
+export interface RegistrationEnvelopeV1 {
+  schemaVersion: 1;
+  sourceInstance: string;
+  registrationId: string;
+  registrationVersion: number;
+  contest: { id: string; title: string; mode: 'INDIVIDUAL' | 'TEAM' };
+  teamName: string;
+  teamEnglishName?: string;
+  people: { id?: string; name?: string; captain: boolean; email?: string; answers?: Answers }[];
+  form?: { version: number; fields: FieldDefinition[]; answers: Answers };
+  coaches?: { id: string; name?: string; email?: string; answers: Answers }[];
+  qualification?: { eligible: boolean; review: string; feeCents?: number; netPaidCents?: number };
+}
+export interface ProvisioningResultV1 {
+  schemaVersion: 1;
+  registrationId: string;
+  state: 'VERIFIED' | 'FAILED' | 'ACCOUNT_CREATED' | 'TEAM_CREATED';
+  remoteUserId?: string;
+  remoteTeamId?: string;
+  username?: string;
+  error?: string;
+}
+export interface ConnectorConfiguration {
+  baseUrl: string;
+  credentials: { username?: string; password?: string; token?: string };
+  remoteContestId: string;
+  domainId: string;
+  groupIds: string[];
+  organizationId?: string;
+}
+export interface ProvisioningInput {
+  envelope: RegistrationEnvelopeV1;
+  username: string;
+  password: string;
+  onProgress?: (result: ProvisioningResultV1) => Promise<void>;
+}
+export const provisioningResultSchema = z.object({
+  schemaVersion: z.literal(1),
+  registrationId: uuid,
+  state: z.enum(['VERIFIED', 'FAILED', 'ACCOUNT_CREATED', 'TEAM_CREATED']),
+  remoteUserId: z.string().max(100).optional(),
+  remoteTeamId: z.string().max(100).optional(),
+  username: z.string().max(100).optional(),
+  error: z.string().max(1500).optional(),
+});
+export const registrationEnvelopeSchema = z.object({
+  schemaVersion: z.literal(1),
+  sourceInstance: uuid,
+  registrationId: uuid,
+  registrationVersion: z.number().int(),
+  contest: z.object({ id: uuid, title: z.string(), mode: z.enum(['INDIVIDUAL', 'TEAM']) }),
+  teamName: z.string(),
+  teamEnglishName: z.string().optional(),
+  people: z.array(
+    z.object({
+      id: uuid.optional(),
+      name: z.string().optional(),
+      captain: z.boolean(),
+      email: z.string().optional(),
+      answers: answersSchema.optional(),
+    }),
+  ),
+  form: z
+    .object({ version: z.number().int(), fields: fieldsSchema, answers: answersSchema })
+    .optional(),
+  coaches: z
+    .array(
+      z.object({
+        id: uuid,
+        name: z.string().optional(),
+        email: z.string().optional(),
+        answers: answersSchema,
+      }),
+    )
+    .optional(),
+  qualification: z
+    .object({
+      eligible: z.boolean(),
+      review: z.string(),
+      feeCents: z.number().int().optional(),
+      netPaidCents: z.number().int().optional(),
+    })
+    .optional(),
+});
+export interface ContestPlatformConnector {
+  probe(config: ConnectorConfiguration): Promise<{ version: string; capabilities: string[] }>;
+  provisionRegistration(
+    config: ConnectorConfiguration,
+    input: ProvisioningInput,
+  ): Promise<ProvisioningResultV1>;
+  getProvisioningResult(
+    config: ConnectorConfiguration,
+    input: ProvisioningInput,
+  ): Promise<ProvisioningResultV1>;
+}
+export interface PaymentProvider {
+  createPayment(order: { id: string; amountCents: number }): Promise<{ url: string }>;
+  verifyCallback(payload: unknown, signature: string): Promise<boolean>;
+  queryPayment(id: string): Promise<{ paidCents: number }>;
+  refund(id: string, amountCents: number): Promise<string>;
+}
+
+export const defaultFields: FieldDefinition[] = fieldsSchema.parse([
+  { key: 'school', label: '学校 / 单位', scope: 'PERSON', type: 'text', required: true },
+  {
+    key: 'student_id',
+    label: '学号 / 参赛编号',
+    scope: 'PERSON',
+    type: 'text',
+    required: true,
+    sensitive: true,
+  },
+  { key: 'major', label: '专业', scope: 'PERSON', type: 'text' },
+  {
+    key: 'phone',
+    label: '联系电话',
+    scope: 'PERSON',
+    type: 'text',
+    required: true,
+    sensitive: true,
+  },
+  {
+    key: 'size',
+    label: '衣服尺码',
+    scope: 'PERSON',
+    type: 'select',
+    options: ['S', 'M', 'L', 'XL', '2XL', '3XL'],
+  },
+]);
+export const defaultTemplate = String.raw`\documentclass[UTF8,fontset=fandol,a4paper,12pt]{ctexart}
+\usepackage[margin=22mm]{geometry}
+\usepackage{longtable,array}
+\pagestyle{empty}
+\begin{document}
+\begin{center}{\LARGE\bfseries {{contest.title}}}\\[8mm]{\Large 准考证}\end{center}
+\vspace{5mm}
+\noindent 准考证号：{{admission.number}}\\[3mm]
+比赛时间：{{contest.startsAt}}\\[3mm]
+考点：{{admission.location}}\quad 考场：{{admission.room}}\quad 座位：{{admission.seat}}\\[3mm]
+{{#if team.name}}队伍名称：{{team.name}}\\[3mm]{{/if}}
+\begin{longtable}{|p{25mm}|p{65mm}|p{35mm}|}\hline
+姓名 & 学校 / 单位 & 队长\\\hline
+{{#each team.members}}{{this.name}} & {{this.answers.school}} & {{this.captainLabel}}\\\hline
+{{/each}}
+\end{longtable}
+\vspace{6mm}\noindent 请携带有效身份证件及本准考证，按竞赛公告要求提前到场。\\[3mm]
+本准考证按报名单位发放，团队成员共用一张。
+\end{document}`;

@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "checks": [
+    "Production health, initialized administrator and protected, masked mail settings",
+    "Actual container Worker sends the saved sender through SMTP; Mailpit received it",
+    "Saved mail configuration persists across API and Worker restart",
+    "Built production website requires login and returns to the contest list",
+    "Production administrator UI renders mail settings and its authenticated CSRF-protected connection probe works"
+  ],
+  "checkedAt": "2026-10-11T18:36:05.172Z"
+}

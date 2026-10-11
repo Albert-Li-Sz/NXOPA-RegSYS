@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#2080F0" />
+    <meta
+      name="description"
+      content="南晓开放原子社在线报名系统配置教程。通过实际页面截图，完成部署、邮件、链接授权、Hydro 与 DOMjudge 联动和准考证配置。"
+    />
+    <title>配置教程 · 南晓开放原子社在线报名系统</title>
+    <link rel="icon" href="assets/club-logo.jpg" />
+    <link rel="stylesheet" href="assets/guide.css" />
+    <script src="assets/guide.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#content">跳转到教程正文</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="#overview">
+          <img src="assets/club-logo.jpg" alt="" width="38" height="38" />
+          <span><strong>南晓开放原子社</strong><small>在线报名系统 · 配置教程</small></span>
+        </a>
+        <div class="header-links">
+          <a
+            class="repo-link"
+            href="https://github.com/Albert-Li-Sz/NXOPA-RegSYS"
+            target="_blank"
+            rel="noopener noreferrer"
+            >项目源码 ↗</a
+          >
+          <a class="download-link" href="downloads/configuration-guide.pdf" download
+            >下载 PDF <span aria-hidden="true">↓</span></a
+          >
+          <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="chapter-nav">
+            章节目录
+          </button>
+        </div>
+      </div>
+      <div class="reading-progress" aria-hidden="true"><span></span></div>
+    </header>
+    <button class="nav-scrim" type="button" aria-label="关闭章节目录" hidden></button>
+    <div class="layout">
+      <aside class="sidebar">
+        <nav id="chapter-nav" aria-label="教程章节">
+          <p class="nav-heading">配置指南</p>
+          <a href="#overview" class="active" aria-current="location"><span>↗</span>教程概览</a>
+          @@NAV@@
+        </nav>
+        <div class="sidebar-note">
+          <span class="status-dot"></span> 中文 · MVP<br />更新于 2026 年 10 月 12 日
+        </div>
+      </aside>
+      <main id="content" tabindex="-1">
+        <section id="overview" class="overview" aria-labelledby="overview-title">
+          <p class="eyebrow">系统管理员操作手册</p>
+          <h1 id="overview-title">系统配置教程<span>从首次部署，到顺利报名。</span></h1>
+          <p class="lead">
+            跟着实际页面完成配置：搭建站点、设置邮件、通过链接授予身份，接入评测平台，再准备竞赛和准考证。
+          </p>
+          <div class="hero-actions">
+            <a class="primary-button" href="#deployment"
+              >开始配置 <span aria-hidden="true">→</span></a
+            >
+            <a class="secondary-button" href="downloads/configuration-guide.pdf" download
+              >下载离线教程 ↓</a
+            >
+          </div>
+          <div class="guide-facts">
+            <span><strong>12</strong>配置章节</span><span><strong>14</strong>实际页面截图</span
+            ><span><strong>PDF</strong>离线阅读</span>
+          </div>
+          <div class="callout">
+            <strong>先设置邮件，再邀请用户。</strong>
+            <p>
+              建议顺序：部署与初始化 → 站点和邮件 → 链接授权 → 评测平台 → 竞赛与字段 → 准考证 →
+              测试与备份。系统管理员维护全站配置，竞赛管理员管理获得授权的竞赛。
+            </p>
+          </div>
+          <figure class="overview-image">
+            <a
+              class="screenshot-open"
+              href="assets/images/01-home.png"
+              aria-label="查看报名系统首页原图"
+              ><img
+                src="assets/images/01-home.png"
+                alt="南晓开放原子社在线报名系统独立首页"
+                fetchpriority="high"
+                decoding="async"
+            /></a>
+            <figcaption>
+              独立首页：未登录点击“进入报名系统”后，先完成登录。<span>点击查看原图 ↗</span>
+            </figcaption>
+          </figure>
+        </section>
+        @@CHAPTERS@@
+        <section id="downloads" class="downloads" aria-labelledby="downloads-title">
+          <p class="eyebrow">保存一份，随时查阅</p>
+          <h2 id="downloads-title">教程与源文件</h2>
+          <p>网页从 LaTeX 教程构建。截图使用虚构示例，未展示密码、插件密钥或原始邀请链接。</p>
+          <div class="download-cards">
+            <a href="downloads/configuration-guide.pdf" download
+              ><strong>完整 PDF</strong><span>13 页图文配置教程</span><b aria-hidden="true">↓</b></a
+            >
+            <a href="downloads/configuration-guide-source.zip" download
+              ><strong>源码与截图</strong><span>LaTeX 与 14 张原图</span
+              ><b aria-hidden="true">↓</b></a
+            >
+            <a href="downloads/CONFIGURATION_GUIDE.tex" download
+              ><strong>LaTeX 源码</strong><span>编辑与自行编译</span><b aria-hidden="true">↓</b></a
+            >
+          </div>
+        </section>
+        <footer class="site-footer">
+          <span>南晓开放原子社 · 南京晓庄学院程序设计竞赛集训队</span
+          ><a
+            href="https://github.com/Albert-Li-Sz/NXOPA-RegSYS"
+            target="_blank"
+            rel="noopener noreferrer"
+            >查看项目与部署说明 ↗</a
+          >
+        </footer>
+      </main>
+    </div>
+    <dialog id="image-viewer" aria-label="查看页面截图">
+      <div class="viewer-toolbar">
+        <strong>页面截图</strong
+        ><a class="viewer-original" href="#" target="_blank" rel="noopener noreferrer">打开原图 ↗</a
+        ><button type="button" class="viewer-close" aria-label="关闭截图">关闭 ×</button>
+      </div>
+      <div class="viewer-content"><img alt="" /></div>
+    </dialog>
+    <p id="copy-status" role="status" aria-live="polite"></p>
+  </body>
+</html>

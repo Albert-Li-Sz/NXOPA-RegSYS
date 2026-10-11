@@ -1,0 +1,53 @@
+{
+  "name": "contest-center",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24.12.0"
+  },
+  "scripts": {
+    "dev": "tsx scripts/dev.ts",
+    "setup": "tsx scripts/setup.ts",
+    "db:generate": "pnpm --filter @contest-center/server db:generate",
+    "db:migrate": "pnpm --filter @contest-center/server db:migrate",
+    "seed": "pnpm --filter @contest-center/server seed",
+    "bootstrap:admin": "pnpm --filter @contest-center/server bootstrap:admin",
+    "typecheck": "pnpm -r typecheck && tsc -p tests/tsconfig.json",
+    "build": "pnpm -r build",
+    "docs:build": "node scripts/build-docs-site.mjs",
+    "docs:dev": "node scripts/serve-docs-site.mjs",
+    "docs:test": "node tests/docs-site.browser.mjs",
+    "test": "vitest run",
+    "test:integration": "tsx tests/integrations/business.ts",
+    "test:e2e": "playwright test",
+    "test:load": "tsx tests/integrations/load.ts",
+    "test:mcp": "tsx tests/contracts/mcp.ts",
+    "test:oj": "tsx tests/integrations/oj.ts",
+    "backup": "bash scripts/backup.sh",
+    "restore": "bash scripts/restore.sh",
+    "test:auth": "tsx tests/integrations/auth.ts",
+    "test:invitations": "tsx tests/integrations/invitations.ts",
+    "test:mail": "tsx tests/integrations/mail-settings.ts",
+    "fixtures:domjudge": "tsx scripts/prepare-domjudge.ts",
+    "test:boundaries": "tsx tests/integrations/boundaries.ts",
+    "test:deployment": "tsx tests/integrations/deployment.ts",
+    "generate:client": "openapi-typescript docs/api/openapi.json -o apps/web/src/generated/api.d.ts",
+    "package:hydro": "pnpm --dir plugins/hydro-contest-center pack --pack-destination ../../dist",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
+    "test:admissions": "tsx tests/integrations/admissions-batch.ts"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@playwright/test": "1.64.0",
+    "@types/node": "^24.0.0",
+    "dotenv": "^17.2.0",
+    "openapi-typescript": "7.13.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "~5.9.0",
+    "vitest": "^4.0.0"
+  },
+  "type": "module"
+}

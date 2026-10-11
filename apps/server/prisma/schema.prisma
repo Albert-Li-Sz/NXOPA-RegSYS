@@ -1,0 +1,425 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+}
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  email String @unique
+  username String @unique
+  passwordHash String?
+  name String
+  verified Boolean @default(false)
+  isAdmin Boolean @default(false)
+  isCoach Boolean @default(false)
+  profile Json @default("{}")
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  sessions Session[]
+  roles RoleAssignment[]
+  identities ExternalIdentity[]
+  coachedRegistrations RegistrationCoach[]
+}
+model Session {
+  id String @id
+  userId String @db.Uuid
+  user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  authenticatedAt DateTime @default(now())
+  userAgent String
+  @@index([userId])
+}
+model EmailToken {
+  id String @id
+  userId String @db.Uuid
+  purpose String
+  expiresAt DateTime
+  usedAt DateTime?
+}
+model RoleAssignment {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  contestId String @db.Uuid
+  user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+  contest Contest @relation(fields:[contestId],references:[id], onDelete:Cascade)
+  @@unique([userId,contestId])
+}
+model Setting {
+  key String @id
+  value Json
+  version Int @default(1)
+}
+/// Historical identity data only; all third-party sign-in endpoints are removed.
+model OAuthProvider {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  mode String
+  issuer String?
+  authorizationUrl String?
+  tokenUrl String?
+  userinfoUrl String?
+  clientId String
+  clientSecret String
+  tokenAuthMethod String @default("client_secret_post")
+  scopes String @default("openid email profile")
+  subjectField String @default("sub")
+  emailField String @default("email")
+  verifiedField String @default("email_verified")
+  nameField String @default("name")
+  enabled Boolean @default(true)
+  version Int @default(1)
+  identities ExternalIdentity[]
+}
+model ExternalIdentity {
+  id String @id @default(uuid()) @db.Uuid
+  providerId String @db.Uuid
+  subject String
+  userId String @db.Uuid
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  provider OAuthProvider @relation(fields:[providerId],references:[id],onDelete:Cascade)
+  @@unique([providerId,subject])
+}
+model Contest {
+  id String @id @default(uuid()) @db.Uuid
+  title String
+  season String
+  description String
+  announcement String @default("")
+  location String @default("")
+  startsAt DateTime
+  opensAt DateTime
+  closesAt DateTime
+  correctionUntil DateTime?
+  published Boolean @default(false)
+  archived Boolean @default(false)
+  manuallyClosed Boolean @default(false)
+  policy Json
+  version Int @default(1)
+  formVersion Int @default(1)
+  createdAt DateTime @default(now())
+  roles RoleAssignment[]
+  forms FormVersion[]
+  registrations Registration[]
+  bindings PlatformBinding[]
+  @@index([published,archived,opensAt,closesAt])
+}
+model FieldDefinition {
+  id String @id @default(uuid()) @db.Uuid
+  key String @unique
+  definition Json
+  version Int @default(1)
+}
+model FormVersion {
+  id String @id @default(uuid()) @db.Uuid
+  contestId String @db.Uuid
+  contest Contest @relation(fields:[contestId],references:[id],onDelete:Cascade)
+  version Int
+  fields Json
+  schema Json
+  createdAt DateTime @default(now())
+  @@unique([contestId,version])
+}
+model Registration {
+  id String @id @default(uuid()) @db.Uuid
+  contestId String @db.Uuid
+  contest Contest @relation(fields:[contestId],references:[id])
+  ownerId String @db.Uuid
+  teamName String @default("")
+  teamEnglishName String @default("")
+  answers Json @default("{}")
+  status String @default("DRAFT")
+  review String @default("PENDING")
+  reviewReason String @default("")
+  formVersion Int
+  snapshot Json?
+  policySnapshot Json?
+  feeCents Int @default(0)
+  netPaidCents Int @default(0)
+  quoted Boolean @default(false)
+  eligible Boolean @default(false)
+  version Int @default(1)
+  submittedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  people RegistrationPerson[]
+  coaches RegistrationCoach[]
+  revisions RegistrationRevision[]
+  vouchers PaymentVoucher[]
+  ledger LedgerEntry[]
+  refunds Refund[]
+  invoices InvoiceRequest[]
+  admissions AdmissionDocument[]
+  mappings AccountMapping[]
+  @@index([contestId,status,review,eligible])
+  @@index([ownerId])
+}
+model RegistrationPerson {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id],onDelete:Cascade)
+  contestId String @db.Uuid
+  userId String? @db.Uuid
+  active Boolean @default(true)
+  uniqueKey String?
+  name String
+  email String @default("")
+  captain Boolean @default(false)
+  confirmed Boolean @default(false)
+  answers Json @default("{}")
+  @@index([userId,active])
+}
+model RegistrationCoach {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id],onDelete:Cascade)
+  userId String @db.Uuid
+  user User @relation(fields:[userId],references:[id])
+  answers Json @default("{}")
+  @@unique([registrationId,userId])
+}
+model Invitation {
+  id String @id @default(uuid()) @db.Uuid
+  tokenHash String @unique
+  kind String
+  registrationId String? @db.Uuid
+  inviterId String @db.Uuid
+  targetEmail String?
+  targetUserId String? @db.Uuid
+  contestId String? @db.Uuid
+  coachId String? @db.Uuid
+  expiresAt DateTime
+  acceptedBy String? @db.Uuid
+  acceptedAt DateTime?
+  revoked Boolean @default(false)
+  createdAt DateTime @default(now())
+  @@index([kind,createdAt])
+  @@index([inviterId])
+}
+model RegistrationRevision {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id],onDelete:Cascade)
+  version Int
+  actorId String @db.Uuid
+  snapshot Json
+  reason String
+  createdAt DateTime @default(now())
+  @@unique([registrationId,version])
+}
+model Attachment {
+  id String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid
+  registrationId String? @db.Uuid
+  ticketId String? @db.Uuid
+  name String
+  mime String
+  size Int
+  storageKey String @unique
+  createdAt DateTime @default(now())
+}
+model PaymentVoucher {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id])
+  amountCents Int
+  channel String
+  reference String?
+  payer String
+  paidAt DateTime
+  attachmentId String @db.Uuid
+  status String @default("PENDING")
+  reason String @default("")
+  confirmedBy String? @db.Uuid
+  createdAt DateTime @default(now())
+}
+model LedgerEntry {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id])
+  contestId String @db.Uuid
+  kind String
+  amountCents Int
+  sourceId String @unique
+  channelReference String?
+  actorId String @db.Uuid
+  note String
+  createdAt DateTime @default(now())
+  @@unique([contestId,channelReference])
+}
+model Refund {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id])
+  amountCents Int
+  reason String
+  status String @default("REQUESTED")
+  reference String?
+  attachmentId String? @db.Uuid
+  handledBy String? @db.Uuid
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+}
+model InvoiceRequest {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id])
+  amountCents Int
+  title String
+  taxId String
+  email String
+  status String @default("REQUESTED")
+  attachmentId String? @db.Uuid
+  handledBy String? @db.Uuid
+  reason String @default("")
+  createdAt DateTime @default(now())
+}
+model SupportTicket {
+  id String @id @default(uuid()) @db.Uuid
+  contestId String? @db.Uuid
+  registrationId String? @db.Uuid
+  ownerId String @db.Uuid
+  title String
+  category String
+  status String @default("OPEN")
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages SupportMessage[]
+}
+model SupportMessage {
+  id String @id @default(uuid()) @db.Uuid
+  ticketId String @db.Uuid
+  ticket SupportTicket @relation(fields:[ticketId],references:[id],onDelete:Cascade)
+  actorId String @db.Uuid
+  text String
+  attachments Json @default("[]")
+  createdAt DateTime @default(now())
+}
+model AdmissionTemplate {
+  id String @id @default(uuid()) @db.Uuid
+  contestId String? @db.Uuid
+  name String
+  source String
+  version Int
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  @@index([contestId,active])
+}
+model AdmissionDocument {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id])
+  number String @unique
+  location String
+  room String @default("")
+  seat String @default("")
+  registrationVersion Int
+  templateId String @db.Uuid
+  templateVersion Int
+  version Int @default(1)
+  state String @default("QUEUED")
+  storageKey String?
+  error String?
+  releasedAt DateTime?
+  releaseAt DateTime?
+  createdAt DateTime @default(now())
+  @@unique([registrationId,registrationVersion,templateId])
+}
+model PlatformInstance {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  type String
+  baseUrl String
+  credentials String
+  allowedContestIds Json @default("[]")
+  enabled Boolean @default(true)
+  version Int @default(1)
+  bindings PlatformBinding[]
+}
+model PlatformBinding {
+  id String @id @default(uuid()) @db.Uuid
+  contestId String @db.Uuid
+  contest Contest @relation(fields:[contestId],references:[id],onDelete:Cascade)
+  instanceId String @db.Uuid
+  instance PlatformInstance @relation(fields:[instanceId],references:[id])
+  remoteContestId String
+  domainId String @default("system")
+  groupIds Json @default("[]")
+  organizationId String?
+  automatic Boolean @default(true)
+  enabled Boolean @default(true)
+  @@unique([contestId,instanceId,remoteContestId])
+}
+model AccountMapping {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id])
+  bindingId String @db.Uuid
+  remoteUserId String?
+  remoteTeamId String?
+  username String
+  credential String
+  state String @default("QUEUED")
+  details Json @default("{}")
+  updatedAt DateTime @updatedAt
+  @@unique([registrationId,bindingId])
+}
+model Job {
+  id String @id @default(uuid()) @db.Uuid
+  kind String
+  resourceId String
+  dedupeKey String @unique
+  payload Json
+  state String @default("PENDING")
+  attempts Int @default(0)
+  error String?
+  result Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([state,updatedAt])
+}
+model OutboxEvent {
+  id String @id @default(uuid()) @db.Uuid
+  type String
+  resourceId String
+  payload Json
+  deliveredAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([deliveredAt,createdAt])
+}
+model ApiToken {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  tokenHash String @unique
+  contestIds Json
+  scopes Json
+  fields Json
+  expiresAt DateTime
+  revoked Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+model Webhook {
+  id String @id @default(uuid()) @db.Uuid
+  contestId String? @db.Uuid
+  url String
+  secret String
+  enabled Boolean @default(true)
+  version Int @default(1)
+}
+model AuditEvent {
+  id String @id @default(uuid()) @db.Uuid
+  actorId String
+  action String
+  resourceId String
+  details Json
+  createdAt DateTime @default(now())
+  @@index([resourceId,createdAt])
+}
+model IdempotencyRecord {
+  id String @id
+  requestHash String
+  result Json
+  createdAt DateTime @default(now())
+}

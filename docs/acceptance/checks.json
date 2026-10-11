@@ -1,0 +1,27 @@
+{
+  "recordedAt": "2026-10-11T13:00:08.327918+00:00",
+  "checks": [
+    {
+      "command": "pnpm typecheck",
+      "exitCode": 0,
+      "evidence": "typecheck.txt"
+    },
+    {
+      "command": "pnpm build",
+      "exitCode": 0,
+      "evidence": "build.txt",
+      "warning": "Main browser chunk 966.46 kB before gzip; further component splitting can reduce this"
+    },
+    {
+      "command": "pnpm test",
+      "exitCode": 0,
+      "testsPassed": 4,
+      "evidence": "unit.txt"
+    },
+    {
+      "command": "pnpm format:check",
+      "exitCode": 0,
+      "evidence": "format.txt"
+    }
+  ]
+}

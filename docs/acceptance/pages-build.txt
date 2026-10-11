@@ -1,0 +1,2 @@
+$ node scripts/build-docs-site.mjs
+Documentation built: 12 chapters, 14 screenshots → /Users/albert_li/data/Code/Contest_Center/dist/docs-site

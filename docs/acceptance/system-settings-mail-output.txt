@@ -1,0 +1,2 @@
+$ tsx tests/integrations/mail-settings.ts
+Mail settings acceptance: 9 checks passed

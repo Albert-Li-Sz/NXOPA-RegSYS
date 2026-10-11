@@ -1,0 +1,10 @@
+{
+  "report": [
+    "Actual ZIP contains two complete individual/shared-team PDFs; repeated ID is deduplicated",
+    "Mixed batch validates every document permission before sending ZIP",
+    "Oversized batch is rejected explicitly rather than silently truncating",
+    "Administrator registration selection resolves the current eligible documents",
+    "Integration read token cannot retrieve private PDF job results or compiler logs",
+    "Explicit administrator rejection revokes eligibility even for automatic-review competitions"
+  ]
+}

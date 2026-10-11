@@ -1,0 +1,18 @@
+{
+  "platform": "DOMJUDGE",
+  "startedAt": "2026-10-11T12:50:25.475Z",
+  "version": "9.0.1",
+  "result": {
+    "state": "VERIFIED",
+    "username": "cc_31aec38313ffcccf2b563cb9",
+    "remoteTeamId": "cc-0867960f337d4379aca21b51f14ef80a",
+    "remoteUserId": "cc_31aec38313ffcccf2b563cb9",
+    "schemaVersion": 1,
+    "registrationId": "0867960f-337d-4379-aca2-1b51f14ef80a"
+  },
+  "repeatSync": "PASS",
+  "login": "PASS",
+  "contestAccess": "PASS",
+  "failureRecovery": "PASS",
+  "status": "PASS"
+}

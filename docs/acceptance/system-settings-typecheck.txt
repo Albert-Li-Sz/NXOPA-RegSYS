@@ -1,0 +1,12 @@
+$ pnpm -r typecheck && tsc -p tests/tsconfig.json
+Scope: 6 of 7 workspace projects
+apps/mcp-adapter typecheck$ tsc --noEmit
+packages/contracts typecheck$ tsc --noEmit
+packages/contracts typecheck: Done
+packages/connectors typecheck$ tsc --noEmit
+apps/web typecheck$ vue-tsc --noEmit
+apps/mcp-adapter typecheck: Done
+packages/connectors typecheck: Done
+apps/server typecheck$ tsc --noEmit
+apps/web typecheck: Done
+apps/server typecheck: Done

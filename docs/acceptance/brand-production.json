@@ -1,0 +1,12 @@
+{
+  "startedAt": "2026-10-11T12:55:11.013Z",
+  "checks": [
+    "Production standalone homepage, exact name and both original logos",
+    "Entrance navigates to /contests and deep-link reload works through Caddy",
+    "Initialized production administrator can access platform setup and binding; no third-party login configuration",
+    "Production mobile homepage has no horizontal overflow",
+    "Retired authentication routes return 404; browser runtime errors: 0"
+  ],
+  "mobileWidth": 390,
+  "status": "PASS"
+}

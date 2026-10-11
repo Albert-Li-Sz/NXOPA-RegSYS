@@ -1,0 +1,50 @@
+{
+  "name": "@contest-center/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "worker": "tsx src/worker.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "seed": "tsx src/seed.ts",
+    "bootstrap:admin": "tsx src/bootstrap.ts"
+  },
+  "dependencies": {
+    "@contest-center/connectors": "workspace:*",
+    "@contest-center/contracts": "workspace:*",
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/platform-express": "^11.1.0",
+    "@nestjs/swagger": "^11.0.0",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "^3.0.1",
+    "archiver": "7.0.1",
+    "argon2": "0.45.1",
+    "bullmq": "^5.0.0",
+    "cookie-parser": "1.4.7",
+    "dotenv": "^17.2.0",
+    "ioredis": "^5.0.0",
+    "multer": "2.4.0",
+    "nodemailer": "^8.0.0",
+    "pg": "8.23.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/archiver": "^6.0.0",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/express": "^5.0.0",
+    "@types/multer": "^2.0.0",
+    "@types/nodemailer": "^7.0.0",
+    "@types/pg": "^8.15.0",
+    "prisma": "7.10.0"
+  }
+}

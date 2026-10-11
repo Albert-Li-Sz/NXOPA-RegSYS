@@ -1,0 +1,95 @@
+name: contest-center
+x-app: &app
+  build: { context: ., dockerfile: infra/Dockerfile, target: runtime }
+  env_file: .env
+  environment:
+    NODE_ENV: ${DEPLOY_NODE_ENV:-production}
+    DATABASE_URL: postgresql://contest:${POSTGRES_PASSWORD}@postgres:5432/contest_center
+    REDIS_URL: redis://redis:6379
+    STORAGE_DIR: /data/storage
+    LATEX_SPOOL: /data/latex
+    PORT: '3000'
+    PUBLIC_URL: ${DEPLOY_PUBLIC_URL:-http://localhost:8080}
+    SMTP_HOST: ${DEPLOY_SMTP_HOST:-${SMTP_HOST:-localhost}}
+    SMTP_PORT: ${DEPLOY_SMTP_PORT:-${SMTP_PORT:-587}}
+  volumes: [files:/data/storage, latex_jobs:/data/latex]
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      {
+        POSTGRES_USER: contest,
+        POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:?Run pnpm run setup}',
+        POSTGRES_DB: contest_center,
+      }
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      { test: [CMD-SHELL, pg_isready -U contest -d contest_center], interval: 5s, retries: 20 }
+    restart: unless-stopped
+  redis:
+    image: redis:7.4.5-alpine
+    command: [redis-server, --appendonly, 'yes']
+    volumes: [redis_data:/data]
+    healthcheck: { test: [CMD, redis-cli, ping], interval: 5s, retries: 20 }
+    restart: unless-stopped
+  initialize:
+    <<: *app
+    user: root
+    cap_drop: []
+    command: [sh, -c, 'chown -R 1000:1000 /data/storage /data/latex && pnpm db:migrate']
+    restart: 'no'
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy } }
+  api:
+    <<: *app
+    depends_on: { initialize: { condition: service_completed_successfully } }
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://localhost:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      retries: 10
+    mem_limit: 1000m
+  worker:
+    <<: *app
+    command: [pnpm, worker]
+    depends_on:
+      {
+        initialize: { condition: service_completed_successfully },
+        latex: { condition: service_started },
+      }
+    mem_limit: 700m
+  latex:
+    build: infra/latex-runner
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=64m]
+    volumes: [latex_jobs:/jobs]
+    mem_limit: 1200m
+    cpus: 1
+    pids_limit: 64
+    restart: unless-stopped
+  web:
+    build: { context: ., dockerfile: infra/Dockerfile, target: web }
+    environment: { SITE_ADDRESS: '${SITE_ADDRESS:-:80}' }
+    ports: ['${HTTP_PORT:-8080}:80', '${HTTPS_PORT:-8443}:443']
+    volumes: [caddy_data:/data, caddy_config:/config]
+    depends_on: { api: { condition: service_healthy } }
+    restart: unless-stopped
+    mem_limit: 256m
+volumes:
+  postgres_data:
+  redis_data:
+  files:
+  latex_jobs:
+  caddy_data:
+  caddy_config:
