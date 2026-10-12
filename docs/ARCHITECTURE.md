@@ -10,8 +10,8 @@
 flowchart TB
     Browser[参赛者 指导老师 管理员]
     MCP[只读 MCP 适配器\n后期机器人]
-    Gateway[Caddy HTTPS 入口]
-    Web[Vue 3 官网与管理后台]
+    Gateway[官方 Caddy 容器\nHTTPS 与反向代理]
+    Web[独立前端容器\nVue 3 官网与管理后台]
     API[NestJS API\n统一权限与应用服务]
     PG[(PostgreSQL\n报名 财务 权限 Outbox)]
     Redis[(Redis 与 BullMQ\n会话与任务队列)]
@@ -165,6 +165,7 @@ Contest_Center/
 ├── infra/
 │   ├── compose/                    开发与生产 Docker Compose
 │   ├── caddy/                      HTTPS 与同域代理
+│   ├── web/                        独立生产页面服务
 │   └── latex-runner/               无网络编译镜像与每任务沙箱
 ├── tests/
 │   ├── e2e/                        报名 财务 准考证 工单全流程
@@ -175,6 +176,6 @@ Contest_Center/
 
 ## 部署与扩展
 
-首版部署一套 Compose。Caddy 为唯一公网入口，数据库和 Redis 位于应用内网；Worker 与 LaTeX Runner 共享独立任务卷，Runner 使用无网络配置。SMTP 与评测平台是外部服务，配置通过受控的管理员界面和部署秘密提供。
+首版部署一套 Compose。PostgreSQL、Redis、Caddy 分别直接使用官方镜像；前端、API、Worker 与 LaTeX Runner 独立构建和运行。Caddy 为唯一公网入口，在 `edge` 网络代理前端，在 `app` 网络代理 API；数据库和 Redis 位于仅后端可加入的 `data` 私有网络。API 与 Worker 经 `app` 访问 SMTP 和评测平台。前端不持有数据库或加密凭据，不挂载私有附件。Worker 与 LaTeX Runner 共享独立任务卷，Runner 使用无网络配置。
 
 后续增加在线支付只新增支付适配器与回调对账，继续使用原有账簿和资格规则；增加竞赛平台只新增 Connector 或采用联合注册协议；机器人读取同一套查询 API。需要增加服务器时，先扩展无状态 API 与 Worker，并将文件存储切换为已预留的 S3 后端。

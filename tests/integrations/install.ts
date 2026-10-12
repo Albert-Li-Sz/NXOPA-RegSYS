@@ -7,6 +7,7 @@ import { createServer } from 'node:net';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { chromium, expect } from '@playwright/test';
 import { policySchema } from '../../packages/contracts/src/index.js';
 
 const exec = promisify(execFile);
@@ -88,9 +89,32 @@ try {
   assert.equal(model.services.api.build.context, root.replace(/\/$/, ''));
   assert.equal(model.services.latex.network_mode, 'none');
   assert.equal(model.services.latex.read_only, true);
-  for (const service of ['postgres', 'redis', 'api', 'worker'])
+  for (const service of ['postgres', 'redis', 'api', 'worker', 'web', 'latex'])
     assert.ok(!model.services[service].ports, `${service} has no public port`);
   passed('独立安装配置正确解析源码、数据库和 Redis 地址，私有端口及编译隔离生效');
+
+  const officialImages = {
+    postgres: 'postgres:17.6-alpine',
+    redis: 'redis:7.4.5-alpine',
+    caddy: 'caddy:2.10.2-alpine',
+  };
+  for (const [service, image] of Object.entries(officialImages)) {
+    assert.equal(model.services[service].image, image);
+    assert.ok(!model.services[service].build, `${service} uses the official image directly`);
+  }
+  assert.equal(model.services.worker.build.target, 'worker');
+  assert.equal(model.services.web.build.target, 'web');
+  assert.equal(model.services.web.read_only, true);
+  assert.ok(!model.services.web.environment?.DATABASE_URL);
+  assert.ok(!model.services.web.environment?.ENCRYPTION_KEY);
+  assert.ok(!model.services.caddy.environment?.ENCRYPTION_KEY);
+  assert.deepEqual(Object.keys(model.services.web.networks), ['edge']);
+  assert.deepEqual(Object.keys(model.services.postgres.networks), ['data']);
+  assert.ok(!model.services.caddy.networks.data);
+  assert.equal(model.networks.data.internal, true);
+  assert.equal(model.networks.edge.internal, true);
+  assert.ok(!model.services.caddy.volumes.some((v: any) => v.target === '/data/storage'));
+  passed('数据库、Redis、Caddy 直接使用官方镜像；前端、API、Worker 与编译器独立且网络分区');
 
   const httpsModel = JSON.parse(
     await run(['compose', 'config', '--format', 'json'], {
@@ -101,8 +125,8 @@ try {
     }),
   );
   assert.equal(httpsModel.services.api.environment.PUBLIC_URL, 'https://reg.example.org');
-  assert.equal(httpsModel.services.web.environment.SITE_ADDRESS, 'reg.example.org');
-  assert.ok(httpsModel.services.web.ports.every((p: any) => p.host_ip === '127.0.0.1'));
+  assert.equal(httpsModel.services.caddy.environment.SITE_ADDRESS, 'reg.example.org');
+  assert.ok(httpsModel.services.caddy.ports.every((p: any) => p.host_ip === '127.0.0.1'));
   passed('公网 HTTPS 地址与已有反向代理的本机端口绑定正确解析');
 
   console.log('[安装验收] 构建并启动独立 Compose 实例……');
@@ -115,12 +139,43 @@ try {
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line));
-  for (const name of ['postgres', 'redis', 'api', 'worker'])
+  for (const name of ['postgres', 'redis', 'api', 'worker', 'web', 'caddy'])
     assert.equal(services.find((s) => s.Service === name).Health, 'healthy');
+  for (const [service, image] of Object.entries(officialImages)) {
+    const containerId = (await run(['compose', 'ps', '-q', service])).trim();
+    const { stdout } = await exec(
+      'docker',
+      ['inspect', '--format', '{{.Config.Image}}', containerId],
+      { env },
+    );
+    assert.equal(stdout.trim(), image, `${service} runs the official image`);
+  }
   const homepage = await fetch(base);
   assert.equal(homepage.status, 200);
-  assert.ok((await homepage.text()).includes('南晓开放原子社在线报名系统'));
-  passed('从空数据卷构建并启动，迁移成功，官网、API 和 Worker 健康');
+  const html = await homepage.text();
+  assert.ok(html.includes('南晓开放原子社在线报名系统'));
+  passed('从空数据卷构建并启动，迁移成功；官方基础容器、官网、API 和 Worker 健康');
+
+  const route = await fetch(`${base}/contests`);
+  assert.equal(route.status, 200);
+  assert.ok(route.headers.get('content-type')?.includes('text/html'));
+  const assetUrl = html.match(/src="(\/assets\/[^\"]+\.js)"/)?.[1];
+  assert.ok(assetUrl, 'Production entry asset exists');
+  const asset = await fetch(`${base}${assetUrl}`);
+  assert.equal(asset.status, 200);
+  assert.ok(asset.headers.get('content-type')?.includes('text/javascript'));
+  assert.ok(asset.headers.get('cache-control')?.includes('immutable'));
+  assert.ok((await asset.text()).length > 100);
+  const head = await fetch(`${base}${assetUrl}`, { method: 'HEAD' });
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), '');
+  assert.equal((await fetch(`${base}/assets/missing.js`)).status, 404);
+  assert.equal((await fetch(`${base}/.env`)).status, 404);
+  assert.equal((await fetch(`${base}/%2e%2e%2fpackage.json`)).status, 404);
+  assert.equal((await fetch(base, { method: 'POST' })).status, 405);
+  passed(
+    'Caddy 转发独立前端，历史路由、静态资源 MIME / 缓存和 HEAD 正常，私有路径与缺失文件拒绝访问',
+  );
 
   const credentials = {
     ADMIN_EMAIL: 'install-check@example.test',
@@ -142,6 +197,35 @@ try {
   );
   passed('安装入口初始化管理员并登录；正式数据库无演示账号，邮件默认停用');
 
+  const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const browser = await chromium.launch({
+    headless: true,
+    ...(existsSync(chrome) ? { executablePath: chrome } : {}),
+  });
+  try {
+    const page = await browser.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(base);
+    await expect(page.getByRole('heading', { name: /南晓开放原子社/ })).toBeVisible();
+    await page.locator('.hero-actions').getByRole('link', { name: '进入报名系统' }).click();
+    await expect(page).toHaveURL(
+      (url) => url.pathname === '/login' && url.searchParams.get('next') === '/contests',
+    );
+    await page.locator('#account').fill(credentials.ADMIN_EMAIL);
+    await page.locator('#password').fill(credentials.ADMIN_PASSWORD);
+    await page.getByRole('button', { name: '登录', exact: true }).click();
+    await expect(page).toHaveURL(/\/contests$/);
+    await expect(page.getByRole('heading', { name: '比赛列表' })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('heading', { name: '比赛列表' })).toBeVisible();
+    await expect(page.locator('.user-menu')).toBeVisible();
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+  }
+  passed('生产浏览器通过 Caddy 完成首页进入、登录及比赛列表刷新，会话保持且无脚本错误');
+
   const contest = await admin.api('/contests', 'POST', {
     title: '独立安装验收竞赛',
     season: '安装验收',
@@ -159,6 +243,7 @@ try {
   });
   assert.equal(registration.eligible, true);
   const attachment = await admin.upload(registration.id);
+  assert.equal((await fetch(`${base}/api/v1/files/${attachment.id}`)).status, 401);
   const generated = await admin.api('/admissions/generate', 'POST', {
     registrationIds: [registration.id],
     room: '安装验收考场',

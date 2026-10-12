@@ -22,6 +22,8 @@
 
 正式部署环境固定 production，Cookie 使用 HttpOnly、Secure、SameSite=Lax。写请求检查 CSRF；API Token 与浏览器会话分别授权。Caddy 为唯一公开入口，数据库、Redis、API、Worker 与编译器均无宿主机公开端口。
 
+PostgreSQL、Redis 和 Caddy 分别直接使用官方 `postgres:17.6-alpine`、`redis:7.4.5-alpine`、`caddy:2.10.2-alpine` 镜像。前端 `web`、API、Worker 和 LaTeX 各自运行在业务容器内；前端只包含 Vue 构建产物，Caddy 通过只读挂载 `infra/caddy/Caddyfile` 代理 `web:8080` 与 `api:3000`。网络分为前端入口 `edge`、后端出站 `app` 和私有数据库 `data`，前端不连接数据库网络、不读取后端秘密。
+
 线上 `.env` 示例片段：
 
 ```dotenv
@@ -82,8 +84,11 @@ docker compose exec api pnpm restore:public-url https://reg.example.org
 
 ```bash
 docker compose logs --tail 100 api worker
+docker compose logs --tail 100 caddy web
 docker compose up -d --build
 ```
+
+此前 `web` 同时运行 Caddy 的部署升级后，官方 `caddy` 容器接管原端口和证书卷，`web` 只运行页面服务。保持项目名和 `.env` 不变，先备份再执行上述更新命令，保留数据库、附件和证书；无需重新初始化管理员。
 
 第 5 个迁移将站点名称改为“南晓开放原子社在线报名系统”，保留主色，停用旧第三方认证配置并撤销没有本站密码的旧会话；历史身份数据保留。旧账号可通过邮箱找回密码建立本站密码。
 

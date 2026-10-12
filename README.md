@@ -27,6 +27,8 @@ bash install/install.sh admin
 
 本机试用打开 <http://localhost:8080>；公网部署使用配置的 HTTPS 域名。初始化命令交互输入管理员邮箱和密码；首次创建后使用邮箱或 `administrator` 登录。正式容器固定为 production 模式，初始化不会创建演示账号，也不会覆盖已有账号。数据库迁移在 API 启动前自动执行。已有根目录 Compose 部署仍可沿用原入口和配置；默认安装项目名 `nxopa-regsys` 与旧项目 `contest-center` 使用不同数据卷，迁移入口时按安装说明保留原项目名和密钥。
 
+PostgreSQL、Redis 和 Caddy 各自直接使用官方镜像；Vue 前端、NestJS API、Worker 和 XeLaTeX 分别运行在独立容器。只有 Caddy 公开端口，通过内网转发前端与 API；数据库和队列位于独立私有网络。各服务与数据卷说明见 [安装说明](install/README.md)。
+
 ## 本地开发与演示
 
 ```bash

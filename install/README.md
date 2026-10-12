@@ -2,6 +2,23 @@
 
 本目录部署“南晓开放原子社在线报名系统”。需要保留完整仓库，镜像从上一层源码构建；不能只复制 `install` 文件夹。宿主机只需要 Docker、Compose 插件、Bash、OpenSSL 和 Git，无需安装 Node.js、pnpm、数据库或 LaTeX。
 
+基础设施直接使用官方镜像，业务分别构建和运行：
+
+| 服务         | 镜像 / 构建目标                      | 职责                                 |
+| ------------ | ------------------------------------ | ------------------------------------ |
+| `postgres`   | `postgres:17.6-alpine` 官方镜像      | PostgreSQL 数据库，持久卷保存数据    |
+| `redis`      | `redis:7.4.5-alpine` 官方镜像        | BullMQ 队列与缓存，启用 AOF 持久化   |
+| `caddy`      | `caddy:2.10.2-alpine` 官方镜像       | 唯一公开入口，HTTPS、证书及反向代理  |
+| `web`        | `infra/Dockerfile` 的 `web` 目标     | Vue 生产页面和静态资源，独立只读容器 |
+| `api`        | `infra/Dockerfile` 的 `runtime` 目标 | NestJS 业务 API                      |
+| `worker`     | `infra/Dockerfile` 的 `worker` 目标  | 邮件、平台同步、PDF 和导出任务       |
+| `initialize` | 与 API 相同的运行镜像                | 一次性数据库迁移和私有卷权限初始化   |
+| `latex`      | `infra/latex-runner`                 | 无网络的 XeLaTeX 编译沙箱            |
+
+Caddy 通过只读挂载的 `infra/caddy/Caddyfile` 将 `/api/*` 转发到 `api:3000`，其余页面转发到 `web:8080`；Caddy 镜像不包含前端代码。前端容器只保存构建后的页面，不持有数据库、Redis 或加密密钥，也不挂载报名附件。
+
+网络按访问关系拆分：`edge` 仅连接 Caddy 与前端，`data` 仅连接数据库、Redis 和后端；这两个网络禁止直接访问外网。`app` 为 Caddy、API、Worker 提供入口转发及 SMTP / OJ 出站访问。LaTeX 不加入任何网络。除 Caddy 外，各服务均不映射宿主机端口。
+
 ## 1. 准备服务器
 
 建议至少 2 核 CPU、4 GiB 内存、20 GiB 可用磁盘；编译镜像需要额外磁盘空间。较多并发或同时生成准考证时建议 4 核、8 GiB 内存。Linux 服务器使用 Docker Engine，macOS / Windows 使用 Docker Desktop；Windows 命令在 WSL2 Bash 中执行。
@@ -83,7 +100,7 @@ bash install.sh up
 bash install.sh admin
 ```
 
-`up` 构建镜像、启动 PostgreSQL / Redis、设置私有卷权限、执行所有 Prisma 迁移，再启动 API、Worker、Caddy 和 XeLaTeX。安装会等待 API 的数据库 / Redis 健康检查，以及 Worker 的数据库心跳检查。初始化容器执行完成后显示 `Exited (0)` 属于正常状态。
+`up` 构建业务镜像、使用独立官方 PostgreSQL / Redis 容器、设置私有卷权限、执行所有 Prisma 迁移，再启动 API、Worker、前端、Caddy 和 XeLaTeX。安装会等待数据库、Redis、API、Worker、前端和 Caddy 的健康检查。初始化容器执行完成后显示 `Exited (0)` 属于正常状态。
 
 管理员命令交互输入邮箱与隐藏密码，密码至少 10 位。默认用户名为 `administrator`，可通过邮箱或用户名登录。不会创建开发演示账号，也不会覆盖已有管理员。自动安装可向进程提供 `ADMIN_EMAIL`、`ADMIN_PASSWORD` 和可选 `ADMIN_USERNAME`；使用临时环境或秘密管理工具提供密码，命令参数不包含密码。
 
@@ -133,11 +150,12 @@ bash install.sh restore-url https://reg.example.org
 
 ```bash
 bash install.sh logs api worker
+bash install.sh logs caddy web
 bash install.sh stop
 bash install.sh up
 ```
 
-每个服务的 Docker 日志轮转为 10 MiB × 3 份。数据库、Redis 和私有附件使用持久卷；LaTeX 无网络、只读根文件系统并限制资源。只有 Caddy 暴露端口，PostgreSQL、Redis 和 API 不公开宿主机端口。
+每个服务的 Docker 日志轮转为 10 MiB × 3 份。数据库、Redis、私有附件和 Caddy 证书使用各自的持久卷；业务容器更新不删除这些数据。LaTeX 无网络、只读根文件系统并限制资源。
 
 更新先获取需要的源码版本，再执行 `update`；脚本先加密备份，备份失败不会继续构建或迁移。
 
@@ -146,6 +164,8 @@ cd ..
 git pull --ff-only
 bash install/install.sh update
 ```
+
+从此前由 `web` 容器同时提供 Caddy 和页面的版本升级时，同一命令会重建独立前端并启动新的 `caddy` 服务。入口端口、域名和已有持久卷名称不变；保留原项目名与 `.env` 后，数据库、附件和 Caddy 证书继续使用原卷。根目录 Compose 也采用相同拆分；已有根目录实例先执行 `bash scripts/backup.sh`，再执行 `docker compose up -d --build --wait --wait-timeout 240`。
 
 ```bash
 # 默认备份至 install/backups，也可指定其他目录
@@ -166,7 +186,8 @@ bash install.sh restore /srv/nxopa-backups/contest-center-YYYYMMDDTHHMMSSZ.ccbak
 | 端口已被占用    | 修改 `.env` 的端口；本机试用同时修改 `PUBLIC_URL`，检查已有根目录 Compose 实例       |
 | 初始化失败      | `bash install.sh compose logs --tail 100 initialize`，核对数据库密码、磁盘和迁移错误 |
 | Worker 不健康   | 检查 `logs worker`，以及 PostgreSQL / Redis 状态；管理中心查看任务与心跳             |
-| HTTPS 证书失败  | 检查域名解析、80 / 443 端口、Caddy 日志及是否有错误 AAAA 记录                        |
+| HTTPS 证书失败  | 检查域名解析、80 / 443 端口、`logs caddy` 及是否有错误 AAAA 记录                     |
+| 页面或 API 502  | 分别检查 `logs caddy web api` 和 `status`；不要直接公开 API 或前端端口               |
 | 登录后仍未登录  | 使用 HTTPS 公网地址或本机 localhost，核对域名、Origin 和代理路径                     |
 | 邮件无法发送    | 使用容器可访问的 SMTP 主机，核对 TLS、授权码，后台检测并检查真实收件箱               |
 | 平台同步失败    | 后台检查绑定、插件能力、学校映射和目标比赛；修正后重试任务                           |

@@ -27,6 +27,9 @@ x-app: &app
     - latex_jobs:/data/latex
   extra_hosts:
     - host.docker.internal:host-gateway
+  networks:
+    - app
+    - data
   init: true
   restart: unless-stopped
   security_opt:
@@ -45,6 +48,8 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - data
     healthcheck:
       test: [CMD-SHELL, pg_isready -U contest -d contest_center]
       interval: 5s
@@ -58,6 +63,8 @@ services:
     command: [redis-server, --appendonly, 'yes']
     volumes:
       - redis_data:/data
+    networks:
+      - data
     healthcheck:
       test: [CMD, redis-cli, ping]
       interval: 5s
@@ -72,6 +79,8 @@ services:
     cap_drop: []
     command: [sh, -c, 'chown -R 1000:1000 /data/storage /data/latex && pnpm db:migrate']
     restart: 'no'
+    networks:
+      - data
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,6 +106,10 @@ services:
 
   worker:
     <<: *app
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: worker
     command: [pnpm, worker]
     depends_on:
       initialize:
@@ -152,17 +165,51 @@ services:
       context: ..
       dockerfile: infra/Dockerfile
       target: web
+    networks:
+      - edge
+    read_only: true
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+
+  caddy:
+    image: caddy:2.10.2-alpine
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
       - '${HTTP_PORT:-8080}:80'
       - '${HTTPS_PORT:-8443}:443'
     volumes:
+      - ../infra/caddy:/etc/caddy:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - edge
+      - app
     depends_on:
       api:
         condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:2019/config/']
+      interval: 10s
+      timeout: 5s
+      retries: 20
     restart: unless-stopped
     mem_limit: 256m
     logging: *logging
@@ -174,3 +221,10 @@ volumes:
   latex_jobs:
   caddy_data:
   caddy_config:
+
+networks:
+  edge:
+    internal: true
+  app:
+  data:
+    internal: true
