@@ -12,7 +12,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "seed": "tsx src/seed.ts",
-    "bootstrap:admin": "tsx src/bootstrap.ts"
+    "bootstrap:admin": "tsx src/bootstrap.ts",
+    "restore:public-url": "tsx ../../scripts/restore-public-url.ts"
   },
   "dependencies": {
     "@contest-center/connectors": "workspace:*",

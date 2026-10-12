@@ -2,6 +2,7 @@
 
 可自托管的中文竞赛报名系统，采用 Vue 3、Element Plus、NestJS、Prisma 7、PostgreSQL、Redis/BullMQ 和隔离的 XeLaTeX 编译容器。支持个人与团队报名、指导老师、审核、线下财务、工单、准考证、Hydro / DOMjudge 联动，以及联合注册 API 和只读 MCP。
 
+- [Docker Compose 安装包与步骤](install/README.md)
 - [部署与日常维护](docs/DEPLOYMENT.md)
 - [在线配置教程（GitHub Pages）](https://albert-li-sz.github.io/NXOPA-RegSYS/)
 - [带截图的配置教程（PDF）](output/pdf/configuration-guide.pdf)、[LaTeX 源码](docs/CONFIGURATION_GUIDE.tex)、[源码与截图打包](output/pdf/configuration-guide-source.zip)
@@ -15,17 +16,16 @@
 
 ## 启动正式实例
 
-需要 Docker Compose、Node.js 24.12+ 和 pnpm 11.25。Node.js / pnpm 用于生成本地配置，系统运行在容器内。
+推荐使用 `install` 目录的独立安装入口。宿主机需要 Docker Compose、Bash 和 OpenSSL，Node.js / pnpm 随镜像安装。
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm setup
-# 按 docs/DEPLOYMENT.md 配置 .env 中的数据库密码与公开地址
-docker compose up -d --build
-docker compose run --rm api pnpm bootstrap:admin
+bash install/install.sh init
+# 公网部署按 install/README.md 修改 install/.env 的域名与端口
+bash install/install.sh up
+bash install/install.sh admin
 ```
 
-打开 <http://localhost:8080>。初始化命令交互输入管理员邮箱和密码；首次创建后使用邮箱或 `administrator` 登录。正式容器固定为 production 模式，初始化不会创建演示账号，也不会覆盖已有账号。数据库迁移在 API 启动前自动执行。
+本机试用打开 <http://localhost:8080>；公网部署使用配置的 HTTPS 域名。初始化命令交互输入管理员邮箱和密码；首次创建后使用邮箱或 `administrator` 登录。正式容器固定为 production 模式，初始化不会创建演示账号，也不会覆盖已有账号。数据库迁移在 API 启动前自动执行。已有根目录 Compose 部署仍可沿用原入口和配置；默认安装项目名 `nxopa-regsys` 与旧项目 `contest-center` 使用不同数据卷，迁移入口时按安装说明保留原项目名和密钥。
 
 ## 本地开发与演示
 
@@ -107,6 +107,7 @@ packages/contracts       表单、计费、资格规则与联合注册共享契�
 packages/connectors      Hydro、DOMjudge 适配器
 plugins/hydro-contest-center  Hydro 5.0.7 桥接插件
 infra                    Compose、Caddy、LaTeX Runner 和独立 OJ 实例
+install                  正式安装 Compose、配置示例、安装维护脚本与说明
 scripts                  初始化、开发启动、备份恢复与 OJ 构建
 tests                    单元、真实数据库、浏览器和外部接口验收
 ```

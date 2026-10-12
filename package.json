@@ -32,6 +32,7 @@
     "fixtures:domjudge": "tsx scripts/prepare-domjudge.ts",
     "test:boundaries": "tsx tests/integrations/boundaries.ts",
     "test:deployment": "tsx tests/integrations/deployment.ts",
+    "test:install": "tsx tests/integrations/install.ts",
     "generate:client": "openapi-typescript docs/api/openapi.json -o apps/web/src/generated/api.d.ts",
     "package:hydro": "pnpm --dir plugins/hydro-contest-center pack --pack-destination ../../dist",
     "format": "prettier --write . --ignore-unknown",

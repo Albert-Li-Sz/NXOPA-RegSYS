@@ -1,0 +1,176 @@
+name: ${COMPOSE_PROJECT_NAME:-nxopa-regsys}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: infra/Dockerfile
+    target: runtime
+  env_file: ${INSTALL_ENV_FILE:-.env}
+  environment:
+    NODE_ENV: production
+    TZ: Asia/Shanghai
+    DATABASE_URL: postgresql://contest:${POSTGRES_PASSWORD:?请先运行 bash install.sh init}@postgres:5432/contest_center
+    REDIS_URL: redis://redis:6379
+    ENCRYPTION_KEY: ${ENCRYPTION_KEY:?请先运行 bash install.sh init}
+    PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+    STORAGE_DIR: /data/storage
+    LATEX_SPOOL: /data/latex
+    PORT: '3000'
+  volumes:
+    - files:/data/storage
+    - latex_jobs:/data/latex
+  extra_hosts:
+    - host.docker.internal:host-gateway
+  init: true
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  logging: *logging
+
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_USER: contest
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请先运行 bash install.sh init}
+      POSTGRES_DB: contest_center
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U contest -d contest_center]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    logging: *logging
+
+  redis:
+    image: redis:7.4.5-alpine
+    command: [redis-server, --appendonly, 'yes']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    logging: *logging
+
+  initialize:
+    <<: *app
+    user: root
+    cap_drop: []
+    command: [sh, -c, 'chown -R 1000:1000 /data/storage /data/latex && pnpm db:migrate']
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    depends_on:
+      initialize:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 20
+    mem_limit: 1000m
+
+  worker:
+    <<: *app
+    command: [pnpm, worker]
+    depends_on:
+      initialize:
+        condition: service_completed_successfully
+      latex:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - --import
+        - tsx
+        - --input-type=module
+        - -e
+        - >-
+          import {db} from './src/db.ts'; let ok = false;
+          try { const row = await db.setting.findUnique({where:{key:'workerHeartbeat'}});
+          ok = !!row && Date.now() - Date.parse(row.value.at) < 30000; }
+          finally { await db.$$disconnect(); } process.exit(ok ? 0 : 1);
+      interval: 15s
+      timeout: 10s
+      start_period: 30s
+      retries: 10
+    mem_limit: 700m
+
+  latex:
+    build:
+      context: ../infra/latex-runner
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m
+    volumes:
+      - latex_jobs:/jobs
+    mem_limit: 1200m
+    cpus: 1
+    pids_limit: 64
+    restart: unless-stopped
+    logging: *logging
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: web
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - '${HTTP_PORT:-8080}:80'
+      - '${HTTPS_PORT:-8443}:443'
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+
+volumes:
+  postgres_data:
+  redis_data:
+  files:
+  latex_jobs:
+  caddy_data:
+  caddy_config:
