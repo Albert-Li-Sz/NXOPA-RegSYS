@@ -83,7 +83,7 @@ try {
       /^IMAGE_PREFIX=.+$/m,
       `IMAGE_PREFIX=${env.IMAGE_PREFIX ?? 'ghcr.io/albert-li-sz/nxopa-regsys'}`,
     )
-    .replace(/^IMAGE_TAG=.+$/m, `IMAGE_TAG=${env.IMAGE_TAG ?? 'v0.1.0'}`);
+    .replace(/^IMAGE_TAG=.+$/m, `IMAGE_TAG=${env.IMAGE_TAG ?? 'v0.1.1'}`);
   await writeFile(envFile, source, { mode: 0o600 });
   await run(['init']);
   assert.ok((await readFile(envFile, 'utf8')) === source, 'Repeat init preserves secrets and URL');

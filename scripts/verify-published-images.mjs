@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 
-const tag = process.argv[2] ?? 'v0.1.0';
+const tag = process.argv[2] ?? 'v0.1.1';
 assert.match(tag, /^v\d+\.\d+\.\d+$/);
 const prefix = process.env.IMAGE_PREFIX ?? 'ghcr.io/albert-li-sz/nxopa-regsys';
 assert.ok(prefix.startsWith('ghcr.io/'));

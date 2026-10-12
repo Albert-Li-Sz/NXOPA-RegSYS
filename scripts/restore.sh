@@ -20,7 +20,7 @@ compose stop api worker >/dev/null
 compose exec -T postgres pg_restore -U contest -d contest_center --clean --if-exists --no-owner --single-transaction --exit-on-error < "$stage/database.dump"
 # Only this recovery helper reads the host-private directory as root; restored files
 # are assigned back to the normal application user before the services restart.
-compose run --rm -T --no-deps --user root --cap-add DAC_OVERRIDE --cap-add CHOWN -v "$stage:/backup" worker sh -c 'find /data/storage -mindepth 1 -delete && tar --no-same-owner -xzf /backup/files.tgz -C /data/storage && chown -R 1000:1000 /data/storage'
+compose run --rm -T --no-deps --user root --cap-add DAC_OVERRIDE --cap-add CHOWN --cap-add FOWNER -v "$stage:/backup" worker sh -c 'find /data/storage -mindepth 1 -delete && tar --no-same-owner -xzf /backup/files.tgz -C /data/storage && chown -R 1000:1000 /data/storage'
 cp "$stage/environment.env" .runtime/restored-environment.env
 chmod 600 .runtime/restored-environment.env
 echo 'Database and private files restored. Original environment was saved to .runtime/restored-environment.env for comparison.'
