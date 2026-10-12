@@ -48,6 +48,8 @@ for (const service of ['api', 'worker', 'web', 'latex']) {
   }
   const alias = await get('manifests', tag.replace(/\.\d+$/, ''));
   assert.equal(alias.digest, index.digest);
+  const latest = await get('manifests', 'latest');
+  assert.equal(latest.digest, index.digest);
   images.push({
     image,
     tag,

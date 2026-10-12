@@ -365,6 +365,8 @@ try {
         success,
         installMode,
         imageTag: env.IMAGE_TAG ?? null,
+        platform: process.platform,
+        architecture: process.arch,
         checkedAt: new Date().toISOString(),
         checks,
       },

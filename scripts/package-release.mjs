@@ -87,6 +87,10 @@ try {
       assert.equal(record.commit, commit);
       assert.match(record.digest, /^sha256:[a-f0-9]{64}$/);
     }
+    assert.deepEqual(
+      records.map((record) => record.image).sort(),
+      images.map((record) => record.image.slice(0, -(tag.length + 1))).sort(),
+    );
     await writeFile(
       join(output, 'images.json'),
       JSON.stringify(
@@ -95,6 +99,23 @@ try {
         2,
       ),
     );
+  }
+  for (const arch of ['amd64', 'arm64']) {
+    const name = join(root, 'dist/installation-reports', `installation-${arch}`, 'install.json');
+    let report;
+    try {
+      report = JSON.parse(await readFile(name, 'utf8'));
+    } catch (error) {
+      if (error.code === 'ENOENT' && !process.env.CI) continue;
+      throw error;
+    }
+    assert.equal(report.success, true);
+    assert.equal(report.installMode, 'images');
+    assert.equal(report.imageTag, tag);
+    assert.equal(report.platform, 'linux');
+    assert.equal(report.architecture, arch === 'amd64' ? 'x64' : 'arm64');
+    assert.ok(report.checks.length >= 12);
+    await writeFile(join(output, `installation-${arch}.json`), JSON.stringify(report, null, 2));
   }
   const names = (await readdir(output)).sort();
   const checksums = await Promise.all(
