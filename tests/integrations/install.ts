@@ -83,7 +83,7 @@ try {
       /^IMAGE_PREFIX=.+$/m,
       `IMAGE_PREFIX=${env.IMAGE_PREFIX ?? 'ghcr.io/albert-li-sz/nxopa-regsys'}`,
     )
-    .replace(/^IMAGE_TAG=.+$/m, `IMAGE_TAG=${env.IMAGE_TAG ?? 'v0.1.1'}`);
+    .replace(/^IMAGE_TAG=.+$/m, `IMAGE_TAG=${env.IMAGE_TAG ?? 'v0.1.2'}`);
   await writeFile(envFile, source, { mode: 0o600 });
   await run(['init']);
   assert.ok((await readFile(envFile, 'utf8')) === source, 'Repeat init preserves secrets and URL');
@@ -348,6 +348,20 @@ try {
   });
   assert.equal(saved.status, 200);
   passed('公网地址恢复命令生效，原部署入口仍可继续管理');
+  if (
+    process.env.INSTALL_UPGRADE_FROM &&
+    process.env.INSTALL_UPGRADE_FROM !== (env.IMAGE_TAG ?? 'v0.1.2')
+  ) {
+    const { verifyInstallationUpgrade } = await import('./installation-upgrade.js');
+    await verifyInstallationUpgrade(
+      run,
+      envFile,
+      source,
+      process.env.INSTALL_UPGRADE_FROM,
+      env.IMAGE_TAG ?? 'v0.1.2',
+      passed,
+    );
+  }
   success = true;
   console.log(`独立安装验收通过：${checks.length} 项。`);
 } finally {
@@ -365,6 +379,7 @@ try {
         success,
         installMode,
         imageTag: env.IMAGE_TAG ?? null,
+        upgradeFrom: process.env.INSTALL_UPGRADE_FROM ?? null,
         platform: process.platform,
         architecture: process.arch,
         checkedAt: new Date().toISOString(),

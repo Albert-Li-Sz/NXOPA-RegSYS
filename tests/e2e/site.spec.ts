@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFile, mkdir } from 'node:fs/promises';
 import { redis } from '../../apps/server/src/auth.js';
 import { Client, until } from '../integrations/client.js';
+import { defaultFields, policySchema } from '../../packages/contracts/src/index.js';
 test.beforeAll(async () => {
   if (redis.status === 'end') await redis.connect();
   await redis.del('rate:login:::ffff:127.0.0.1', 'rate:login:127.0.0.1');
@@ -43,7 +44,18 @@ test('desktop home, filters and account center', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '比赛列表' })).toBeVisible();
   await expect(page.locator('.contest-card').first()).toBeVisible();
   await expect(page.locator('.card-tags .el-tag').first()).toHaveText(/个人报名|团队报名/);
-  await expect(page.locator('.card-tags')).toContainText([
+  const seedIds = [
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222',
+    '33333333-3333-4333-8333-333333333333',
+    '44444444-4444-4444-8444-444444444444',
+    '55555555-5555-4555-8555-555555555555',
+    '66666666-6666-4666-8666-666666666666',
+  ];
+  const seededCards = page.locator('.contest-card').filter({
+    has: page.locator(seedIds.map((id) => `a[href="/contests/${id}"]`).join(',')),
+  });
+  await expect(seededCards.locator('.card-tags')).toContainText([
     '即将开始',
     '报名中',
     '报名中',
@@ -62,7 +74,7 @@ test('desktop home, filters and account center', async ({ page }) => {
     animations: 'disabled',
   });
   await page.getByText('即将开始', { exact: true }).first().click();
-  await expect(page.locator('.contest-card')).toHaveCount(1);
+  await expect(seededCards).toHaveCount(1);
   await page.getByText('全部竞赛', { exact: true }).click();
   await page.goto('/account');
   await expect(page.getByRole('heading', { name: '个人资料' })).toBeVisible();
@@ -71,19 +83,39 @@ test('desktop home, filters and account center', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 test('individual registration is completed in browser', async ({ page }) => {
-  await login(page, 'alice');
-  await page.goto('/contests/11111111-1111-4111-8111-111111111111');
-  await page.getByRole('tab', { name: '报名', exact: true }).click();
-  await page.getByRole('button', { name: '查看报名', exact: true }).first().click();
-  await expect(page).toHaveURL(/\/registrations\//);
-  await page.getByRole('button', { name: '提交报名', exact: true }).click();
-  await expect(page.getByText('已提交', { exact: true })).toBeVisible();
-  await expect(page.getByText('等待审核', { exact: true }).first()).toBeVisible();
-  await page.screenshot({
-    path: '.runtime/reports/registration-desktop.png',
-    fullPage: true,
-    animations: 'disabled',
+  const admin = await new Client().login('admin');
+  const contest = await admin.api('/contests', 'POST', {
+    title: `浏览器个人报名 ${Date.now()}`,
+    season: '界面验收',
+    description: '独立个人报名测试数据',
+    startsAt: new Date(Date.now() + 172800000).toISOString(),
+    opensAt: new Date(Date.now() - 86400000).toISOString(),
+    closesAt: new Date(Date.now() + 86400000).toISOString(),
+    published: true,
+    policy: policySchema.parse({ coachMode: 'DISABLED' }),
+    fields: defaultFields,
   });
+  try {
+    await login(page, 'alice');
+    await page.goto(`/contests/${contest.id}`);
+    await page.getByRole('tab', { name: '报名', exact: true }).click();
+    await page.getByRole('button', { name: '创建报名', exact: true }).click();
+    await expect(page).toHaveURL(/\/registrations\//);
+    await page.getByRole('button', { name: '提交报名', exact: true }).click();
+    await expect(page.getByText('已提交', { exact: true })).toBeVisible();
+    await expect(page.getByText('等待审核', { exact: true }).first()).toBeVisible();
+    await page.screenshot({
+      path: '.runtime/reports/registration-desktop.png',
+      fullPage: true,
+      animations: 'disabled',
+    });
+  } finally {
+    await admin.api(`/contests/${contest.id}`, 'PUT', {
+      ...contest,
+      fields: defaultFields,
+      archived: true,
+    });
+  }
 });
 test('admin and contest configuration pages, financial and support views', async ({ page }) => {
   const errors: string[] = [];

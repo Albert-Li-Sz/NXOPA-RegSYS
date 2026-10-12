@@ -19,11 +19,17 @@ export class SupportService {
             {
               registrationId: {
                 in: (
-                  await db.registrationCoach.findMany({
-                    where: { userId: u.id },
-                    select: { registrationId: true },
+                  await db.registration.findMany({
+                    where: {
+                      OR: [
+                        { ownerId: u.id },
+                        { people: { some: { userId: u.id, active: true } } },
+                        { coaches: { some: { userId: u.id } } },
+                      ],
+                    },
+                    select: { id: true },
                   })
-                ).map((c) => c.registrationId),
+                ).map((r) => r.id),
               },
             },
           ],

@@ -4,7 +4,7 @@ import { Redis } from 'ioredis';
 import { z } from 'zod';
 import type { Request, Response } from 'express';
 import { invitationReturnPathSchema, type Principal } from '@contest-center/contracts';
-import { db, audit, event, json } from './db.js';
+import { db, audit, event, json, lock } from './db.js';
 import { config } from './config.js';
 import { publicLink, trustedOrigins } from './site-settings.js';
 import { opaqueToken, sha, hmac, same } from './security.js';
@@ -86,9 +86,10 @@ async function session(req: AuthRequest, res: Response, id: string) {
   return { user: await publicUser(id), csrf: hmac(config.encryptionKey, sha(token)) };
 }
 async function mailToken(id: string, purpose: string, next?: string) {
-  const u = await db.user.findUniqueOrThrow({ where: { id } });
   const raw = opaqueToken();
   await db.$transaction(async (tx) => {
+    await lock(tx, `auth:${id}`);
+    const u = await tx.user.findUniqueOrThrow({ where: { id } });
     await tx.emailToken.create({
       data: { id: sha(raw), userId: id, purpose, expiresAt: new Date(Date.now() + 3600000) },
     });
@@ -174,6 +175,9 @@ export class AuthService {
       .parse(body);
     const pw = purpose === 'RESET' ? await hash(b.password!, { type: argon2id }) : undefined;
     return db.$transaction(async (tx) => {
+      const record = await tx.emailToken.findUnique({ where: { id: sha(b.token) } });
+      if (!record) throw new BadRequestException('链接已失效');
+      await lock(tx, `auth:${record.userId}`);
       const t = await tx.emailToken.findUnique({ where: { id: sha(b.token) } });
       if (!t || t.purpose !== purpose || t.usedAt || t.expiresAt < new Date())
         throw new BadRequestException('链接已失效');
@@ -207,14 +211,23 @@ export class AuthService {
       throw new ForbiddenException('身份变更须由管理员生成邀请链接并确认');
     const email = b.email?.toLowerCase();
     const changedEmail = email && email !== u.email;
-    await db.user.update({
-      where: { id: u.id, version: u.version },
-      data: {
-        name: b.name,
-        profile: json(b.profile),
-        version: { increment: 1 },
-        ...(changedEmail ? { email, verified: false } : {}),
-      },
+    await db.$transaction(async (tx) => {
+      // Serialize mailbox changes with token creation and consumption.
+      await lock(tx, `auth:${u.id}`);
+      await tx.user.update({
+        where: { id: u.id, version: u.version },
+        data: {
+          name: b.name,
+          profile: json(b.profile),
+          version: { increment: 1 },
+          ...(changedEmail ? { email, verified: false } : {}),
+        },
+      });
+      if (changedEmail)
+        await tx.emailToken.updateMany({
+          where: { userId: u.id, purpose: { in: ['VERIFY', 'RESET'] }, usedAt: null },
+          data: { usedAt: new Date() },
+        });
     });
     if (changedEmail) await mailToken(u.id, 'VERIFY');
     return publicUser(u.id);

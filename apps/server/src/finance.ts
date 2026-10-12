@@ -61,7 +61,11 @@ export class FinanceService {
       const p = policy(r);
       if (r.status !== 'SUBMITTED' || p.feeMode === 'FREE' || r.review === 'REJECTED')
         throw new BadRequestException('当前报名无法上传缴费凭证');
-      if (p.paymentSequence === 'REVIEW_FIRST' && p.manualReview && r.review !== 'APPROVED')
+      if (
+        p.paymentSequence === 'REVIEW_FIRST' &&
+        (p.manualReview || r.participationType === 'UNOFFICIAL') &&
+        r.review !== 'APPROVED'
+      )
         throw new BadRequestException('请先等待审核通过');
       await bindFile(tx, u, b.attachmentId, id);
       const v = await tx.paymentVoucher.create({

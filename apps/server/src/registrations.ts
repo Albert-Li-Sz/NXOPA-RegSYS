@@ -704,7 +704,7 @@ export class RegistrationService {
         r.netPaidCents > 0 && !manages(u, r.contestId) ? 'CANCEL_REQUESTED' : 'CANCELLED';
       await tx.registration.update({
         where: { id },
-        data: { status, eligible: false, version: { increment: 1 } },
+        data: { status, version: { increment: 1 } },
       });
       await tx.registrationPerson.updateMany({
         where: { registrationId: id },

@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v0.1.1
+        description: 已存在的版本标签，例如 v0.1.2
         required: true
-        default: v0.1.1
+        default: v0.1.2
         type: string
 
 permissions:
@@ -53,6 +53,17 @@ jobs:
           pnpm typecheck
           pnpm test
           pnpm docs:build
+      - name: 邮箱链接、报名资格、财务与工单权限回归
+        shell: bash
+        run: |
+          pnpm setup
+          docker compose -f infra/compose/dependencies.yaml up -d --wait
+          pnpm db:migrate
+          pnpm seed
+          pnpm --filter @contest-center/server dev > .runtime/api-regression.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid"; docker compose -f infra/compose/dependencies.yaml down -v' EXIT
+          pnpm test:bugs
 
   images:
     name: 构建 ${{ matrix.image }} / ${{ matrix.arch }}
@@ -214,6 +225,7 @@ jobs:
           INSTALL_TEST_MODE: images
           IMAGE_PREFIX: ${{ needs.validate.outputs.prefix }}
           IMAGE_TAG: ${{ env.RELEASE_TAG }}
+          INSTALL_UPGRADE_FROM: v0.1.1
         run: pnpm test:install
       - name: 核验公开拉取、版本摘要与源码标签
         env:

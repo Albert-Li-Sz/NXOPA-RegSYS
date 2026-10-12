@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
-assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.1.1');
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.1.2');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
@@ -115,6 +115,11 @@ try {
     assert.equal(report.platform, 'linux');
     assert.equal(report.architecture, arch === 'amd64' ? 'x64' : 'arm64');
     assert.ok(report.checks.length >= 12);
+    assert.equal(report.upgradeFrom, 'v0.1.1', `${arch} must exercise the prior release upgrade`);
+    assert.ok(
+      report.checks.some((check) => check.includes('遗留的验证与重置链接失效')),
+      `${arch} must invalidate legacy mailbox links during upgrade`,
+    );
     await writeFile(join(output, `installation-${arch}.json`), JSON.stringify(report, null, 2));
   }
   const names = (await readdir(output)).sort();

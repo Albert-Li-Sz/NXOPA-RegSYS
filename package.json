@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -41,7 +41,8 @@
     "restore:public-url": "tsx scripts/restore-public-url.ts",
     "test:enhancements": "tsx tests/integrations/enhancements.ts",
     "test:oj-enhancements": "tsx tests/integrations/oj-enhancements.ts",
-    "test:oj-recovery": "tsx tests/integrations/oj-recovery.ts"
+    "test:oj-recovery": "tsx tests/integrations/oj-recovery.ts",
+    "test:bugs": "tsx tests/integrations/bug-regressions.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

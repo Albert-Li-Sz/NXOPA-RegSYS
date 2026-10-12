@@ -2,7 +2,9 @@
 
 本目录部署“南晓开放原子社在线报名系统”。支持源码构建和拉取发布镜像两种模式。源码模式需要保留完整仓库，不能只复制 `install`；Release 安装包包含镜像模式所需的配置和维护脚本，无需业务源码。宿主机只需要 Docker、Compose 插件、Bash、OpenSSL；从仓库下载时另需 Git，无需安装 Node.js、pnpm、数据库或 LaTeX。
 
-V0.1 的镜像标签为 `v0.1.1`，支持 amd64 / arm64。镜像模式通过 `compose.images.yaml` 覆盖构建配置；后续启动、管理员初始化、日志、备份和恢复继续使用同一个 `install.sh`。
+V0.1.2 的镜像标签为 `v0.1.2`，支持 amd64 / arm64。镜像模式通过 `compose.images.yaml` 覆盖构建配置；后续启动、管理员初始化、日志、备份和恢复继续使用同一个 `install.sh`。
+
+从旧版本升级时，尚未使用的邮箱验证与密码重置链接会失效，用户需要重新申请。已有登录会话、报名、财务和附件保留。保持原项目名与密钥，将 `IMAGE_TAG` 改为 `v0.1.2` 后执行 `bash install.sh update`，该命令先备份再升级。
 
 基础设施直接使用官方镜像，业务分别构建和运行：
 
@@ -40,12 +42,12 @@ Docker 官方软件源、安装与账号权限步骤见 [Ubuntu](https://docs.do
 
 ### 使用 V0.1 发布安装包
 
-从 [V0.1 Release](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.1.1) 下载 `nxopa-regsys-v0.1.1-install.tar.gz` 和 `SHA256SUMS`，对照其中该安装包的 SHA-256：
+从 [V0.1 Release](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.1.2) 下载 `nxopa-regsys-v0.1.2-install.tar.gz` 和 `SHA256SUMS`，对照其中该安装包的 SHA-256：
 
 ```bash
-sha256sum nxopa-regsys-v0.1.1-install.tar.gz
-tar -xzf nxopa-regsys-v0.1.1-install.tar.gz
-cd nxopa-regsys-v0.1.1/install
+sha256sum nxopa-regsys-v0.1.2-install.tar.gz
+tar -xzf nxopa-regsys-v0.1.2-install.tar.gz
+cd nxopa-regsys-v0.1.2/install
 bash install.sh init
 ```
 
@@ -53,10 +55,10 @@ bash install.sh init
 
 | 服务         | 发布镜像                                          |
 | ------------ | ------------------------------------------------- |
-| API / 初始化 | `ghcr.io/albert-li-sz/nxopa-regsys-api:v0.1.1`    |
-| Worker       | `ghcr.io/albert-li-sz/nxopa-regsys-worker:v0.1.1` |
-| 前端         | `ghcr.io/albert-li-sz/nxopa-regsys-web:v0.1.1`    |
-| LaTeX        | `ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.1.1`  |
+| API / 初始化 | `ghcr.io/albert-li-sz/nxopa-regsys-api:v0.1.2`    |
+| Worker       | `ghcr.io/albert-li-sz/nxopa-regsys-worker:v0.1.2` |
+| 前端         | `ghcr.io/albert-li-sz/nxopa-regsys-web:v0.1.2`    |
+| LaTeX        | `ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.1.2`  |
 
 ### 使用完整源码仓库
 
@@ -73,7 +75,7 @@ bash install.sh init
 ```dotenv
 INSTALL_MODE=images
 IMAGE_PREFIX=ghcr.io/albert-li-sz/nxopa-regsys
-IMAGE_TAG=v0.1.1
+IMAGE_TAG=v0.1.2
 ```
 
 保留 `IMAGE_TAG` 为确定的版本，避免使用随未来发布变动的 `latest`。已有 `.env` 不含 `INSTALL_MODE` 时仍使用原来的源码模式。
