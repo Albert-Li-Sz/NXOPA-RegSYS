@@ -360,7 +360,17 @@ try {
   }
   await writeFile(
     path.join(root, '.runtime/reports/install.json'),
-    JSON.stringify({ success, installMode, checkedAt: new Date().toISOString(), checks }, null, 2),
+    JSON.stringify(
+      {
+        success,
+        installMode,
+        imageTag: env.IMAGE_TAG ?? null,
+        checkedAt: new Date().toISOString(),
+        checks,
+      },
+      null,
+      2,
+    ),
     { mode: 0o600 },
   );
   await rm(stage, { recursive: true, force: true });

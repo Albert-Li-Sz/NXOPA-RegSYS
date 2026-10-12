@@ -1,0 +1,48 @@
+name: 跨架构镜像安装验收
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 待验收的已有镜像版本
+        required: true
+        default: v0.1.0
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  installation:
+    name: 安装与备份恢复 / ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.12.0'
+      - name: 准备依赖与浏览器
+        run: |
+          npm install --global pnpm@11.25.0
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+      - name: 使用公开镜像验证安装、PDF 和备份恢复
+        env:
+          INSTALL_TEST_MODE: images
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: pnpm test:install
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: installation-${{ matrix.arch }}
+          path: .runtime/reports/install.json
+          retention-days: 30
