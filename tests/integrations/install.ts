@@ -18,6 +18,8 @@ const envFile = path.join(stage, '.env');
 const project = `nxopa-install-check-${process.pid}`;
 const script = path.join(root, 'install/install.sh');
 const checks: string[] = [];
+const installMode = process.env.INSTALL_TEST_MODE ?? 'source';
+assert.ok(['source', 'images'].includes(installMode), 'INSTALL_TEST_MODE is source or images');
 const env: NodeJS.ProcessEnv = { ...process.env, INSTALL_ENV_FILE: envFile };
 for (const key of [
   'COMPOSE_PROJECT_NAME',
@@ -29,8 +31,10 @@ for (const key of [
   'SITE_ADDRESS',
   'HTTP_PORT',
   'HTTPS_PORT',
+  'INSTALL_MODE',
 ])
   delete env[key];
+env.INSTALL_MODE = installMode;
 const run = async (args: string[], overrides: NodeJS.ProcessEnv = {}) => {
   const result = await exec('bash', [script, ...args], {
     cwd: stage,
@@ -73,7 +77,13 @@ try {
     .replace(/^COMPOSE_PROJECT_NAME=.+$/m, `COMPOSE_PROJECT_NAME=${project}`)
     .replace(/^PUBLIC_URL=.+$/m, `PUBLIC_URL=http://localhost:${httpPort}`)
     .replace(/^HTTP_PORT=.+$/m, `HTTP_PORT=${httpPort}`)
-    .replace(/^HTTPS_PORT=.+$/m, `HTTPS_PORT=${httpsPort}`);
+    .replace(/^HTTPS_PORT=.+$/m, `HTTPS_PORT=${httpsPort}`)
+    .replace(/^INSTALL_MODE=.+$/m, `INSTALL_MODE=${installMode}`)
+    .replace(
+      /^IMAGE_PREFIX=.+$/m,
+      `IMAGE_PREFIX=${env.IMAGE_PREFIX ?? 'ghcr.io/albert-li-sz/nxopa-regsys'}`,
+    )
+    .replace(/^IMAGE_TAG=.+$/m, `IMAGE_TAG=${env.IMAGE_TAG ?? 'v0.1.0'}`);
   await writeFile(envFile, source, { mode: 0o600 });
   await run(['init']);
   assert.ok((await readFile(envFile, 'utf8')) === source, 'Repeat init preserves secrets and URL');
@@ -86,7 +96,14 @@ try {
   assert.ok(model.services.api.environment.DATABASE_URL.includes('@postgres:5432/contest_center'));
   assert.equal(model.services.api.environment.REDIS_URL, 'redis://redis:6379');
   assert.ok(model.services.api.environment.ENCRYPTION_KEY.length === 64);
-  assert.equal(model.services.api.build.context, root.replace(/\/$/, ''));
+  if (installMode === 'source')
+    assert.equal(model.services.api.build.context, root.replace(/\/$/, ''));
+  else {
+    for (const service of ['initialize', 'api', 'worker', 'web', 'latex']) {
+      assert.ok(!model.services[service].build, `${service} does not build in image mode`);
+      assert.ok(model.services[service].image.startsWith('ghcr.io/'));
+    }
+  }
   assert.equal(model.services.latex.network_mode, 'none');
   assert.equal(model.services.latex.read_only, true);
   for (const service of ['postgres', 'redis', 'api', 'worker', 'web', 'latex'])
@@ -102,8 +119,10 @@ try {
     assert.equal(model.services[service].image, image);
     assert.ok(!model.services[service].build, `${service} uses the official image directly`);
   }
-  assert.equal(model.services.worker.build.target, 'worker');
-  assert.equal(model.services.web.build.target, 'web');
+  if (installMode === 'source') {
+    assert.equal(model.services.worker.build.target, 'worker');
+    assert.equal(model.services.web.build.target, 'web');
+  }
   assert.equal(model.services.web.read_only, true);
   assert.ok(!model.services.web.environment?.DATABASE_URL);
   assert.ok(!model.services.web.environment?.ENCRYPTION_KEY);
@@ -129,7 +148,16 @@ try {
   assert.ok(httpsModel.services.caddy.ports.every((p: any) => p.host_ip === '127.0.0.1'));
   passed('公网 HTTPS 地址与已有反向代理的本机端口绑定正确解析');
 
-  console.log('[安装验收] 构建并启动独立 Compose 实例……');
+  const imageModel = JSON.parse(
+    await run(['compose', 'config', '--format', 'json'], { INSTALL_MODE: 'images' }),
+  );
+  for (const service of ['initialize', 'api', 'worker', 'web', 'latex'])
+    assert.ok(!imageModel.services[service].build);
+  assert.equal(imageModel.services.initialize.image, imageModel.services.api.image);
+  assert.equal(imageModel.services.api.volumes[0].source, model.services.api.volumes[0].source);
+  console.log(
+    `[安装验收] ${installMode === 'images' ? '拉取发布镜像' : '构建镜像'}并启动独立 Compose 实例……`,
+  );
   started = true;
   await writeFile(path.join(stage, 'build.log'), await run(['up']), { mode: 0o600 });
   process.env.TEST_URL = `http://localhost:${httpPort}`;
@@ -154,7 +182,9 @@ try {
   assert.equal(homepage.status, 200);
   const html = await homepage.text();
   assert.ok(html.includes('南晓开放原子社在线报名系统'));
-  passed('从空数据卷构建并启动，迁移成功；官方基础容器、官网、API 和 Worker 健康');
+  passed(
+    `从空数据卷${installMode === 'images' ? '拉取发布镜像' : '构建镜像'}并启动，迁移成功；官方基础容器、官网、API 和 Worker 健康`,
+  );
 
   const route = await fetch(`${base}/contests`);
   assert.equal(route.status, 200);
@@ -330,7 +360,7 @@ try {
   }
   await writeFile(
     path.join(root, '.runtime/reports/install.json'),
-    JSON.stringify({ success, checkedAt: new Date().toISOString(), checks }, null, 2),
+    JSON.stringify({ success, installMode, checkedAt: new Date().toISOString(), checks }, null, 2),
     { mode: 0o600 },
   );
   await rm(stage, { recursive: true, force: true });

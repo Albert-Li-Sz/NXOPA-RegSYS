@@ -4,5 +4,7 @@
 contest_compose_file="${CONTEST_COMPOSE_FILE:-$(pwd)/compose.yaml}"
 contest_env_file="${CONTEST_ENV_FILE:-$(pwd)/.env}"
 compose() {
-  docker compose --env-file "$contest_env_file" -f "$contest_compose_file" "$@"
+  local compose_args=(--env-file "$contest_env_file" -f "$contest_compose_file")
+  if [[ -n "${CONTEST_COMPOSE_OVERRIDE:-}" ]]; then compose_args+=(-f "$CONTEST_COMPOSE_OVERRIDE"); fi
+  docker compose "${compose_args[@]}" "$@"
 }

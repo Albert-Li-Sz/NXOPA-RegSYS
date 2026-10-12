@@ -10,6 +10,7 @@ case "$install_env" in
   *) install_env="$install_dir/$install_env" ;;
 esac
 export INSTALL_ENV_FILE="$install_env"
+install_mode=source
 
 usage() {
   cat <<'EOF'
@@ -17,14 +18,15 @@ usage() {
 
 用法：bash install/install.sh <命令>
   init                  生成独立 .env 和随机密钥，保留已有配置
-  up                    构建、执行迁移并启动，等待 API 和 Worker 就绪
+  up                    按 INSTALL_MODE 构建或拉取镜像，迁移并等待服务就绪
+  pull                  镜像模式下拉取配置的发布版本
   admin                 交互创建首次系统管理员
   config                检查配置（不打印密码）
   status                查看服务状态
   logs [服务名...]       查看最近 100 行并持续跟踪日志
   stop                  停止容器，保留数据
   down                  移除容器和网络，保留数据卷
-  update                先备份，再从当前源码重建并启动
+  update                先备份，再按配置构建或拉取镜像并启动
   backup [目录]         加密备份，默认 install/backups
   restore <备份文件>     恢复数据库与私有文件
   restore-url <HTTPS地址> 恢复后台公网地址
@@ -59,8 +61,9 @@ init_env() {
 }
 
 compose() {
-  docker compose --project-directory "$install_dir" --env-file "$install_env" \
-    -f "$install_dir/compose.yaml" "$@"
+  local compose_args=(--project-directory "$install_dir" --env-file "$install_env" -f "$install_dir/compose.yaml")
+  if [[ "$install_mode" == images ]]; then compose_args+=(-f "$install_dir/compose.images.yaml"); fi
+  docker compose "${compose_args[@]}" "$@"
 }
 
 require_docker() {
@@ -89,6 +92,12 @@ require_config() {
     echo '配置仍包含未生成的密钥。请使用 init 创建配置，或填写有效的随机密钥。' >&2
     exit 1
   fi
+  install_mode="${INSTALL_MODE:-$(awk -F= '/^[[:space:]]*INSTALL_MODE[[:space:]]*=/ { value=$2; gsub(/^[[:space:]\047\042]+|[[:space:]\047\042]+$/, "", value); print value }' "$install_env" | tail -1)}"
+  install_mode="${install_mode:-source}"
+  case "$install_mode" in
+    source|images) ;;
+    *) echo 'INSTALL_MODE 只能为 source 或 images。' >&2; exit 1 ;;
+  esac
   compose config --quiet
 }
 
@@ -100,9 +109,11 @@ absolute_path() {
 }
 
 backup() {
-  local destination
+  local destination override=""
   destination="$(absolute_path "${1:-$install_dir/backups}")"
+  if [[ "$install_mode" == images ]]; then override="$install_dir/compose.images.yaml"; fi
   CONTEST_COMPOSE_FILE="$install_dir/compose.yaml" CONTEST_ENV_FILE="$install_env" \
+    CONTEST_COMPOSE_OVERRIDE="$override" \
     bash "$repo_root/scripts/backup.sh" "$destination"
 }
 
@@ -114,7 +125,7 @@ case "$action" in
   up) init_env ;;
 esac
 case "$action" in
-  up|admin|config|status|logs|stop|down|update|backup|restore|restore-url|compose) ;;
+  up|pull|admin|config|status|logs|stop|down|update|backup|restore|restore-url|compose) ;;
   *) echo "未知命令：$action" >&2; usage; exit 2 ;;
 esac
 require_docker
@@ -123,9 +134,21 @@ require_config
 case "$action" in
   up|update)
     if [[ "$action" == update ]]; then backup; fi
-    compose up -d --build --wait --wait-timeout 240
+    if [[ "$install_mode" == images ]]; then
+      compose pull
+      compose up -d --no-build --wait --wait-timeout 240
+    else
+      compose up -d --build --wait --wait-timeout 240
+    fi
     compose ps
     echo '服务已启动。首次安装请执行 bash install/install.sh admin 创建系统管理员。'
+    ;;
+  pull)
+    if [[ "$install_mode" != images ]]; then
+      echo '请先在 .env 中设置 INSTALL_MODE=images，再执行 pull。' >&2
+      exit 1
+    fi
+    compose pull
     ;;
   admin)
     if [[ -n "${ADMIN_EMAIL:-}" && -n "${ADMIN_PASSWORD:-}" ]]; then
@@ -143,7 +166,10 @@ case "$action" in
   backup) backup "$@" ;;
   restore)
     input="${1:?请提供加密备份文件路径}"
+    override=""
+    if [[ "$install_mode" == images ]]; then override="$install_dir/compose.images.yaml"; fi
     CONTEST_COMPOSE_FILE="$install_dir/compose.yaml" CONTEST_ENV_FILE="$install_env" \
+      CONTEST_COMPOSE_OVERRIDE="$override" \
       bash "$repo_root/scripts/restore.sh" "$(absolute_path "$input")"
     ;;
   restore-url)

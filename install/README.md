@@ -1,6 +1,8 @@
 # Docker Compose 安装
 
-本目录部署“南晓开放原子社在线报名系统”。需要保留完整仓库，镜像从上一层源码构建；不能只复制 `install` 文件夹。宿主机只需要 Docker、Compose 插件、Bash、OpenSSL 和 Git，无需安装 Node.js、pnpm、数据库或 LaTeX。
+本目录部署“南晓开放原子社在线报名系统”。支持源码构建和拉取发布镜像两种模式。源码模式需要保留完整仓库，不能只复制 `install`；Release 安装包包含镜像模式所需的配置和维护脚本，无需业务源码。宿主机只需要 Docker、Compose 插件、Bash、OpenSSL；从仓库下载时另需 Git，无需安装 Node.js、pnpm、数据库或 LaTeX。
+
+V0.1 的镜像标签为 `v0.1.0`，支持 amd64 / arm64。镜像模式通过 `compose.images.yaml` 覆盖构建配置；后续启动、管理员初始化、日志、备份和恢复继续使用同一个 `install.sh`。
 
 基础设施直接使用官方镜像，业务分别构建和运行：
 
@@ -32,9 +34,31 @@ docker version
 docker compose version
 ```
 
-Docker 官方软件源、安装与账号权限步骤见 [Ubuntu](https://docs.docker.com/engine/install/ubuntu/)、[Debian](https://docs.docker.com/engine/install/debian/) 和 [Compose 插件安装](https://docs.docker.com/compose/install/linux/)。使用支持 `up --wait` 的 Compose，建议 v2.20 或更新版本。
+Docker 官方软件源、安装与账号权限步骤见 [Ubuntu](https://docs.docker.com/engine/install/ubuntu/)、[Debian](https://docs.docker.com/engine/install/debian/) 和 [Compose 插件安装](https://docs.docker.com/compose/install/linux/)。使用 Compose v2.24.4 或更新版本，以支持发布镜像配置中的构建重置与 `up --wait`。
 
 ## 2. 下载与生成配置
+
+### 使用 V0.1 发布安装包
+
+从 [V0.1 Release](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.1.0) 下载 `nxopa-regsys-v0.1.0-install.tar.gz` 和 `SHA256SUMS`，对照其中该安装包的 SHA-256：
+
+```bash
+sha256sum nxopa-regsys-v0.1.0-install.tar.gz
+tar -xzf nxopa-regsys-v0.1.0-install.tar.gz
+cd nxopa-regsys-v0.1.0/install
+bash install.sh init
+```
+
+发布安装包的默认配置为 `INSTALL_MODE=images`，拉取以下业务镜像；PostgreSQL、Redis 和 Caddy 继续直接使用上表的官方镜像：
+
+| 服务         | 发布镜像                                          |
+| ------------ | ------------------------------------------------- |
+| API / 初始化 | `ghcr.io/albert-li-sz/nxopa-regsys-api:v0.1.0`    |
+| Worker       | `ghcr.io/albert-li-sz/nxopa-regsys-worker:v0.1.0` |
+| 前端         | `ghcr.io/albert-li-sz/nxopa-regsys-web:v0.1.0`    |
+| LaTeX        | `ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.1.0`  |
+
+### 使用完整源码仓库
 
 ```bash
 git clone https://github.com/Albert-Li-Sz/NXOPA-RegSYS.git
@@ -43,6 +67,16 @@ bash install.sh init
 ```
 
 生成 `install/.env`，包含独立随机数据库密码与 32 字节加密密钥，权限为 `600`。重复运行保留原配置与密钥，不覆盖仓库根目录用于开发的 `.env`。配置示例为 `.env.example`，实际 `.env` 不进入 Git。首次安装不要直接复制含占位符的示例，使用 `init` 生成。
+
+完整仓库默认 `INSTALL_MODE=source`；要改用已发布镜像，在 `.env` 设置：
+
+```dotenv
+INSTALL_MODE=images
+IMAGE_PREFIX=ghcr.io/albert-li-sz/nxopa-regsys
+IMAGE_TAG=v0.1.0
+```
+
+保留 `IMAGE_TAG` 为确定的版本，避免使用随未来发布变动的 `latest`。已有 `.env` 不含 `INSTALL_MODE` 时仍使用原来的源码模式。
 
 默认 `COMPOSE_PROJECT_NAME=nxopa-regsys`，容器、网络和数据卷使用该前缀。根目录旧部署使用 `contest-center`，两个入口默认使用不同数据。已有正式实例要继续使用原项目名、数据库密码和加密密钥，并沿用原公网地址；不要重新初始化密钥或更换数据卷前缀。
 
@@ -100,7 +134,7 @@ bash install.sh up
 bash install.sh admin
 ```
 
-`up` 构建业务镜像、使用独立官方 PostgreSQL / Redis 容器、设置私有卷权限、执行所有 Prisma 迁移，再启动 API、Worker、前端、Caddy 和 XeLaTeX。安装会等待数据库、Redis、API、Worker、前端和 Caddy 的健康检查。初始化容器执行完成后显示 `Exited (0)` 属于正常状态。
+`up` 按模式构建业务镜像或从 GHCR 拉取指定版本，使用独立官方 PostgreSQL / Redis 容器、设置私有卷权限、执行所有 Prisma 迁移，再启动 API、Worker、前端、Caddy 和 XeLaTeX。安装会等待数据库、Redis、API、Worker、前端和 Caddy 的健康检查。初始化容器执行完成后显示 `Exited (0)` 属于正常状态。
 
 管理员命令交互输入邮箱与隐藏密码，密码至少 10 位。默认用户名为 `administrator`，可通过邮箱或用户名登录。不会创建开发演示账号，也不会覆盖已有管理员。自动安装可向进程提供 `ADMIN_EMAIL`、`ADMIN_PASSWORD` 和可选 `ADMIN_USERNAME`；使用临时环境或秘密管理工具提供密码，命令参数不包含密码。
 
@@ -118,6 +152,9 @@ curl --fail https://reg.example.org/api/v1/health
 ```bash
 docker compose --env-file .env -f compose.yaml up -d --build --wait --wait-timeout 240
 docker compose --env-file .env -f compose.yaml exec api pnpm bootstrap:admin
+# 镜像模式的直接 Compose 命令必须同时指定两个配置文件：
+docker compose --env-file .env -f compose.yaml -f compose.images.yaml pull
+docker compose --env-file .env -f compose.yaml -f compose.images.yaml up -d --no-build --wait --wait-timeout 240
 ```
 
 所有脚本支持从任意工作目录运行，例如仓库根目录的 `bash install/install.sh up`。安装脚本始终明确选择 `install/compose.yaml` 与 `install/.env`；需要独立配置文件时使用 `INSTALL_ENV_FILE=/absolute/path/.env bash install/install.sh up`。
@@ -157,13 +194,15 @@ bash install.sh up
 
 每个服务的 Docker 日志轮转为 10 MiB × 3 份。数据库、Redis、私有附件和 Caddy 证书使用各自的持久卷；业务容器更新不删除这些数据。LaTeX 无网络、只读根文件系统并限制资源。
 
-更新先获取需要的源码版本，再执行 `update`；脚本先加密备份，备份失败不会继续构建或迁移。
+源码模式更新先获取需要的源码版本，再执行 `update`；脚本先加密备份，备份失败不会继续构建或迁移。
 
 ```bash
 cd ..
 git pull --ff-only
 bash install/install.sh update
 ```
+
+镜像模式升级时下载新版本安装包中的配置和脚本，保留原 `.env` 与项目名、数据库密码、加密密钥；将 `.env` 的 `IMAGE_TAG` 改为新版本，再执行 `bash install.sh update`。脚本先备份，然后拉取和启动，不在宿主机构建。只检查镜像下载可以执行 `bash install.sh pull`。
 
 从此前由 `web` 容器同时提供 Caddy 和页面的版本升级时，同一命令会重建独立前端并启动新的 `caddy` 服务。入口端口、域名和已有持久卷名称不变；保留原项目名与 `.env` 后，数据库、附件和 Caddy 证书继续使用原卷。根目录 Compose 也采用相同拆分；已有根目录实例先执行 `bash scripts/backup.sh`，再执行 `docker compose up -d --build --wait --wait-timeout 240`。
 

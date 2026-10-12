@@ -1,0 +1,254 @@
+name: 发布版本与容器镜像
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 已存在的版本标签，例如 v0.1.0
+        required: true
+        default: v0.1.0
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  validate:
+    name: 校验版本与工程
+    runs-on: ubuntu-24.04
+    outputs:
+      revision: ${{ steps.version.outputs.revision }}
+      prefix: ${{ steps.version.outputs.prefix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - name: 校验版本标签并确定镜像名
+        id: version
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(node -p "require('./package.json').version")" = "${RELEASE_TAG#v}"
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "prefix=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.12.0'
+      - name: 安装锁定依赖与生成 Prisma 客户端
+        run: |
+          npm install --global pnpm@11.25.0
+          pnpm install --frozen-lockfile
+          DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm db:generate
+      - name: 类型检查、业务规则和教程构建
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm docs:build
+
+  images:
+    name: 构建 ${{ matrix.image }} / ${{ matrix.arch }}
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, web, latex]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+          - image: api
+            context: .
+            dockerfile: infra/Dockerfile
+            target: runtime
+          - image: worker
+            context: .
+            dockerfile: infra/Dockerfile
+            target: worker
+          - image: web
+            context: .
+            dockerfile: infra/Dockerfile
+            target: web
+          - image: latex
+            context: infra/latex-runner
+            dockerfile: infra/latex-runner/Dockerfile
+            target: ''
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 原生构建并推送内容摘要
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ needs.validate.outputs.prefix }}-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          provenance: mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.validate.outputs.revision }}
+            org.opencontainers.image.version=${{ env.RELEASE_TAG }}
+            org.opencontainers.image.title=NXOPA-RegSYS ${{ matrix.image }}
+      - name: 保存镜像摘要
+        env:
+          IMAGE: ${{ needs.validate.outputs.prefix }}-${{ matrix.image }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_ARCH: ${{ matrix.arch }}
+          IMAGE_REVISION: ${{ needs.validate.outputs.revision }}
+        run: |
+          mkdir -p .runtime/digest
+          jq -n --arg image "$IMAGE" --arg digest "$IMAGE_DIGEST" --arg arch "$IMAGE_ARCH" --arg commit "$IMAGE_REVISION" '{image:$image,digest:$digest,arch:$arch,commit:$commit}' > ".runtime/digest/$IMAGE_ARCH.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.image }}-${{ matrix.arch }}
+          path: .runtime/digest/*.json
+          retention-days: 7
+
+  manifests:
+    name: 合并 ${{ matrix.image }} 双架构镜像
+    needs: [validate, images]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, web, latex]
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-${{ matrix.image }}-*
+          path: digests
+          merge-multiple: true
+      - name: 合并并核对架构与源提交
+        env:
+          IMAGE: ${{ needs.validate.outputs.prefix }}-${{ matrix.image }}
+          REVISION: ${{ needs.validate.outputs.revision }}
+          SERVICE: ${{ matrix.image }}
+        shell: bash
+        run: |
+          sources=()
+          for arch in amd64 arm64; do
+            jq -e --arg image "$IMAGE" --arg arch "$arch" --arg revision "$REVISION" '.image == $image and .arch == $arch and .commit == $revision and (.digest | test("^sha256:[a-f0-9]{64}$"))' "digests/$arch.json"
+            sources+=("$IMAGE@$(jq -r .digest "digests/$arch.json")")
+          done
+          minor="${RELEASE_TAG%.*}"
+          docker buildx imagetools create --tag "$IMAGE:$RELEASE_TAG" --tag "$IMAGE:$minor" --tag "$IMAGE:latest" "${sources[@]}"
+          docker buildx imagetools inspect "$IMAGE:$RELEASE_TAG" --raw > index.json
+          jq -e '[.manifests[].platform | select(.os == "linux" and (.architecture == "amd64" or .architecture == "arm64")) | .architecture] | sort == ["amd64","arm64"]' index.json
+          digest="$(docker buildx imagetools inspect "$IMAGE:$RELEASE_TAG" --format '{{json .Manifest}}' | jq -r .digest)"
+          mkdir manifests
+          jq -n --arg image "$IMAGE" --arg tag "$RELEASE_TAG" --arg digest "$digest" --arg commit "$REVISION" '{image:$image,tag:$tag,digest:$digest,commit:$commit,platforms:["linux/amd64","linux/arm64"]}' > "manifests/$SERVICE.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: manifest-${{ matrix.image }}
+          path: manifests/*.json
+          retention-days: 30
+
+  acceptance:
+    name: 发布镜像实际安装 / ${{ matrix.arch }}
+    needs: [validate, manifests]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.12.0'
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 准备浏览器验收依赖
+        run: |
+          npm install --global pnpm@11.25.0
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+      - name: 从发布镜像完成安装、登录、PDF、重启及备份恢复
+        env:
+          INSTALL_TEST_MODE: images
+          IMAGE_PREFIX: ${{ needs.validate.outputs.prefix }}
+          IMAGE_TAG: ${{ env.RELEASE_TAG }}
+        run: pnpm test:install
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: installation-${{ matrix.arch }}
+          path: .runtime/reports/install.json
+          retention-days: 30
+
+  assets:
+    name: 打包安装文件与教程附件
+    needs: [validate, manifests, acceptance]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.12.0'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: manifest-*
+          path: dist/image-manifests
+          merge-multiple: true
+      - name: 按白名单打包并上传附件
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_PREFIX: ${{ needs.validate.outputs.prefix }}
+        run: |
+          npm install --global pnpm@11.25.0
+          node scripts/package-release.mjs "$RELEASE_TAG"
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "V${RELEASE_TAG#v}" --notes-file "docs/releases/$RELEASE_TAG.md"
+          fi
+          gh release upload "$RELEASE_TAG" dist/release/* --repo "$GITHUB_REPOSITORY" --clobber
+          echo "镜像与附件就绪；核验公开拉取后发布 Release。" >> "$GITHUB_STEP_SUMMARY"
