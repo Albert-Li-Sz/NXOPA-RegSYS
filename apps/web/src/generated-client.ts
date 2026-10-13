@@ -1,5 +1,6 @@
 import createClient from 'openapi-fetch';
 import type { paths } from './generated/api';
+import { requestId } from './request-id';
 export const httpClient = createClient<paths>({
   baseUrl: window.location.origin,
   credentials: 'same-origin',
@@ -12,7 +13,7 @@ httpClient.use({
   onRequest({ request }) {
     if (request.method !== 'GET') {
       request.headers.set('X-CSRF-Token', csrfToken);
-      request.headers.set('Idempotency-Key', crypto.randomUUID());
+      request.headers.set('Idempotency-Key', requestId());
     }
     return request;
   },

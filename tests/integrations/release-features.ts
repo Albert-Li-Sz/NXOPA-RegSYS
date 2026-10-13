@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import { policySchema } from '../../packages/contracts/src/index.js';
+import { checkUserInterfaces } from './ui-regressions.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url)),
   exec = promisify(execFile);
@@ -478,12 +479,13 @@ try {
 
   started(
     ['--filter', '@contest-center/web', 'dev', '--host', '127.0.0.1', '--port', String(webPort)],
-    { ...env, API_PROXY_TARGET: apiBase },
+    { ...env, API_PROXY_TARGET: apiBase, __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: 'nxopa-ui.test' },
   );
   await wait(webBase);
   const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
   const browser = await chromium.launch({
     headless: true,
+    args: ['--host-resolver-rules=MAP nxopa-ui.test 127.0.0.1', '--no-proxy-server'],
     ...(process.platform === 'darwin' ? { executablePath: chrome } : {}),
   });
   try {
@@ -521,6 +523,25 @@ try {
       .locator('.profile-layout .card')
       .screenshot({ path: path.join(screenshotRoot, '26-profile.png') });
     assert.deepEqual(errors, []);
+    await admin.api('/auth/forgot', 'POST', { email: admin.user.email });
+    const resetMail = await compose([
+      'exec',
+      '-T',
+      'postgres',
+      'psql',
+      '-U',
+      'contest',
+      '-d',
+      'contest_center',
+      '-At',
+      '-c',
+      `SELECT payload->>'actionPath' FROM "OutboxEvent" WHERE "resourceId"='${admin.user.id}' AND type='MAIL' AND payload->>'actionPath' LIKE '/account/reset%' ORDER BY "createdAt" DESC LIMIT 1`,
+    ]);
+    await checkUserInterfaces(page, webBase, contest.id, second.id, {
+      path: resetMail.stdout.trim(),
+      password,
+    });
+    passed('手机、平板和桌面页面布局，长姓名、HTTP 表单、密码重置与会话撤销回归通过');
   } finally {
     await browser.close();
   }

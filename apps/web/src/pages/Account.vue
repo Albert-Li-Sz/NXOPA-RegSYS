@@ -80,8 +80,9 @@ async function submit() {
     }
     if (mode.value === 'reset') {
       await api('/auth/reset', 'POST', { token: route.query.token, password: form.password });
+      await loadAuth();
       ElMessage.success('密码已重置，请登录');
-      router.push('/login');
+      await router.replace('/login');
       return;
     }
     const data = await api(
@@ -123,6 +124,16 @@ async function save() {
 async function resend() {
   await api('/auth/resend', 'POST', { next: invitationReturn.value });
   ElMessage.success('验证邮件已发送');
+}
+async function revokeSession(id: string) {
+  await api(`/auth/sessions/${id}`, 'DELETE');
+  await loadAuth();
+  if (!auth.user) {
+    sessions.value = [];
+    await router.replace('/login');
+  } else {
+    sessions.value = sessions.value.filter((session) => session.id !== id);
+  }
 }
 </script>
 <template>
@@ -299,16 +310,7 @@ async function resend() {
           ><template #default="{ row }">{{ date(row.createdAt) }}</template></el-table-column
         ><el-table-column label="操作" width="100"
           ><template #default="{ row }"
-            ><el-button
-              text
-              type="danger"
-              @click="
-                api(`/auth/sessions/${row.id}`, 'DELETE').then(
-                  () => (sessions = sessions.filter((x) => x.id !== row.id)),
-                )
-              "
-              >撤销</el-button
-            ></template
+            ><el-button text type="danger" @click="revokeSession(row.id)">撤销</el-button></template
           ></el-table-column
         ></el-table
       >

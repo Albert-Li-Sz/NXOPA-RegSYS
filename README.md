@@ -3,7 +3,7 @@
 可自托管的中文竞赛报名系统，采用 Vue 3、Element Plus、NestJS、Prisma 7、PostgreSQL、Redis/BullMQ 和隔离的 XeLaTeX 编译容器。支持个人与团队报名、指导老师、审核、线下财务、工单、准考证、Hydro / DOMjudge 联动，以及联合注册 API 和只读 MCP。
 
 - [Docker Compose 安装包与步骤](deploy/README.md)
-- [V0.2.0 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.2.0)
+- [V0.2.1 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.2.1)
 - [部署与日常维护](docs/DEPLOYMENT.md)
 - [在线配置教程（GitHub Pages）](https://albert-li-sz.github.io/NXOPA-RegSYS/)
 - [带截图的配置教程（PDF）](output/pdf/configuration-guide.pdf)、[LaTeX 源码](docs/CONFIGURATION_GUIDE.tex)、[源码与截图打包](output/pdf/configuration-guide-source.zip)
@@ -19,7 +19,7 @@
 
 推荐使用根目录的单一一键安装入口 `install.sh`。宿主机需要 Docker Compose、Bash 和 OpenSSL，Node.js / pnpm 随镜像安装。
 
-从 V0.2.0 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
+从 V0.2.1 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
 
 ```bash
 # 安装：交互选择镜像版本、域名或端口，再创建管理员

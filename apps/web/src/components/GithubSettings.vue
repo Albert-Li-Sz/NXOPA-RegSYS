@@ -57,7 +57,7 @@ async function save() {
           需与它一致。</span
         ></el-form-item
       >
-      <p>
+      <p class="break-anywhere">
         当前回调地址：<code>{{ settings.callbackUrl || settings.effectiveCallbackUrl }}</code>
       </p>
       <el-button type="primary" native-type="submit" :loading="busy">保存 GitHub 设置</el-button>

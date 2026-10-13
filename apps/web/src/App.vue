@@ -55,7 +55,8 @@ async function logout() {
             ><el-dropdown
               ><button class="user-menu">
                 <span class="avatar">{{ auth.user.name.slice(0, 1) }}</span
-                >{{ auth.user.name }}<el-icon><ArrowDown /></el-icon></button
+                ><span class="user-name" :title="auth.user.name">{{ auth.user.name }}</span
+                ><el-icon><ArrowDown /></el-icon></button
               ><template #dropdown
                 ><el-dropdown-menu
                   ><el-dropdown-item @click="router.push('/account')">账号中心</el-dropdown-item

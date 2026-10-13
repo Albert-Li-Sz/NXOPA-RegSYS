@@ -114,7 +114,13 @@ button {
   color: #45474b;
   white-space: nowrap;
 }
+.user-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .avatar {
+  flex-shrink: 0;
   background: #2080f0;
   color: white;
   border-radius: 50%;
@@ -547,6 +553,9 @@ h2 {
   }
   .user-menu {
     font-size: 13px;
+  }
+  .user-name {
+    max-width: 80px;
   }
   .avatar {
     width: 30px;

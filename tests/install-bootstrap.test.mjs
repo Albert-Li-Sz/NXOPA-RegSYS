@@ -9,7 +9,10 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const tag = 'v0.2.0';
+const version = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version;
+const tag = `v${version}`;
+const parts = version.split('.').map(Number);
+const nextTag = `v${parts[0]}.${parts[1]}.${parts[2] + 1}`;
 async function fixture(fn) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'nxopa-bootstrap-'));
   const packRoot = path.join(dir, `nxopa-regsys-${tag}`),
@@ -209,19 +212,20 @@ test('跨版本更新先备份，下载新版材料并执行新入口，保留�
       0,
     );
     const previous = await readFile(path.join(target, 'deploy/.env'), 'utf8');
-    await addRelease('v0.2.1');
+    await addRelease(nextTag);
     const response = await run(['update'], `\n${target}/backups\ny\n`, {
       installed: true,
-      env: { NXOPA_UPDATE_TAG: 'v0.2.1' },
+      env: { NXOPA_UPDATE_TAG: nextTag },
     });
     assert.equal(response.code, 0, response.output);
-    assert.match(
-      await readFile(path.join(target, 'install.sh'), 'utf8'),
-      /NXOPA_INSTALLER_VERSION=v0\.2\.1/,
+    assert.ok(
+      (await readFile(path.join(target, 'install.sh'), 'utf8')).includes(
+        `NXOPA_INSTALLER_VERSION=${nextTag}`,
+      ),
     );
     assert.equal(
       await readFile(path.join(target, 'deploy/.env'), 'utf8'),
-      previous.replace(`IMAGE_TAG=${tag}`, 'IMAGE_TAG=v0.2.1'),
+      previous.replace(`IMAGE_TAG=${tag}`, `IMAGE_TAG=${nextTag}`),
     );
     const calls = (await readFile(log, 'utf8'))
       .split('\n')

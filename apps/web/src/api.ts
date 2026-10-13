@@ -2,6 +2,7 @@ import { reactive } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { Principal } from './types';
 import { setClientCsrf } from './generated-client';
+import { requestId } from './request-id';
 export const auth = reactive<{
   user: Principal | null;
   csrf: string;
@@ -14,9 +15,7 @@ export async function api<T = any>(path: string, method = 'GET', body?: unknown)
     credentials: 'same-origin',
     headers: {
       ...(form ? {} : { 'Content-Type': 'application/json' }),
-      ...(method === 'GET'
-        ? {}
-        : { 'X-CSRF-Token': auth.csrf, 'Idempotency-Key': crypto.randomUUID() }),
+      ...(method === 'GET' ? {} : { 'X-CSRF-Token': auth.csrf, 'Idempotency-Key': requestId() }),
     },
     body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   });
