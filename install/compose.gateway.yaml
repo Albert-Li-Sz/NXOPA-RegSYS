@@ -1,0 +1,35 @@
+# Internal HTTP gateway; the user's reverse proxy provides public HTTPS.
+services:
+  api:
+    ports: !reset []
+  web:
+    ports: !reset []
+  caddy:
+    image: caddy:2.10.2-alpine
+    ports:
+      - '${GATEWAY_PORT:-127.0.0.1:8080}:80'
+    volumes:
+      - ../infra/caddy-gateway:/etc/caddy:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge, app]
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:2019/config/']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+volumes:
+  caddy_data:
+  caddy_config:

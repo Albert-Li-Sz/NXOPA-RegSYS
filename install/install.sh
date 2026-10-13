@@ -61,7 +61,7 @@ interactive_admin() {
 }
 
 interactive_install() {
-  local choice project tag public_url web_port api_port api_bind web_bind
+  local choice project tag public_url gateway_port api_bind web_bind gateway_bind
   local existing=false admin_default=y
   printf '南晓开放原子社在线报名系统 · 交互安装\n'
   use_saved_environment
@@ -97,9 +97,10 @@ interactive_install() {
     done
     tag="$(env_value IMAGE_TAG "$install_dir/.env.example")"
     if [[ "$install_mode" == images ]]; then ask_tag tag "$tag"; fi
-    printf '\n默认不安装 Caddy。请自行配置反向代理：/api/ 转发 API，其余请求转发前端。\n'
+    printf '\n内部 Caddy 提供统一 HTTP 入口。公网域名和 HTTPS 由您自己的反向代理配置，整个站点转发到此入口。\n'
+    ask_port gateway_port 'Caddy 的本机 HTTP 入口端口' '8080'
     while true; do
-      ask public_url '浏览器访问地址（HTTPS 域名，或本机 HTTP 地址）' 'http://localhost:8080'
+      ask public_url '浏览器访问地址（HTTPS 域名，或本机 HTTP 地址）' "http://localhost:$gateway_port"
       if [[ "$public_url" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$ ||
             "$public_url" =~ ^http://(localhost|127\.0\.0\.1)(:[0-9]{1,5})?$ ]]; then
         local url_port="${public_url##*:}"
@@ -112,13 +113,6 @@ interactive_install() {
         printf '请填写根路径 HTTPS 地址，或 http://localhost:端口；不含路径、账号、查询或片段。\n' >&2
       fi
     done
-    ask_port web_port '前端的本机上游端口' '8081'
-    ask_port api_port 'API 的本机上游端口' '3000'
-    [[ "$web_port" != "$api_port" ]] || fail '前端与 API 端口不能相同。'
-    if [[ "$public_url" == "http://localhost:$web_port" || "$public_url" == "http://127.0.0.1:$web_port" ||
-          "$public_url" == "http://localhost:$api_port" || "$public_url" == "http://127.0.0.1:$api_port" ]]; then
-      fail '本机反向代理的访问端口须与两个上游端口不同。'
-    fi
     printf '\n项目：%s\n安装方式：%s\n访问地址：%s\n' "$project" "$install_mode" "$public_url"
     if [[ "$install_mode" == images ]]; then printf '镜像版本：%s\n' "$tag"; fi
     if ! confirm '生成配置并开始安装' y; then printf '已取消。\n'; return; fi
@@ -127,13 +121,16 @@ interactive_install() {
     set_env_value INSTALL_MODE "$install_mode"
     set_env_value IMAGE_TAG "$tag"
     set_env_value PUBLIC_URL "$public_url"
-    set_env_value REVERSE_PROXY_MODE external
-    set_env_value WEB_PORT "127.0.0.1:$web_port"
-    set_env_value API_PORT "127.0.0.1:$api_port"
+    set_env_value REVERSE_PROXY_MODE gateway
+    set_env_value GATEWAY_PORT "127.0.0.1:$gateway_port"
     require_config
   fi
   start_services
-  if [[ "$proxy_mode" == external ]]; then
+  if [[ "$proxy_mode" == gateway ]]; then
+    gateway_bind="$(env_value GATEWAY_PORT)"
+    printf '\n请将自有反向代理的整个站点转发到 http://%s，并传递 Host 和 X-Forwarded-Proto。\n示例：%s/nginx.conf.example；本机可直接访问该 HTTP 入口，公网需完成域名与 HTTPS 配置。\n' \
+      "${gateway_bind:-127.0.0.1:8080}" "$install_dir"
+  elif [[ "$proxy_mode" == external ]]; then
     api_bind="$(env_value API_PORT)"; web_bind="$(env_value WEB_PORT)"
     printf '\n请配置自有反向代理：/api/ → http://%s（保留 /api/ 路径）；其余请求 → http://%s。\n示例：%s/nginx.conf.example；仅健康检查通过不表示反向代理已就绪。\n' \
       "${api_bind:-127.0.0.1:3000}" "${web_bind:-127.0.0.1:8081}" "$install_dir"
@@ -189,12 +186,11 @@ case "$action" in
   restore)
     input="${1:?请提供加密备份文件路径}"
     override=""
-    proxy_override=""
     if [[ "$install_mode" == images ]]; then override="$install_dir/compose.images.yaml"; fi
-    if [[ "$proxy_mode" == caddy ]]; then proxy_override="$install_dir/compose.caddy.yaml"; fi
     CONTEST_COMPOSE_FILE="$install_dir/compose.yaml" CONTEST_ENV_FILE="$install_env" \
       CONTEST_COMPOSE_OVERRIDE="$override" CONTEST_COMPOSE_PROXY="$proxy_override" \
       CONTEST_COMPOSE_PLATFORM="$platform_override" \
+      CONTEST_COMPOSE_PROXY_PLATFORM="${proxy_override:+$proxy_platform_override}" \
       bash "$repo_root/scripts/restore.sh" "$(absolute_path "$input")"
     ;;
   restore-url)

@@ -176,6 +176,6 @@ Contest_Center/
 
 ## 部署与扩展
 
-默认安装部署一套 Compose，不含 Caddy，用户自己的反向代理连接前端与 API 的本机上游端口。旧根目录部署继续使用独立 Caddy 容器，下述入口网络描述适用于该兼容模式。PostgreSQL、Redis、Caddy 分别直接使用官方镜像；前端、API、Worker 与 LaTeX Runner 独立构建和运行。Caddy 为唯一公网入口，在 `edge` 网络代理前端，在 `app` 网络代理 API；数据库和 Redis 位于仅后端可加入的 `data` 私有网络。API 与 Worker 经 `app` 访问 SMTP 和评测平台。前端不持有数据库或加密凭据，不挂载私有附件。Worker 与 LaTeX Runner 共享独立任务卷，Runner 使用无网络配置。
+默认安装部署一套 Compose，内部官方 Caddy 提供 `127.0.0.1:8080` HTTP 统一入口，用户自己的反向代理负责公网 HTTPS 并将整个站点转发到该入口。旧根目录部署仍使用公网 Caddy。PostgreSQL、Redis、Caddy 分别直接使用官方镜像；前端、API、Worker 与 LaTeX Runner 独立构建和运行。内部 Caddy 在 `edge` 网络代理前端，在 `app` 网络代理 API；数据库和 Redis 位于仅后端可加入的 `data` 私有网络。API 与 Worker 经 `app` 访问 SMTP 和评测平台。前端不持有数据库或加密凭据，不挂载私有附件。Worker 与 LaTeX Runner 共享独立任务卷，Runner 使用无网络配置。
 
 后续增加在线支付只新增支付适配器与回调对账，继续使用原有账簿和资格规则；增加竞赛平台只新增 Connector 或采用联合注册协议；机器人读取同一套查询 API。需要增加服务器时，先扩展无状态 API 与 Worker，并将文件存储切换为已预留的 S3 后端。

@@ -34,6 +34,7 @@ for (const key of [
   'HTTPS_PORT',
   'WEB_PORT',
   'API_PORT',
+  'GATEWAY_PORT',
   'REVERSE_PROXY_MODE',
   'INSTALL_MODE',
 ])
@@ -53,7 +54,7 @@ const run = async (args: string[], overrides: NodeJS.ProcessEnv = {}) => {
         script,
         'compose',
         '-f',
-        path.join(root, 'tests/fixtures/install-proxy.yaml'),
+        path.join(root, 'tests/fixtures/install-gateway-proxy.yaml'),
         'up',
         '-d',
         '--no-deps',
@@ -98,14 +99,12 @@ try {
   assert.ok(/^ENCRYPTION_KEY=[a-f0-9]{64}$/m.test(source), 'Random encryption key');
   assert.equal((await stat(envFile)).mode & 0o777, 0o600);
   httpPort = await unusedPort();
-  const webPort = await unusedPort(),
-    apiPort = await unusedPort();
+  const gatewayPort = await unusedPort();
   env.TEST_PROXY_PORT = String(httpPort);
   source = source
     .replace(/^COMPOSE_PROJECT_NAME=.+$/m, `COMPOSE_PROJECT_NAME=${project}`)
     .replace(/^PUBLIC_URL=.+$/m, `PUBLIC_URL=http://localhost:${httpPort}`)
-    .replace(/^WEB_PORT=.+$/m, `WEB_PORT=127.0.0.1:${webPort}`)
-    .replace(/^API_PORT=.+$/m, `API_PORT=127.0.0.1:${apiPort}`)
+    .replace(/^GATEWAY_PORT=.+$/m, `GATEWAY_PORT=127.0.0.1:${gatewayPort}`)
     .replace(/^INSTALL_MODE=.+$/m, `INSTALL_MODE=${installMode}`)
     .replace(
       /^IMAGE_PREFIX=.+$/m,
@@ -134,23 +133,30 @@ try {
   }
   assert.equal(model.services.latex.network_mode, 'none');
   assert.equal(model.services.latex.read_only, true);
-  for (const service of ['postgres', 'redis', 'worker', 'latex'])
+  for (const service of ['postgres', 'redis', 'worker', 'latex', 'api', 'web'])
     assert.ok(!model.services[service].ports, `${service} has no public port`);
-  for (const service of ['api', 'web'])
-    assert.ok(model.services[service].ports.every((p: any) => p.host_ip === '127.0.0.1'));
-  assert.ok(!model.services.caddy);
+  assert.equal(model.services.caddy.ports.length, 1);
+  assert.equal(model.services.caddy.ports[0].host_ip, '127.0.0.1');
+  assert.equal(model.services.caddy.ports[0].published, String(gatewayPort));
+  assert.equal(model.services.caddy.ports[0].target, 80);
+  assert.ok(!model.services.caddy.environment?.SITE_ADDRESS);
+  assert.ok(!Object.keys(model.services.caddy.networks).includes('data'));
   assert.deepEqual(Object.keys(model.volumes).sort(), [
+    'caddy_config',
+    'caddy_data',
     'files',
     'latex_jobs',
     'postgres_data',
     'redis_data',
   ]);
-  passed('默认无 Caddy，前端和 API 仅绑定本机；数据库、队列与编译器不映射端口');
+  passed('默认内部 Caddy 仅发布本机 HTTP 单端口；前端、API、数据库与队列不映射端口');
 
   const officialImages = {
     postgres: model.services.postgres.image,
     redis: 'redis:7.4.5-alpine',
+    caddy: model.services.caddy.image,
   };
+  assert.match(officialImages.caddy, /^caddy:2\.10\.2-alpine@sha256:[a-f0-9]{64}$/);
   assert.match(officialImages.postgres, /^postgres:17\.6-alpine@sha256:[a-f0-9]{64}$/);
   for (const [service, image] of Object.entries(officialImages)) {
     assert.equal(model.services[service].image, image);
@@ -171,13 +177,21 @@ try {
   const httpsModel = JSON.parse(
     await run(['compose', 'config', '--format', 'json'], {
       PUBLIC_URL: 'https://reg.example.org',
+      GATEWAY_PORT: '127.0.0.1:8080',
+    }),
+  );
+  assert.equal(httpsModel.services.api.environment.PUBLIC_URL, 'https://reg.example.org');
+  assert.equal(httpsModel.services.caddy.ports[0].published, '8080');
+  const externalModel = JSON.parse(
+    await run(['compose', 'config', '--format', 'json'], {
+      REVERSE_PROXY_MODE: 'external',
       WEB_PORT: '127.0.0.1:8081',
       API_PORT: '127.0.0.1:3000',
     }),
   );
-  assert.equal(httpsModel.services.api.environment.PUBLIC_URL, 'https://reg.example.org');
-  assert.ok(!httpsModel.services.caddy);
-  assert.ok(httpsModel.services.web.ports.every((p: any) => p.host_ip === '127.0.0.1'));
+  assert.ok(!externalModel.services.caddy);
+  for (const service of ['api', 'web'])
+    assert.ok(externalModel.services[service].ports.every((p: any) => p.host_ip === '127.0.0.1'));
   const legacyModel = JSON.parse(
     await run(['compose', 'config', '--format', 'json'], {
       REVERSE_PROXY_MODE: 'caddy',
@@ -186,7 +200,7 @@ try {
       HTTPS_PORT: '127.0.0.1:8443',
     }),
   );
-  assert.equal(legacyModel.services.caddy.image, 'caddy:2.10.2-alpine');
+  assert.equal(legacyModel.services.caddy.image, officialImages.caddy);
   assert.equal(legacyModel.services.caddy.environment.SITE_ADDRESS, 'reg.example.org');
   assert.ok(!legacyModel.services.api.ports && !legacyModel.services.web.ports);
   passed('公网 HTTPS 地址与已有反向代理的本机端口绑定正确解析');
@@ -210,8 +224,7 @@ try {
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line));
-  assert.ok(!services.some((s) => s.Service === 'caddy'));
-  for (const name of ['postgres', 'redis', 'api', 'worker', 'web', 'acceptance-proxy'])
+  for (const name of ['postgres', 'redis', 'api', 'worker', 'web', 'caddy', 'acceptance-proxy'])
     assert.equal(services.find((s) => s.Service === name).Health, 'healthy');
   for (const [service, image] of Object.entries(officialImages)) {
     const containerId = (await run(['compose', 'ps', '-q', service])).trim();
@@ -248,7 +261,7 @@ try {
   assert.ok([400, 404].includes((await fetch(`${base}/%2e%2e%2fpackage.json`)).status));
   assert.equal((await fetch(base, { method: 'POST' })).status, 405);
   passed(
-    '独立 Nginx 代理前端与 API，历史路由、MIME / 缓存和 HEAD 正常，私有路径与缺失文件拒绝访问',
+    '外部 Nginx 经内部 Caddy 统一代理前端与 API，历史路由、MIME / 缓存和 HEAD 正常，私有路径与缺失文件拒绝访问',
   );
 
   const credentials = {
@@ -298,7 +311,7 @@ try {
   } finally {
     await browser.close();
   }
-  passed('生产浏览器通过用户自配 Nginx 完成首页进入、登录及刷新，会话保持且无脚本错误');
+  passed('生产浏览器通过 Nginx → Caddy 完成首页进入、登录及刷新，会话保持且无脚本错误');
 
   const contest = await admin.api('/contests', 'POST', {
     title: '独立安装验收竞赛',

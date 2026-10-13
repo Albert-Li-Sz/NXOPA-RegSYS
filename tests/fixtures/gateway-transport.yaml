@@ -1,0 +1,55 @@
+services:
+  api:
+    image: node:24.12.0-bookworm-slim
+    command: [node, /fixture/echo.mjs]
+    environment:
+      ECHO_SERVICE: api
+      ECHO_PORT: '3000'
+    volumes:
+      - ${GATEWAY_TEST_ECHO:?echo fixture required}:/fixture/echo.mjs:ro
+    networks: [app]
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  web:
+    image: node:24.12.0-bookworm-slim
+    command: [node, /fixture/echo.mjs]
+    environment:
+      ECHO_SERVICE: web
+      ECHO_PORT: '8080'
+    volumes:
+      - ${GATEWAY_TEST_ECHO:?echo fixture required}:/fixture/echo.mjs:ro
+    networks: [edge]
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://localhost:8080').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  outer-proxy:
+    image: nginx:1.28.0-alpine
+    ports:
+      - '127.0.0.1:${GATEWAY_TEST_TLS_PORT:?TLS test port required}:443'
+    volumes:
+      - ${GATEWAY_TEST_STAGE:?test directory required}:/fixture:ro
+      - ${GATEWAY_TEST_STAGE}/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [edge]
+    depends_on:
+      caddy:
+        condition: service_healthy
+networks:
+  edge:
+  app:

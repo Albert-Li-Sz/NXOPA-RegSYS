@@ -10,8 +10,10 @@ case "$install_env" in
 esac
 export INSTALL_ENV_FILE="$install_env"
 install_mode=source
-proxy_mode=external
+proxy_mode=gateway
 platform_override=""
+proxy_platform_override=""
+proxy_override=""
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 
@@ -55,7 +57,7 @@ set_env_value() {
 # Interactive operations always use the selected file, rather than unrelated shell overrides.
 use_saved_environment() {
   unset INSTALL_MODE IMAGE_TAG IMAGE_PREFIX COMPOSE_PROJECT_NAME PUBLIC_URL SITE_ADDRESS \
-    HTTP_PORT HTTPS_PORT WEB_PORT API_PORT REVERSE_PROXY_MODE POSTGRES_PASSWORD ENCRYPTION_KEY
+    HTTP_PORT HTTPS_PORT WEB_PORT API_PORT GATEWAY_PORT REVERSE_PROXY_MODE POSTGRES_PASSWORD ENCRYPTION_KEY
 }
 
 ask() {
@@ -127,7 +129,7 @@ compose() {
   local compose_args=(--project-directory "$install_dir" --env-file "$install_env" -f "$install_dir/compose.yaml")
   if [[ -n "$platform_override" ]]; then compose_args+=(-f "$platform_override"); fi
   if [[ "$install_mode" == images ]]; then compose_args+=(-f "$install_dir/compose.images.yaml"); fi
-  if [[ "$proxy_mode" == caddy ]]; then compose_args+=(-f "$install_dir/compose.caddy.yaml"); fi
+  if [[ -n "$proxy_override" ]]; then compose_args+=(-f "$proxy_override" -f "$proxy_platform_override"); fi
   if [[ "${1:-}" == pull ]]; then compose_args+=(--parallel 1); fi
   docker compose "${compose_args[@]}" "$@"
 }
@@ -145,8 +147,12 @@ require_docker() {
   local platform
   platform="${DOCKER_DEFAULT_PLATFORM:-$(docker info --format '{{.OSType}}/{{.Architecture}}')}"
   case "$platform" in
-    linux/amd64|linux/x86_64) platform_override="$install_dir/compose.amd64.yaml" ;;
-    linux/arm64|linux/aarch64|linux/arm64/v8) platform_override="$install_dir/compose.arm64.yaml" ;;
+    linux/amd64|linux/x86_64)
+      platform_override="$install_dir/compose.amd64.yaml"
+      proxy_platform_override="$install_dir/compose.proxy.amd64.yaml" ;;
+    linux/arm64|linux/aarch64|linux/arm64/v8)
+      platform_override="$install_dir/compose.arm64.yaml"
+      proxy_platform_override="$install_dir/compose.proxy.arm64.yaml" ;;
     *) fail '安装器支持 Linux amd64 / arm64 Docker 服务端，请检查 Docker context 和 DOCKER_DEFAULT_PLATFORM。' ;;
   esac
 }
@@ -170,13 +176,17 @@ require_config() {
     # A pre-v0.1.4 file describes the existing Caddy entrance; preserve it until explicitly migrated.
     if [[ -n "$(env_value SITE_ADDRESS)$(env_value HTTP_PORT)$(env_value HTTPS_PORT)" ]]; then
       proxy_mode=caddy
-    else
+    elif [[ -n "$(env_value WEB_PORT)$(env_value API_PORT)" ]]; then
       proxy_mode=external
+    else
+      proxy_mode=gateway
     fi
   fi
   case "$proxy_mode" in
-    external|caddy) ;;
-    *) fail 'REVERSE_PROXY_MODE 只能为 external 或 caddy。' ;;
+    gateway) proxy_override="$install_dir/compose.gateway.yaml" ;;
+    caddy) proxy_override="$install_dir/compose.caddy.yaml" ;;
+    external) proxy_override="" ;;
+    *) fail 'REVERSE_PROXY_MODE 只能为 gateway、external 或 caddy。' ;;
   esac
   compose config --quiet
 }
@@ -189,13 +199,13 @@ absolute_path() {
 }
 
 backup() {
-  local destination override="" proxy_override=""
+  local destination override=""
   destination="$(absolute_path "${1:-$install_dir/backups}")"
   if [[ "$install_mode" == images ]]; then override="$install_dir/compose.images.yaml"; fi
-  if [[ "$proxy_mode" == caddy ]]; then proxy_override="$install_dir/compose.caddy.yaml"; fi
   CONTEST_COMPOSE_FILE="$install_dir/compose.yaml" CONTEST_ENV_FILE="$install_env" \
     CONTEST_COMPOSE_OVERRIDE="$override" CONTEST_COMPOSE_PROXY="$proxy_override" \
     CONTEST_COMPOSE_PLATFORM="$platform_override" \
+    CONTEST_COMPOSE_PROXY_PLATFORM="${proxy_override:+$proxy_platform_override}" \
     bash "$repo_root/scripts/backup.sh" "$destination"
 }
 
@@ -216,5 +226,6 @@ show_settings() {
   printf '\n配置文件：%s\n项目名称：%s\n安装方式：%s\n访问地址：%s\n' \
     "$install_env" "$(env_value COMPOSE_PROJECT_NAME)" "$install_mode" "$(env_value PUBLIC_URL)"
   if [[ "$install_mode" == images ]]; then printf '镜像版本：%s\n' "$(env_value IMAGE_TAG)"; fi
+  if [[ "$proxy_mode" == gateway ]]; then printf '入口：内部 Caddy HTTP %s，公网 HTTPS 由自有反向代理提供。\n' "$(env_value GATEWAY_PORT)"; fi
   if [[ "$proxy_mode" == caddy ]]; then printf '入口：沿用已有 Caddy 配置；切换自配代理请参阅 README。\n'; fi
 }

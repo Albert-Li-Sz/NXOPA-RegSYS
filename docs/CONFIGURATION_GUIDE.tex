@@ -53,9 +53,9 @@
 \begin{Code}
 cd install
 bash install.sh
-curl --fail http://127.0.0.1:3000/api/v1/health
+curl --fail http://127.0.0.1:8080/api/v1/health
 \end{Code}
-向导默认选择预构建镜像，也支持完整源码构建。默认不安装 Caddy，由用户自己的反向代理提供同域入口和 HTTPS；向导填写浏览器访问地址及前端 / API 的本机端口。自动生成随机密钥和权限为 600 的 \code{install/.env}，等待服务健康后输入管理员用户名、邮箱及两次隐藏密码。已有配置与密钥保留，首次管理员不会覆盖已有账号；宿主机无需 Node.js 或 pnpm。上游健康检查应返回 \code{status: ok}；完成代理配置后，再通过浏览器地址检查健康接口与登录。PostgreSQL 保持 17.6，并按 Docker 服务端架构固定官方运行摘要，避开索引中缺失的证明元数据。
+向导默认选择预构建镜像，也支持完整源码构建。内部官方 Caddy 提供本机 HTTP 统一入口，默认 8080；用户自己的反向代理负责公网 HTTPS。向导填写浏览器访问地址及 Caddy 入口端口。自动生成随机密钥和权限为 600 的 \code{install/.env}，等待服务健康后输入管理员用户名、邮箱及两次隐藏密码。已有配置与密钥保留，首次管理员不会覆盖已有账号；宿主机无需 Node.js 或 pnpm。上游健康检查应返回 \code{status: ok}；完成代理配置后，再通过浏览器地址检查健康接口与登录。PostgreSQL 保持 17.6，并按 Docker 服务端架构固定官方运行摘要，避开索引中缺失的证明元数据。
 
 \textbf{更新与卸载。}取得新版安装材料时保留原配置，在 \code{install} 目录执行：
 \begin{Code}
@@ -67,12 +67,11 @@ bash uninstall.sh
 \textbf{设置公网地址。}向导保存下列部署项；也可编辑 \code{install/.env}。自行完成域名解析、证书与代理配置，参考安装包的 \code{nginx.conf.example}。首次启动使用环境地址作为初始值；登录后在“管理中心 → 全局设置”保存公网地址，邮件与邀请统一读取数据库配置。
 \begin{Code}
 PUBLIC_URL=https://contest.example.org
-REVERSE_PROXY_MODE=external
-WEB_PORT=127.0.0.1:8081
-API_PORT=127.0.0.1:3000
+REVERSE_PROXY_MODE=gateway
+GATEWAY_PORT=127.0.0.1:8080
 ALLOW_PRIVATE_INTEGRATIONS=false
 \end{Code}
-代理将 \code{/api/} 转发到 API 端口，其余请求转发到前端；保留 API 路径、Host、Origin 和原始协议。仅代理整个站点到前端会导致登录失败。已有 Caddy 配置升级时保留原入口，切换自配代理前先备份。安装入口使用 \code{PUBLIC_URL}；旧根目录 Compose 仍使用 \code{DEPLOY_PUBLIC_URL}。如果评测平台确实位于受信任内网，再显式启用内网联动；正式环境外部评测接口要求 HTTPS。
+外层代理将整个站点转发到 \code{http://127.0.0.1:8080}，保留路径、Host、Origin 和原始协议；内部 Caddy 分流前端与 API。默认不占用公网 80 / 443、不申请证书。旧配置升级保留原代理模式，切换 gateway 前先备份并保留原密钥。安装入口使用 \code{PUBLIC_URL}；旧根目录 Compose 仍使用 \code{DEPLOY_PUBLIC_URL}。如果评测平台确实位于受信任内网，再显式启用内网联动；正式环境外部评测接口要求 HTTPS。
 
 \textbf{需要留在部署环境的配置：}数据库、缓存、私有文件目录、可信管理入口和 \code{ENCRYPTION_KEY}。这些属于运行基础设施。保留同一个加密密钥，否则无法解密已有邮件密码、评测凭据与备份。
 
@@ -91,7 +90,7 @@ ALLOW_PRIVATE_INTEGRATIONS=false
 \newpage
 \begin{enumerate}
 \item 域名解析：给注册域名添加指向服务器的 A 记录；启用 IPv6 时再配置正确的 AAAA 记录。
-\item 反向代理：默认由自有代理监听 HTTPS，配置证书。\code{/api/} 保留原路径转发到 \code{127.0.0.1:3000}；其余请求转发到 \code{127.0.0.1:8081}，保留 Host、Origin 和请求协议。
+\item 反向代理：默认由自有代理监听 HTTPS，配置证书。整个站点转发到内部 Caddy 的 \code{127.0.0.1:8080} HTTP 入口，保留 Host、Origin 和请求协议。
 \item 更换域名：先解析新域名、配置代理与证书，并实际检查新站可登录，再保存新的公网地址。旧的、已经发出的邀请 URL 不会被重写，迁移期保留旧域名反向代理或引导用户重新获取链接。
 \item 恢复入口：安装入口的 \code{PUBLIC_URL}（旧根目录 Compose 对应 \code{DEPLOY_PUBLIC_URL}）继续作为可信管理来源；可增加 \code{TRUSTED_MANAGEMENT_ORIGINS}，用逗号分隔完整 Origin。不能把任意请求 Host 当作可信来源。
 \end{enumerate}

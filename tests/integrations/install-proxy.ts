@@ -7,6 +7,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { policySchema } from '../../packages/contracts/src/index.js';
+import { verifyGatewayTransport } from './install-gateway.js';
 
 const exec = promisify(execFile);
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -28,6 +29,7 @@ for (const key of [
   'REVERSE_PROXY_MODE',
   'WEB_PORT',
   'API_PORT',
+  'GATEWAY_PORT',
   'SITE_ADDRESS',
   'HTTP_PORT',
   'HTTPS_PORT',
@@ -93,10 +95,12 @@ function passed(message: string) {
 }
 
 try {
+  passed(await verifyGatewayTransport());
   const httpPort = await unusedPort(),
     httpsPort = await unusedPort(),
     webPort = await unusedPort(),
-    apiPort = await unusedPort();
+    apiPort = await unusedPort(),
+    gatewayPort = await unusedPort();
   env.TEST_PROXY_PORT = String(httpPort);
   await run(['init']);
   const fresh = (await readFile(envFile, 'utf8'))
@@ -104,10 +108,9 @@ try {
     .replace(/^INSTALL_MODE=.*$/m, 'INSTALL_MODE=images')
     .replace(/^IMAGE_TAG=.*$/m, `IMAGE_TAG=${targetTag}`)
     .replace(/^PUBLIC_URL=.*$/m, `PUBLIC_URL=http://localhost:${httpPort}`)
-    .replace(/^WEB_PORT=.*$/m, `WEB_PORT=127.0.0.1:${webPort}`)
-    .replace(/^API_PORT=.*$/m, `API_PORT=127.0.0.1:${apiPort}`);
+    .replace(/^GATEWAY_PORT=.*$/m, `GATEWAY_PORT=127.0.0.1:${gatewayPort}`);
   const legacy =
-    fresh.replace(/^(REVERSE_PROXY_MODE|WEB_PORT|API_PORT)=.*\n/gm, '') +
+    fresh.replace(/^(REVERSE_PROXY_MODE|GATEWAY_PORT|WEB_PORT|API_PORT)=.*\n/gm, '') +
     `\nSITE_ADDRESS=:80\nHTTP_PORT=127.0.0.1:${httpPort}\nHTTPS_PORT=127.0.0.1:${httpsPort}\n`;
   await writeFile(envFile, legacy, { mode: 0o600 });
   await run(['up']);
@@ -144,7 +147,10 @@ try {
   assert.equal(await readFile(envFile, 'utf8'), legacy);
   passed('旧配置自动保留官方 Caddy 入口、六个卷，管理员登录与加密备份正常');
 
-  await writeFile(envFile, fresh, { mode: 0o600 });
+  const external =
+    fresh.replace('REVERSE_PROXY_MODE=gateway', 'REVERSE_PROXY_MODE=external') +
+    `\nWEB_PORT=127.0.0.1:${webPort}\nAPI_PORT=127.0.0.1:${apiPort}\n`;
+  await writeFile(envFile, external, { mode: 0o600 });
   await run(['up']);
   await run([
     'compose',
@@ -164,7 +170,30 @@ try {
     'offline payment proof',
   );
   assert.deepEqual(await volumes(), originalVolumes);
-  passed('显式切换自配代理后移除 Caddy，Nginx 同域入口保留会话、报名、附件及原卷');
+  assert.equal((await fetch(`${base}/api/v1/health`)).status, 200);
+  await run(['backup', path.join(stage, 'backups')]);
+  await writeFile(envFile, fresh, { mode: 0o600 });
+  await run(['up']);
+  await run([
+    'compose',
+    '-f',
+    path.join(root, 'tests/fixtures/install-gateway-proxy.yaml'),
+    'up',
+    '-d',
+    '--no-deps',
+    '--wait',
+    'acceptance-proxy',
+  ]);
+  assert.ok((await run(['compose', 'ps', '--services'])).split('\n').includes('caddy'));
+  assert.equal((await admin.api(`/registrations/${registration.id}`)).eligible, true);
+  assert.equal(
+    await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
+    'offline payment proof',
+  );
+  assert.deepEqual(await volumes(), originalVolumes);
+  passed(
+    '旧 Caddy → 双上游 external → 内部 Caddy gateway，外部 Nginx 单入口保留会话、报名、附件及原卷',
+  );
 
   await uninstall('\ny\nn\n');
   assert.deepEqual(await volumes(), originalVolumes);
@@ -173,7 +202,7 @@ try {
   assert.deepEqual(await volumes(), []);
   assert.equal(await readFile(envFile, 'utf8'), fresh);
   assert.ok((await readdir(path.join(stage, 'backups'))).some((name) => name.endsWith('.ccbak')));
-  passed('永久卸载仅清理当前项目的全部卷，包括停用的证书卷；配置与备份保留');
+  passed('永久卸载仅清理当前项目全部六个卷；配置与备份保留');
   success = true;
 } finally {
   await run(['compose', 'down', '-v', '--remove-orphans']).catch(() => {});

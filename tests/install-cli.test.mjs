@@ -53,12 +53,10 @@ process.exit(0);
 
 test('源码构建分支无需镜像标签，使用 build 并保留项目配置', () =>
   fixture(async ({ run, envFile, calls }) => {
-    const r = await run(
-      'install.sh',
-      'source-cli\n2\nhttp://localhost:18080\n18081\n13000\ny\nn\n',
-    );
+    const r = await run('install.sh', 'source-cli\n2\n18080\n\ny\nn\n');
     assert.equal(r.code, 0, r.output);
     assert.match(await readFile(envFile, 'utf8'), /^INSTALL_MODE=source$/m);
+    assert.match(await readFile(envFile, 'utf8'), /^PUBLIC_URL=http:\/\/localhost:18080$/m);
     const commands = await calls();
     assert.ok(commands.some((c) => c.action === 'up' && c.args.includes('--build')));
     assert.ok(!commands.some((c) => c.action === 'pull'));
@@ -169,14 +167,13 @@ test('首次安装选择镜像版本、端口、隐藏管理员密码，校验�
   fixture(async ({ run, envFile, calls }) => {
     const r = await run(
       'install.sh',
-      `test-cli\n1\nv0.2.3\nhttp://localhost:18080\n70000\n18081\n13000\ny\ny\ninstaller\ninvalid\nadmin@example.test\nshort\nshort\n${password}\nmismatch\n${password}\n${password}\n`,
+      `test-cli\n1\nv0.2.3\n70000\n18080\nhttp://localhost:18080\ny\ny\ninstaller\ninvalid\nadmin@example.test\nshort\nshort\n${password}\nmismatch\n${password}\n${password}\n`,
     );
     assert.equal(r.code, 0, r.output);
     const text = await readFile(envFile, 'utf8');
     assert.match(text, /^IMAGE_TAG=v0.2.3$/m);
-    assert.match(text, /^WEB_PORT=127\.0\.0\.1:18081$/m);
-    assert.match(text, /^API_PORT=127\.0\.0\.1:13000$/m);
-    assert.match(text, /^REVERSE_PROXY_MODE=external$/m);
+    assert.match(text, /^GATEWAY_PORT=127\.0\.0\.1:18080$/m);
+    assert.match(text, /^REVERSE_PROXY_MODE=gateway$/m);
     assert.match(text, /^PUBLIC_URL=http:\/\/localhost:18080$/m);
     assert.match(text, /^POSTGRES_PASSWORD=[a-f0-9]{48}$/m);
     assert.match(text, /^ENCRYPTION_KEY=[a-f0-9]{64}$/m);
@@ -186,21 +183,24 @@ test('首次安装选择镜像版本、端口、隐藏管理员密码，校验�
     assert.ok((await calls()).some((c) => c.action === 'exec' && c.adminPasswordPassed));
   }));
 
-test('默认安装由用户配置 HTTPS 代理，只绑定本机上游且不包含 Caddy', () =>
+test('默认内部 Caddy 仅绑定本机 8080，用户配置公网 HTTPS 代理', () =>
   fixture(async ({ run, envFile, calls }) => {
     const r = await run(
       'install.sh',
-      'https-cli\n1\n\nhttps://wrong/path\nhttp://reg.example.org\nhttps://reg.example.org\n19081\n13000\ny\nn\n',
+      'https-cli\n1\n\n\nhttps://wrong/path\nhttp://reg.example.org\nhttps://reg.example.org\ny\nn\n',
     );
     assert.equal(r.code, 0, r.output);
     const text = await readFile(envFile, 'utf8');
-    assert.match(text, /^REVERSE_PROXY_MODE=external$/m);
+    assert.match(text, /^REVERSE_PROXY_MODE=gateway$/m);
     assert.match(text, /^PUBLIC_URL=https:\/\/reg.example.org$/m);
-    assert.match(text, /^WEB_PORT=127\.0\.0\.1:19081$/m);
-    assert.match(text, /^API_PORT=127\.0\.0\.1:13000$/m);
+    assert.match(text, /^GATEWAY_PORT=127\.0\.0\.1:8080$/m);
+    assert.ok(!/^(WEB_PORT|API_PORT)=/m.test(text));
     assert.ok(!/^(SITE_ADDRESS|HTTP_PORT|HTTPS_PORT)=/m.test(text));
     assert.ok((await calls()).every((c) => !c.files.some((f) => f.endsWith('compose.caddy.yaml'))));
-    assert.match(r.output, /\/api\//);
+    assert.ok(
+      (await calls()).every((c) => c.files.some((f) => f.endsWith('compose.gateway.yaml'))),
+    );
+    assert.match(r.output, /整个站点/);
   }));
 
 test('旧配置继续启用 Caddy，显式切换 external 后不再加载 Caddy', () =>
@@ -219,7 +219,7 @@ test('旧配置继续启用 Caddy，显式切换 external 后不再加载 Caddy'
 
 test('取消与输入结束不会生成配置或启动服务', () =>
   fixture(async ({ run, envFile, calls }) => {
-    const r = await run('install.sh', 'cancel-cli\n1\n\nhttps://reg.example.org\n\n\nn\n');
+    const r = await run('install.sh', 'cancel-cli\n1\n\n\nhttps://reg.example.org\nn\n');
     assert.equal(r.code, 0);
     await assert.rejects(stat(envFile), { code: 'ENOENT' });
     assert.notEqual((await run('install.sh')).code, 0);

@@ -8,5 +8,6 @@ compose() {
   if [[ -n "${CONTEST_COMPOSE_PLATFORM:-}" ]]; then compose_args+=(-f "$CONTEST_COMPOSE_PLATFORM"); fi
   if [[ -n "${CONTEST_COMPOSE_OVERRIDE:-}" ]]; then compose_args+=(-f "$CONTEST_COMPOSE_OVERRIDE"); fi
   if [[ -n "${CONTEST_COMPOSE_PROXY:-}" ]]; then compose_args+=(-f "$CONTEST_COMPOSE_PROXY"); fi
+  if [[ -n "${CONTEST_COMPOSE_PROXY_PLATFORM:-}" ]]; then compose_args+=(-f "$CONTEST_COMPOSE_PROXY_PLATFORM"); fi
   docker compose "${compose_args[@]}" "$@"
 }

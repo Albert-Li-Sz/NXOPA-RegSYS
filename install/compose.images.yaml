@@ -2,16 +2,16 @@
 services:
   initialize:
     build: !reset null
-    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-api:${IMAGE_TAG:-v0.1.4}
+    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-api:${IMAGE_TAG:-v0.1.5}
   api:
     build: !reset null
-    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-api:${IMAGE_TAG:-v0.1.4}
+    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-api:${IMAGE_TAG:-v0.1.5}
   worker:
     build: !reset null
-    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-worker:${IMAGE_TAG:-v0.1.4}
+    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-worker:${IMAGE_TAG:-v0.1.5}
   web:
     build: !reset null
-    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-web:${IMAGE_TAG:-v0.1.4}
+    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-web:${IMAGE_TAG:-v0.1.5}
   latex:
     build: !reset null
-    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-latex:${IMAGE_TAG:-v0.1.4}
+    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-latex:${IMAGE_TAG:-v0.1.5}

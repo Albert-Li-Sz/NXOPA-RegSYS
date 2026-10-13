@@ -1,6 +1,6 @@
 # 部署与维护
 
-新部署推荐使用 [install 安装包](../install/README.md)：无需在宿主机安装 Node.js / pnpm，独立生成 `install/.env`，并提供启动、管理员初始化和加密备份恢复命令。安装包默认不包含 Caddy，前端 / API 只绑定本机两个端口，用户自配代理和证书，示例见 `install/nginx.conf.example`。PostgreSQL 固定官方 17.6 的对应架构运行摘要。本文的根目录 Compose 命令继续供已有 Caddy 部署使用；两个入口默认项目名和数据卷不同，切换入口时须保留原项目名、数据库密码与加密密钥。
+新部署推荐使用 [install 安装包](../install/README.md)：无需在宿主机安装 Node.js / pnpm，独立生成 `install/.env`，并提供启动、管理员初始化和加密备份恢复命令。安装包默认由内部 Caddy 提供 `127.0.0.1:8080` HTTP 入口，自有代理将整个站点转发到该入口并负责公网 HTTPS，示例见 `install/nginx.conf.example`。PostgreSQL 和 Caddy 固定官方对应架构运行摘要。本文的根目录 Compose 命令继续供已有 Caddy 部署使用；两个入口默认项目名和数据卷不同，切换入口时须保留原项目名、数据库密码与加密密钥。
 
 ## 配置
 

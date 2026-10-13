@@ -1,0 +1,24 @@
+{
+	auto_https off
+	servers {
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
+}
+
+:80 {
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		X-Frame-Options DENY
+		-Server
+	}
+	@api path /api/*
+	handle @api {
+		reverse_proxy api:3000
+	}
+	handle {
+		reverse_proxy web:8080
+	}
+}

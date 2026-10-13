@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
-assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.1.4');
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.1.5');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
@@ -29,11 +29,15 @@ try {
     'install/compose.amd64.yaml',
     'install/compose.arm64.yaml',
     'install/compose.caddy.yaml',
+    'install/compose.gateway.yaml',
+    'install/compose.proxy.amd64.yaml',
+    'install/compose.proxy.arm64.yaml',
     'install/nginx.conf.example',
     'install/.env.example',
     'install/README.md',
     'install/ACCEPTANCE.md',
     'infra/caddy/Caddyfile',
+    'infra/caddy-gateway/Caddyfile',
     'scripts/backup.sh',
     'scripts/restore.sh',
     'scripts/compose-lib.sh',
@@ -136,7 +140,7 @@ try {
     );
     assert.equal(interactive.success, true);
     assert.equal(interactive.targetTag, tag);
-    assert.equal(interactive.initialTag, 'v0.1.3');
+    assert.equal(interactive.initialTag, 'v0.1.4');
     assert.equal(interactive.platform, 'linux');
     assert.equal(interactive.architecture, arch === 'amd64' ? 'x64' : 'arm64');
     assert.ok(interactive.checks.length >= 4);
@@ -154,7 +158,8 @@ try {
     assert.equal(proxy.targetTag, tag);
     assert.equal(proxy.platform, 'linux');
     assert.equal(proxy.architecture, arch === 'amd64' ? 'x64' : 'arm64');
-    assert.ok(proxy.checks.length >= 4);
+    assert.ok(proxy.checks.length >= 5);
+    assert.ok(proxy.checks.some((check) => check.includes('真实 HTTPS Nginx → HTTP Caddy')));
     await writeFile(
       join(output, `installation-proxy-${arch}.json`),
       JSON.stringify(proxy, null, 2),

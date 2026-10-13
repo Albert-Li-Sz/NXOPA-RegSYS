@@ -18,13 +18,11 @@ server {
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
     proxy_read_timeout 120s;
 
-    location /api/ {
-        # No trailing slash: preserve /api/ in the upstream request.
-        proxy_pass http://127.0.0.1:3000;
-    }
     location / {
-        proxy_pass http://127.0.0.1:8081;
+        # Caddy routes /api/ internally. No trailing slash: preserve the request URI.
+        proxy_pass http://127.0.0.1:8080;
     }
 }
