@@ -281,6 +281,26 @@ async function register(index: number, kind = 'STUDENT') {
     },
   });
   assert.ok(actor.user.profileComplete);
+  assert.equal(actor.user.identityStatus, 'RECORDED');
+  for (const proposed of [
+    { name: '未审核的姓名', profile: actor.user.profile },
+    { name: actor.user.name, profile: { ...actor.user.profile, college: '未审核的院系' } },
+  ])
+    assert.equal(
+      (await actor.raw('/auth/profile', 'PUT', { version: actor.user.version, ...proposed }))
+        .status,
+      400,
+    );
+  assert.equal(
+    (
+      await actor.raw('/auth/profile', 'PUT', {
+        version: actor.user.version,
+        name: actor.user.name,
+        profile: { ...actor.user.profile, display_name: { invalid: true } },
+      })
+    ).status,
+    400,
+  );
   return actor;
 }
 let success = false;

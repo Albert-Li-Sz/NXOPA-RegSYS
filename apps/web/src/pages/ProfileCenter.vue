@@ -26,16 +26,16 @@ const tab = ref(String(route.query.tab || 'overview')),
   closure = reactive({ confirmation: '', password: '', code: '' });
 const teacher = computed(() => auth.user?.kind === 'TEACHER');
 const locked = computed(() =>
-  ['VERIFIED', 'RECORDED', 'PENDING'].includes(auth.user?.identityStatus ?? ''),
+  ['VERIFIED', 'RECORDED', 'PENDING', 'REJECTED'].includes(auth.user?.identityStatus ?? ''),
 );
 const stateLabels: Record<string, string> = {
   UNSUBMITTED: '未提交',
-  RECORDED: '历史实名资料',
+  RECORDED: '已填写',
   PENDING: '审核中',
   VERIFIED: '已认证',
   REJECTED: '未通过',
 };
-const identityFields = computed<FieldDefinition[]>(() => {
+const profileFields = computed<FieldDefinition[]>(() => {
   const fields = defaultFields
     .filter((f) => !['student_id', 'class_name'].includes(f.key) || !teacher.value)
     .map((f) => ({
@@ -72,6 +72,14 @@ const identityFields = computed<FieldDefinition[]>(() => {
         }),
       ];
 });
+const identityFields = computed(() =>
+  profileFields.value.filter((field) => !['major', 'phone', 'size'].includes(field.key)),
+);
+const overviewFields = computed(() =>
+  locked.value
+    ? profileFields.value.filter((field) => ['major', 'phone', 'size'].includes(field.key))
+    : profileFields.value,
+);
 function reset() {
   if (!auth.user) return;
   Object.assign(profile, JSON.parse(JSON.stringify(auth.user)));
@@ -252,14 +260,13 @@ const contestName = (id: string | null) =>
                   ><span class="form-help">PNG / JPEG，最多 5 MB</span></el-form-item
                 >
               </div>
-              <template v-if="!locked"
-                ><DynamicFields
-                  :fields="identityFields"
-                  scope="PERSON"
-                  :answers="profile.profile"
-                  prefix="profile"
-              /></template>
-              <div v-else class="identity-summary">
+              <DynamicFields
+                :fields="overviewFields"
+                scope="PERSON"
+                :answers="profile.profile"
+                prefix="profile"
+              />
+              <div v-if="locked" class="identity-summary">
                 <p>
                   {{ teacher ? '工号' : '学号' }}：{{
                     profile.profile[teacher ? 'employee_id' : 'student_id'] || '—'

@@ -281,13 +281,15 @@ export class AuthService {
         avatarAttachmentId: z.string().uuid().nullable().optional(),
       })
       .parse(body);
+    if (b.profile.display_name !== undefined)
+      b.profile.display_name = z.string().trim().max(100).parse(b.profile.display_name);
     if (b.version !== u.version) throw new BadRequestException('资料已更新，请刷新');
     if (b.isCoach !== undefined && b.isCoach !== u.isCoach)
       throw new ForbiddenException('身份变更须由管理员生成邀请链接并确认');
     const email = b.email?.toLowerCase();
     const changedEmail = email && email !== u.email;
     const current = await db.user.findUniqueOrThrow({ where: { id: u.id } });
-    if (['VERIFIED', 'RECORDED', 'PENDING'].includes(current.identityStatus)) {
+    if (['VERIFIED', 'RECORDED', 'PENDING', 'REJECTED'].includes(current.identityStatus)) {
       const keys = [
         'student_id',
         'employee_id',
@@ -321,6 +323,10 @@ export class AuthService {
         data: {
           name: b.name,
           profile: json(b.profile),
+          ...(current.identityStatus === 'UNSUBMITTED' &&
+          profileComplete({ kind: current.kind, name: b.name, profile: b.profile })
+            ? { identityStatus: 'RECORDED' }
+            : {}),
           version: { increment: 1 },
           ...(b.avatarAttachmentId !== undefined
             ? { avatarAttachmentId: b.avatarAttachmentId }

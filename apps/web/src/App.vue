@@ -14,6 +14,10 @@ const personal = computed(
     (route.path.startsWith('/me/') || route.path === '/registrations' || route.path === '/account'),
 );
 const isLanding = computed(() => route.path === '/');
+const displayName = computed(() => {
+  const nickname = auth.user?.profile.display_name;
+  return typeof nickname === 'string' && nickname.trim() ? nickname : auth.user?.name || '';
+});
 const site = ref({ ...defaultSite });
 const brand = computed(() =>
   site.value.name.endsWith('在线报名系统')
@@ -63,8 +67,8 @@ async function logout() {
             ><span class="role-pill" v-else-if="auth.user.isCoach">指导老师</span
             ><el-dropdown
               ><button class="user-menu">
-                <span class="avatar">{{ auth.user.name.slice(0, 1) }}</span
-                ><span class="user-name" :title="auth.user.name">{{ auth.user.name }}</span
+                <span class="avatar">{{ displayName.slice(0, 1) }}</span
+                ><span class="user-name" :title="displayName">{{ displayName }}</span
                 ><el-icon><ArrowDown /></el-icon></button
               ><template #dropdown
                 ><el-dropdown-menu

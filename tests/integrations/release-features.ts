@@ -517,10 +517,13 @@ try {
         path: path.join(screenshotRoot, '27-github-settings.png'),
       });
     await page.goto(webBase + '/account');
+    await expect(page.locator('#profile-name')).toBeDisabled();
+    await page.getByRole('tab', { name: '实名认证', exact: true }).click();
     await expect(page.getByLabel('学院', { exact: true })).toBeVisible();
     await expect(page.getByLabel('班级', { exact: true })).toBeVisible();
     await page
-      .locator('.profile-layout .card')
+      .locator('.el-tab-pane:visible .card')
+      .first()
       .screenshot({ path: path.join(screenshotRoot, '26-profile.png') });
     assert.deepEqual(errors, []);
     await admin.api('/auth/forgot', 'POST', { email: admin.user.email });
@@ -541,7 +544,7 @@ try {
       path: resetMail.stdout.trim(),
       password,
     });
-    passed('手机、平板和桌面页面布局，长姓名、HTTP 表单、密码重置与会话撤销回归通过');
+    passed('手机、平板和桌面页面布局，长昵称与联系方式编辑、HTTP 表单、密码重置与会话撤销回归通过');
   } finally {
     await browser.close();
   }

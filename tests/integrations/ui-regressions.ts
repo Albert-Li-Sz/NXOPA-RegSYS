@@ -64,20 +64,26 @@ export async function checkUserInterfaces(
   }
   await page.setViewportSize({ width: 360, height: 900 });
   await page.goto(base + '/account');
-  const originalName = await page.locator('#profile-name').inputValue();
+  const originalName = await page.locator('#profile-name').inputValue(),
+    originalNickname = await page.locator('#profile-nickname').inputValue(),
+    originalPhone = await page.locator('#profile-phone').inputValue();
+  await expect(page.locator('#profile-name')).toBeDisabled();
   try {
-    await page.locator('#profile-name').fill('参赛用户'.repeat(20));
+    await page.locator('#profile-nickname').fill('参赛用户'.repeat(20));
+    await page.locator('#profile-phone').fill('13800000000');
     await page.getByRole('button', { name: '保存资料', exact: true }).click();
     await expect(page.locator('.user-menu')).toContainText('参赛用户'.repeat(20));
+    await expect(page.locator('#profile-phone')).toHaveValue('13800000000');
     const width = await page.evaluate(() => document.documentElement.scrollWidth);
-    if (width > 361) failures.push(`Long profile name: 360px viewport expanded to ${width}px`);
-    else checks.push('Long profile names fit mobile navigation');
+    if (width > 361) failures.push(`Long profile nickname: 360px viewport expanded to ${width}px`);
+    else checks.push('Long profile nicknames fit mobile navigation while real names stay locked');
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: `${directory}/long-profile-name.png`, fullPage: true });
   } finally {
-    await page.locator('#profile-name').fill(originalName);
+    await page.locator('#profile-nickname').fill(originalNickname);
+    await page.locator('#profile-phone').fill(originalPhone);
     await page.getByRole('button', { name: '保存资料', exact: true }).click();
-    await expect(page.locator('.user-menu')).toContainText(originalName);
+    await expect(page.locator('.user-menu')).toContainText(originalNickname || originalName);
   }
   const browser = page.context().browser()!;
   const httpContext = await browser.newContext();
