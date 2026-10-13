@@ -25,6 +25,11 @@ const tab = ref(String(route.query.tab || 'overview')),
   github = ref({ enabled: false, linked: false }),
   closure = reactive({ confirmation: '', password: '', code: '' });
 const teacher = computed(() => auth.user?.kind === 'TEACHER');
+const identityState = computed(() =>
+  requests.value.some((request) => request.status === 'PENDING')
+    ? 'PENDING'
+    : auth.user?.identityStatus || 'UNSUBMITTED',
+);
 const locked = computed(() =>
   ['VERIFIED', 'RECORDED', 'PENDING', 'REJECTED'].includes(auth.user?.identityStatus ?? ''),
 );
@@ -211,9 +216,16 @@ const contestName = (id: string | null) =>
       <div class="profile-identity">
         <h1>{{ auth.user.profile.display_name || auth.user.name }}</h1>
         <el-tag>{{ teacher ? '教师' : '学生' }}</el-tag>
-        <el-tag :type="auth.user.identityStatus === 'VERIFIED' ? 'success' : 'info'">{{
-          stateLabels[auth.user.identityStatus || 'UNSUBMITTED']
-        }}</el-tag>
+        <el-tag
+          :type="
+            identityState === 'VERIFIED'
+              ? 'success'
+              : identityState === 'PENDING'
+                ? 'warning'
+                : 'info'
+          "
+          >{{ stateLabels[identityState] }}</el-tag
+        >
       </div>
       <div class="profile-login-info">
         <strong>登录账号</strong>

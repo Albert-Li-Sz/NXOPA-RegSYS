@@ -560,6 +560,49 @@ try {
   );
   const templates = await admin.api('/admin/mail/templates'),
     template = templates.find((t: any) => t.key === 'SUPPORT_REPLY');
+  const initialIdentityActor = new Actor(),
+    initialIdentitySignup = await initialIdentityActor.api('/auth/register', 'POST', {
+      email: 'first-identity@example.test',
+      username: 'first_identity',
+      name: '首次实名测试',
+      password,
+      kind: 'STUDENT',
+      identifier: 'FIRST-IDENTITY',
+      enrollmentYear: 2026,
+    });
+  initialIdentityActor.user = initialIdentitySignup.user;
+  initialIdentityActor.csrf = initialIdentitySignup.csrf;
+  const initialIdentity = await initialIdentityActor.api('/auth/identity', 'POST', {
+    kind: 'STUDENT',
+    name: initialIdentityActor.user.name,
+    profile: {
+      ...initialIdentityActor.user.profile,
+      class_name: '实名测试班级',
+      college: '实名测试学院',
+      school: '实名测试学校',
+      gender: '不便透露',
+    },
+    version: initialIdentityActor.user.version,
+  });
+  await admin.api(`/admin/identities/${initialIdentity.id}/review`, 'POST', {
+    decision: 'REJECTED',
+    reason: '需要补充核验',
+  });
+  await initialIdentityActor.refresh();
+  assert.equal(initialIdentityActor.user.identityStatus, 'REJECTED');
+  const correctedIdentity = await initialIdentityActor.api('/auth/identity', 'POST', {
+    kind: 'STUDENT',
+    name: '修正后实名测试',
+    profile: initialIdentityActor.user.profile,
+    version: initialIdentityActor.user.version,
+  });
+  await initialIdentityActor.refresh();
+  assert.equal(initialIdentityActor.user.name, '首次实名测试');
+  await admin.api(`/admin/identities/${correctedIdentity.id}/review`, 'POST', {
+    decision: 'APPROVED',
+  });
+  await initialIdentityActor.refresh();
+  assert.equal(initialIdentityActor.user.name, '修正后实名测试');
   await admin.api('/admin/mail/templates/SUPPORT_REPLY', 'PUT', {
     ...template,
     subject: '[测试反馈] {{subject}}',

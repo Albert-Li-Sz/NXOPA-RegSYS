@@ -99,7 +99,7 @@ export class PeopleService {
       const request = await tx.identityRequest.create({
         data: { userId: u.id, data: json(proposed) },
       });
-      if (['UNSUBMITTED', 'REJECTED'].includes(current.identityStatus))
+      if (current.identityStatus === 'UNSUBMITTED')
         await tx.user.update({
           where: { id: u.id },
           data: {
