@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
-NXOPA_INSTALLER_VERSION=v0.3.3
+NXOPA_INSTALLER_VERSION=v0.3.4
 
 usage() {
   cat <<'EOF'

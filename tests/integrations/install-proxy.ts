@@ -141,12 +141,44 @@ try {
     version: registration.version,
   });
   const attachment = await admin.upload(registration.id);
+  assert.equal(
+    (
+      await run([
+        'compose',
+        'exec',
+        '-T',
+        'postgres',
+        'psql',
+        '-U',
+        'contest',
+        '-d',
+        'contest_center',
+        '-At',
+        '-c',
+        `SELECT "storageBackend" FROM "Attachment" WHERE id='${attachment.id}'`,
+      ])
+    ).trim(),
+    'S3',
+  );
   const originalVolumes = await volumes();
-  assert.equal(originalVolumes.length, 6);
+  assert.deepEqual(
+    originalVolumes,
+    [
+      'caddy_config',
+      'caddy_data',
+      'files',
+      'latex_jobs',
+      'minio_data',
+      'postgres_data',
+      'redis_data',
+    ]
+      .map((name) => `${project}_${name}`)
+      .sort(),
+  );
   await run(['backup', path.join(stage, 'backups')]);
   assert.ok((await readdir(path.join(stage, 'backups'))).some((name) => name.endsWith('.ccbak')));
   assert.equal(await readFile(envFile, 'utf8'), legacy);
-  passed('旧配置自动保留官方 Caddy 入口、六个卷，管理员登录与加密备份正常');
+  passed('旧代理配置保留官方 Caddy 入口及七个卷，MinIO 附件、管理员登录与加密备份正常');
 
   const external =
     fresh.replace('REVERSE_PROXY_MODE=gateway', 'REVERSE_PROXY_MODE=external') +
@@ -203,7 +235,7 @@ try {
   assert.deepEqual(await volumes(), []);
   assert.equal(await readFile(envFile, 'utf8'), fresh);
   assert.ok((await readdir(path.join(stage, 'backups'))).some((name) => name.endsWith('.ccbak')));
-  passed('永久卸载仅清理当前项目全部六个卷；配置与备份保留');
+  passed('永久卸载仅清理当前项目全部七个卷；配置与备份保留');
   success = true;
 } finally {
   await run(['compose', 'down', '-v', '--remove-orphans']).catch(() => {});
