@@ -771,18 +771,16 @@ try {
             path: path.join(directory, `overflow-${width}.png`),
             fullPage: true,
           });
-          const controls = await page
-            .locator('input,button,label')
-            .evaluateAll((elements) =>
-              elements
-                .map((element) => ({
-                  tag: element.tagName,
-                  type: element.getAttribute('type'),
-                  right: element.getBoundingClientRect().right,
-                  width: element.getBoundingClientRect().width,
-                }))
-                .filter((element) => element.width && element.right > window.innerWidth + 2),
-            );
+          const controls = await page.locator('input,button,label').evaluateAll((elements) =>
+            elements
+              .map((element) => ({
+                tag: element.tagName,
+                type: element.getAttribute('type'),
+                right: element.getBoundingClientRect().right,
+                width: element.getBoundingClientRect().width,
+              }))
+              .filter((element) => element.width && element.right > window.innerWidth + 2),
+          );
           console.log(JSON.stringify({ route, width, controls }));
         }
         assert.ok(
