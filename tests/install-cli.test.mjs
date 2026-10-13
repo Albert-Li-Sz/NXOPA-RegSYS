@@ -23,6 +23,7 @@ if(a[0]==='volume' && process.env.FAKE_RESIDUAL_VOLUME) {
   if(a[1]==='ls') console.log(process.env.FAKE_RESIDUAL_VOLUME);
   process.exit(0);
 }
+if(a[0]==='inspect' && process.env.FAKE_INSTALLED_RUNTIME){console.log('sha256:'+'1'.repeat(64));process.exit(0)}
 if(a[0]==='ps' || a[0]==='volume') {
   if(process.env.FAKE_COLLISION) console.log('existing-volume');
   process.exit(0);
@@ -39,7 +40,9 @@ while(['--project-directory','--env-file','-f','--parallel','--profile'].include
 const action=a[i];
 const text=envFile ? fs.readFileSync(envFile,'utf8') : '';
 const tag=text.match(/^IMAGE_TAG=(.*)$/m)?.[1];
-fs.appendFileSync(process.env.FAKE_LOG,JSON.stringify({action,args:a.slice(i+1),files,tag,adminPasswordPassed:!!process.env.ADMIN_PASSWORD})+'\\n');
+const runtimeImages=files.filter(f=>f.endsWith('/runtime.yaml')).flatMap(f=>(fs.readFileSync(f,'utf8').match(/sha256:[a-f0-9]{64}/g)||[]));
+fs.appendFileSync(process.env.FAKE_LOG,JSON.stringify({action,args:a.slice(i+1),files,tag,runtimeImages,adminPasswordPassed:!!process.env.ADMIN_PASSWORD})+'\\n');
+if(action==='ps' && process.env.FAKE_INSTALLED_RUNTIME)console.log('fixture-'+a.at(-1));
 if(action==='pull' && process.env.FAKE_PULL_FAIL) process.exit(8);
 if(action==='up' && process.env.FAKE_UP_FAIL) process.exit(8);
 if(action==='exec' && a.includes('pg_dump')) process.stdout.write('database dump');
@@ -373,4 +376,23 @@ test('切换自配代理后，永久卸载也清理当前项目残留的旧证�
     assert.ok(
       commands.some((c) => c.action === 'volume-rm' && c.args.includes('nxopa-regsys_caddy_data')),
     );
+  }));
+
+test('预先选择新版时备份固定原实例的镜像，避免新版客户端读取旧数据库', () =>
+  fixture(async ({ run, init, envFile, dir, calls }) => {
+    await init();
+    const previous = await readFile(envFile, 'utf8');
+    await writeFile(envFile, previous.replace(/^IMAGE_TAG=.+$/m, 'IMAGE_TAG=v9.9.9'));
+    const result = await run('install.sh', '', { FAKE_INSTALLED_RUNTIME: '1' }, [
+      'backup',
+      path.join(dir, 'backups'),
+    ]);
+    assert.equal(result.code, 0, result.output);
+    const runtime = (await calls()).filter((c) => c.action === 'run');
+    assert.ok(runtime.length >= 3);
+    for (const call of runtime)
+      assert.deepEqual(call.runtimeImages, [
+        'sha256:' + '1'.repeat(64),
+        'sha256:' + '1'.repeat(64),
+      ]);
   }));
