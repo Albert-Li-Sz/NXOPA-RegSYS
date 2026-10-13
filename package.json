@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -32,7 +32,9 @@
     "fixtures:domjudge": "tsx scripts/prepare-domjudge.ts",
     "test:boundaries": "tsx tests/integrations/boundaries.ts",
     "test:deployment": "tsx tests/integrations/deployment.ts",
-    "test:install": "tsx tests/integrations/install.ts",
+    "test:install": "pnpm test:install-cli && tsx tests/integrations/install.ts",
+    "test:install-cli": "node --test tests/install-cli.test.mjs",
+    "test:install-interactive": "tsx tests/integrations/install-interactive.ts",
     "generate:client": "openapi-typescript docs/api/openapi.json -o apps/web/src/generated/api.d.ts",
     "package:hydro": "pnpm --dir plugins/hydro-contest-center pack --pack-destination ../../dist",
     "format": "prettier --write . --ignore-unknown",

@@ -2,9 +2,27 @@
 
 本目录部署“南晓开放原子社在线报名系统”。支持源码构建和拉取发布镜像两种模式。源码模式需要保留完整仓库，不能只复制 `install`；Release 安装包包含镜像模式所需的配置和维护脚本，无需业务源码。宿主机只需要 Docker、Compose 插件、Bash、OpenSSL；从仓库下载时另需 Git，无需安装 Node.js、pnpm、数据库或 LaTeX。
 
-V0.1.2 的镜像标签为 `v0.1.2`，支持 amd64 / arm64。镜像模式通过 `compose.images.yaml` 覆盖构建配置；后续启动、管理员初始化、日志、备份和恢复继续使用同一个 `install.sh`。
+V0.1.3 的镜像标签为 `v0.1.3`，支持 amd64 / arm64。镜像模式通过 `compose.images.yaml` 覆盖构建配置；后续启动、管理员初始化、日志、备份和恢复继续使用同一个 `install.sh`。
 
-从旧版本升级时，尚未使用的邮箱验证与密码重置链接会失效，用户需要重新申请。已有登录会话、报名、财务和附件保留。保持原项目名与密钥，将 `IMAGE_TAG` 改为 `v0.1.2` 后执行 `bash install.sh update`，该命令先备份再升级。
+## 交互式安装、更新与卸载
+
+在 `install` 目录执行以下命令，无需手动编辑首次安装配置：
+
+```bash
+bash install.sh
+bash update.sh
+bash uninstall.sh
+```
+
+三个入口均支持 `--help`，也可从任意目录通过完整路径运行。默认读取脚本目录的 `.env`；多个实例使用 `INSTALL_ENV_FILE=/absolute/path/.env` 选择各自配置。`lib.sh` 是三个入口共同使用的辅助文件，复制安装材料时须一并保留。
+
+- `install.sh`：检查 Docker / Compose，选择项目名、发布镜像或源码构建、固定镜像版本，以及本机 HTTP、Caddy 公网 HTTPS或已有反向代理。随机生成数据库密码与加密密钥，将配置保存为权限 `600` 的文件；等待服务健康，再交互输入管理员用户名、邮箱与两次隐藏密码。首次安装默认使用发布镜像；本机模式只监听 `127.0.0.1`，远程访问请使用 SSH 转发。已有配置会沿用原项目、地址与密钥，已有数据卷但没有配置时拒绝重新生成密钥。
+- `update.sh`：显示当前实例，镜像模式交互输入目标版本；源码模式使用已取得的新版完整源码。确认后先按原配置生成加密备份，再拉取或构建、迁移并等待健康检查。备份失败会中止升级，拉取或启动失败会保留原配置；如果数据库迁移已经执行，降回旧版前需先恢复升级前备份。
+- `uninstall.sh`：默认删除当前项目的容器和网络，保留全部数据卷，可再次安装恢复。选择永久删除数据时必须准确输入 `DELETE 项目名`；默认建议先加密备份，备份失败会中止卸载。安装配置和备份始终保留，因为旧备份解密需要原加密密钥。脚本不删除其他项目、共享镜像或宿主机 Docker。
+
+原有 `bash install.sh init/up/admin/backup/restore/...` 命令保持可用，适用于既有维护流程和自动化部署。
+
+从 v0.1.1 或更早版本升级时，尚未使用的邮箱验证与密码重置链接会失效，用户需要重新申请。已有登录会话、报名、财务和附件保留。保持原项目名与密钥，将 `IMAGE_TAG` 改为 `v0.1.3` 后执行 `bash install.sh update`，该命令先备份再升级。
 
 基础设施直接使用官方镜像，业务分别构建和运行：
 
@@ -42,12 +60,12 @@ Docker 官方软件源、安装与账号权限步骤见 [Ubuntu](https://docs.do
 
 ### 使用 V0.1 发布安装包
 
-从 [V0.1 Release](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.1.2) 下载 `nxopa-regsys-v0.1.2-install.tar.gz` 和 `SHA256SUMS`，对照其中该安装包的 SHA-256：
+从 [V0.1 Release](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.1.3) 下载 `nxopa-regsys-v0.1.3-install.tar.gz` 和 `SHA256SUMS`，对照其中该安装包的 SHA-256：
 
 ```bash
-sha256sum nxopa-regsys-v0.1.2-install.tar.gz
-tar -xzf nxopa-regsys-v0.1.2-install.tar.gz
-cd nxopa-regsys-v0.1.2/install
+sha256sum nxopa-regsys-v0.1.3-install.tar.gz
+tar -xzf nxopa-regsys-v0.1.3-install.tar.gz
+cd nxopa-regsys-v0.1.3/install
 bash install.sh init
 ```
 
@@ -55,10 +73,10 @@ bash install.sh init
 
 | 服务         | 发布镜像                                          |
 | ------------ | ------------------------------------------------- |
-| API / 初始化 | `ghcr.io/albert-li-sz/nxopa-regsys-api:v0.1.2`    |
-| Worker       | `ghcr.io/albert-li-sz/nxopa-regsys-worker:v0.1.2` |
-| 前端         | `ghcr.io/albert-li-sz/nxopa-regsys-web:v0.1.2`    |
-| LaTeX        | `ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.1.2`  |
+| API / 初始化 | `ghcr.io/albert-li-sz/nxopa-regsys-api:v0.1.3`    |
+| Worker       | `ghcr.io/albert-li-sz/nxopa-regsys-worker:v0.1.3` |
+| 前端         | `ghcr.io/albert-li-sz/nxopa-regsys-web:v0.1.3`    |
+| LaTeX        | `ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.1.3`  |
 
 ### 使用完整源码仓库
 
@@ -75,7 +93,7 @@ bash install.sh init
 ```dotenv
 INSTALL_MODE=images
 IMAGE_PREFIX=ghcr.io/albert-li-sz/nxopa-regsys
-IMAGE_TAG=v0.1.2
+IMAGE_TAG=v0.1.3
 ```
 
 保留 `IMAGE_TAG` 为确定的版本，避免使用随未来发布变动的 `latest`。已有 `.env` 不含 `INSTALL_MODE` 时仍使用原来的源码模式。

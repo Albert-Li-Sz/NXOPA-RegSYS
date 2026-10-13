@@ -65,7 +65,7 @@ try {
   await page.locator('#deployment .copy-code').first().click();
   await expect(page.getByRole('status')).toHaveText('配置示例已复制');
   const clipboard = await page.evaluate(() => navigator.clipboard.readText());
-  assert(clipboard.startsWith('pnpm install --frozen-lockfile\npnpm setup'));
+  assert(clipboard.startsWith('cd install\nbash install.sh'));
   await page.locator('#chapter-nav a[href="#mail"]').click();
   await expect(page.locator('#chapter-nav a[href="#mail"]')).toHaveAttribute(
     'aria-current',

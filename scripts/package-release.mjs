@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
-assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.1.2');
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.1.3');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
@@ -21,6 +21,9 @@ try {
   // Explicit allowlist: never package local environment files, credentials or runtime data.
   for (const name of [
     'install/install.sh',
+    'install/update.sh',
+    'install/uninstall.sh',
+    'install/lib.sh',
     'install/compose.yaml',
     'install/compose.images.yaml',
     'install/.env.example',
@@ -121,6 +124,22 @@ try {
       `${arch} must invalidate legacy mailbox links during upgrade`,
     );
     await writeFile(join(output, `installation-${arch}.json`), JSON.stringify(report, null, 2));
+    const interactive = JSON.parse(
+      await readFile(
+        join(root, 'dist/installation-reports', `installation-${arch}`, 'install-interactive.json'),
+        'utf8',
+      ),
+    );
+    assert.equal(interactive.success, true);
+    assert.equal(interactive.targetTag, tag);
+    assert.equal(interactive.initialTag, 'v0.1.2');
+    assert.equal(interactive.platform, 'linux');
+    assert.equal(interactive.architecture, arch === 'amd64' ? 'x64' : 'arm64');
+    assert.ok(interactive.checks.length >= 4);
+    await writeFile(
+      join(output, `installation-interactive-${arch}.json`),
+      JSON.stringify(interactive, null, 2),
+    );
   }
   const names = (await readdir(output)).sort();
   const checksums = await Promise.all(

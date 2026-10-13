@@ -1,0 +1,210 @@
+import assert from 'node:assert/strict';
+import { spawn, execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
+import { policySchema } from '../../packages/contracts/src/index.js';
+
+const root = fileURLToPath(new URL('../../', import.meta.url));
+const defaultTag = `v${JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version}`;
+await mkdir(path.join(root, '.runtime/reports'), { recursive: true });
+const stage = await mkdtemp(path.join(root, '.runtime/interactive-install-'));
+const envFile = path.join(stage, '.env');
+const project = `nxopa-interactive-check-${process.pid}`;
+const backupDir = path.join(stage, 'backups');
+const env: NodeJS.ProcessEnv = { ...process.env, INSTALL_ENV_FILE: envFile };
+for (const key of [
+  'COMPOSE_PROJECT_NAME',
+  'COMPOSE_FILE',
+  'COMPOSE_ENV_FILES',
+  'INSTALL_MODE',
+  'IMAGE_TAG',
+  'PUBLIC_URL',
+  'POSTGRES_PASSWORD',
+  'ENCRYPTION_KEY',
+])
+  delete env[key];
+const initialTag =
+  process.env.INTERACTIVE_INSTALL_FROM ?? process.env.INSTALL_UPGRADE_FROM ?? 'v0.1.2';
+const targetTag = process.env.INTERACTIVE_INSTALL_TO ?? process.env.IMAGE_TAG ?? defaultTag;
+const checks: string[] = [];
+let success = false;
+
+async function run(entry: string, input = '', args: string[] = []) {
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn('bash', [path.join(root, 'install', entry), ...args], {
+      cwd: stage,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let output = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+    }, 900000);
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk;
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      output += chunk;
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(output);
+      else reject(new Error(`${entry} exited ${code}: ${output.slice(-4000)}`));
+    });
+    child.stdin.on('error', () => {});
+    child.stdin.end(input);
+  });
+}
+const exec = promisify(execFile);
+async function volumes() {
+  const { stdout } = await exec(
+    'docker',
+    ['volume', 'ls', '-q', '--filter', `label=com.docker.compose.project=${project}`],
+    { env },
+  );
+  return stdout.trim().split('\n').filter(Boolean).sort();
+}
+async function unusedPort() {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  const port = address.port;
+  await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
+  return port;
+}
+function passed(message: string) {
+  checks.push(message);
+  console.log(`[交互安装验收] ${message}`);
+}
+
+try {
+  const httpPort = await unusedPort(),
+    httpsPort = await unusedPort();
+  const password = randomBytes(24).toString('base64url');
+  console.log(`[交互安装验收] 从空数据卷交互安装 ${initialTag}……`);
+  const output = await run(
+    'install.sh',
+    `${project}\n1\n${initialTag}\n1\n${httpPort}\n${httpsPort}\ny\ny\ninteractive_admin\ninteractive@example.test\n${password}\n${password}\n`,
+  );
+  assert.ok(!output.includes(password));
+  await writeFile(path.join(stage, 'install.log'), output, { mode: 0o600 });
+  const originalConfig = await readFile(envFile, 'utf8');
+  assert.match(originalConfig, /^POSTGRES_PASSWORD=[a-f0-9]{48}$/m);
+  assert.match(originalConfig, /^ENCRYPTION_KEY=[a-f0-9]{64}$/m);
+  assert.equal((await stat(envFile)).mode & 0o777, 0o600);
+  assert.ok(!originalConfig.includes(password));
+  process.env.TEST_URL = `http://localhost:${httpPort}`;
+  const { Client, base } = await import('./client.js');
+  assert.equal((await fetch(`${base}/api/v1/health`)).status, 200);
+  const admin = await new Client().login('interactive_admin', password);
+  assert.equal(admin.user.isAdmin, true);
+  const version = async () =>
+    (
+      await run('install.sh', '', [
+        'compose',
+        'exec',
+        '-T',
+        'api',
+        'node',
+        '-p',
+        "require('/app/package.json').version",
+      ])
+    ).trim();
+  assert.equal(await version(), initialTag.slice(1));
+  const originalVolumes = await volumes();
+  assert.equal(originalVolumes.length, 6);
+  passed('空卷交互安装、随机私密配置、真实服务健康和隐藏密码创建管理员并登录');
+
+  const contest = await admin.api('/contests', 'POST', {
+    title: '交互安装脚本真实验收',
+    season: '安装验收',
+    description: '升级与卸载数据保留',
+    startsAt: new Date(Date.now() + 172800000).toISOString(),
+    opensAt: new Date(Date.now() - 86400000).toISOString(),
+    closesAt: new Date(Date.now() + 86400000).toISOString(),
+    published: true,
+    policy: policySchema.parse({ manualReview: false, coachMode: 'DISABLED' }),
+    fields: [],
+  });
+  let registration = await admin.api('/registrations', 'POST', { contestId: contest.id });
+  registration = await admin.api(`/registrations/${registration.id}/submit`, 'POST', {
+    version: registration.version,
+  });
+  const attachment = await admin.upload(registration.id);
+  assert.equal(registration.eligible, true);
+
+  console.log(`[交互安装验收] 交互升级至 ${targetTag}……`);
+  const updateOutput = await run('update.sh', `${targetTag}\n${backupDir}\ny\n`);
+  await writeFile(path.join(stage, 'update.log'), updateOutput, { mode: 0o600 });
+  const updatedConfig = await readFile(envFile, 'utf8');
+  assert.ok(
+    updatedConfig === originalConfig.replace(`IMAGE_TAG=${initialTag}`, `IMAGE_TAG=${targetTag}`),
+  );
+  assert.equal(await version(), targetTag.slice(1));
+  assert.equal((await admin.api(`/registrations/${registration.id}`)).eligible, true);
+  assert.equal(
+    await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
+    'offline payment proof',
+  );
+  assert.deepEqual(await volumes(), originalVolumes);
+  const backups = (await readdir(backupDir)).filter((name) => name.endsWith('.ccbak'));
+  assert.ok(backups.length > 0);
+  for (const name of backups)
+    assert.equal((await stat(path.join(backupDir, name))).mode & 0o777, 0o600);
+  passed(
+    `${initialTag} 升级至 ${targetTag} 前实际加密备份；旧会话、报名、附件、原密钥和数据卷保留`,
+  );
+
+  await run('uninstall.sh', '\ny\nn\n');
+  assert.deepEqual(await volumes(), originalVolumes);
+  const down = await run('install.sh', '', ['compose', 'ps', '-a', '-q']);
+  assert.equal(down.trim(), '');
+  assert.ok((await readFile(envFile, 'utf8')) === updatedConfig);
+  await run('install.sh', 'y\nn\n');
+  assert.equal((await admin.api(`/registrations/${registration.id}`)).eligible, true);
+  assert.equal(
+    await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
+    'offline payment proof',
+  );
+  passed('默认卸载移除容器并保留六个卷；再次交互安装恢复原管理员会话、报名和附件');
+
+  await run('uninstall.sh', `2\nDELETE ${project}\nn\n`);
+  assert.equal((await volumes()).length, 0);
+  assert.ok((await readFile(envFile, 'utf8')) === updatedConfig);
+  assert.ok((await readdir(backupDir)).some((name) => name.endsWith('.ccbak')));
+  passed('明确输入项目名后永久卸载当前项目六个数据卷，原配置和加密备份保留');
+  success = true;
+} finally {
+  try {
+    await run('install.sh', '', ['compose', 'down', '--volumes', '--remove-orphans']);
+  } catch {
+    /* The env file can be absent if prerequisites or input validation failed. */
+  }
+  await writeFile(
+    path.join(root, '.runtime/reports/install-interactive.json'),
+    JSON.stringify(
+      {
+        success,
+        checkedAt: new Date().toISOString(),
+        initialTag,
+        targetTag,
+        platform: process.platform,
+        architecture: process.arch,
+        checks,
+      },
+      null,
+      2,
+    ),
+    { mode: 0o600 },
+  );
+  await rm(stage, { recursive: true, force: true });
+}

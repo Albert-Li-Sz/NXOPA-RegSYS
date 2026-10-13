@@ -6,7 +6,7 @@ on:
       image_tag:
         description: 待验收的已有镜像版本
         required: true
-        default: v0.1.2
+        default: v0.1.3
         type: string
 
 permissions:
@@ -41,9 +41,16 @@ jobs:
           IMAGE_TAG: ${{ inputs.image_tag }}
           INSTALL_UPGRADE_FROM: v0.1.1
         run: pnpm test:install
+      - name: 交互安装、升级及卸载实际验收
+        env:
+          INTERACTIVE_INSTALL_FROM: v0.1.2
+          INTERACTIVE_INSTALL_TO: ${{ inputs.image_tag }}
+        run: pnpm test:install-interactive
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: installation-${{ matrix.arch }}
-          path: .runtime/reports/install.json
+          path: |
+            .runtime/reports/install.json
+            .runtime/reports/install-interactive.json
           retention-days: 30
