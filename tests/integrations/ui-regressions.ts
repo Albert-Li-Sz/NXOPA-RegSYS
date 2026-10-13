@@ -41,9 +41,23 @@ export async function checkUserInterfaces(
         width: document.documentElement.clientWidth,
         scroll: document.documentElement.scrollWidth,
       }));
-      if (bounds.scroll > bounds.width + 1)
-        failures.push(`${width}px ${route}: document width ${bounds.scroll}px`);
-      else checks.push(`Layout ${width}px ${route}`);
+      if (bounds.scroll > bounds.width + 1) {
+        const controls = await page.locator('input,button,label').evaluateAll((elements) =>
+          elements
+            .map((element) => ({
+              tag: element.tagName,
+              type: element.getAttribute('type'),
+              class: element.className,
+              right: Math.round(element.getBoundingClientRect().right),
+              width: Math.round(element.getBoundingClientRect().width),
+            }))
+            .filter((element) => element.width && element.right > window.innerWidth + 1)
+            .slice(0, 15),
+        );
+        failures.push(
+          `${width}px ${route}: document width ${bounds.scroll}px ${JSON.stringify(controls)}`,
+        );
+      } else checks.push(`Layout ${width}px ${route}`);
       if (width === 360 || bounds.scroll > bounds.width + 1)
         await page.screenshot({ path: `${directory}/${width}-${index}.png`, fullPage: true });
     }
@@ -58,6 +72,7 @@ export async function checkUserInterfaces(
     const width = await page.evaluate(() => document.documentElement.scrollWidth);
     if (width > 361) failures.push(`Long profile name: 360px viewport expanded to ${width}px`);
     else checks.push('Long profile names fit mobile navigation');
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: `${directory}/long-profile-name.png`, fullPage: true });
   } finally {
     await page.locator('#profile-name').fill(originalName);

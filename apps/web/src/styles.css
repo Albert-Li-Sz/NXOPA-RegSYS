@@ -200,6 +200,18 @@ button {
 .toolbar .el-input {
   max-width: 300px;
 }
+.toolbar .upload-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.toolbar .upload-label input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
 .panel {
   background: var(--panel);
   padding: 20px;

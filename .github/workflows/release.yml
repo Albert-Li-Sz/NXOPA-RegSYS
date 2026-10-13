@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v0.2.1
+        description: 已存在的版本标签，例如 v0.2.2
         required: true
-        default: v0.2.1
+        default: v0.2.2
         type: string
 
 permissions:
@@ -73,7 +73,9 @@ jobs:
         if: always()
         with:
           name: release-feature-report
-          path: .runtime/reports/release-features.json
+          path: |
+            .runtime/reports/release-features.json
+            .runtime/reports/ui-audit
           retention-days: 30
 
   images:

@@ -572,8 +572,8 @@ function insertVariable(v: string) {
           ><el-button>导出名单</el-button></a
         ><el-button @click="refreshModules">刷新</el-button
         ><el-button type="primary" @click="generate">批量生成准考证</el-button
-        ><el-button @click="downloadAdmissions">下载准考证 ZIP</el-button> ><label
-          class="upload-label"
+        ><el-button @click="downloadAdmissions">下载准考证 ZIP</el-button
+        ><label class="upload-label"
           >导入座位 CSV<input type="file" accept=".csv" @change="importSeats"
         /></label>
       </div>
