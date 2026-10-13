@@ -11,6 +11,7 @@ import { admissionMaterial, activeTemplate } from './admissions.js';
 import { renderTemplate } from './templates.js';
 import { sendSystemMail } from './mail.js';
 import { publicLink } from './site-settings.js';
+import { putBlob, removeBlob, migrateObjects, type StorageRef } from './storage.js';
 const redisUrl = new URL(config.redisUrl);
 const connection = {
   host: redisUrl.hostname,
@@ -40,11 +41,10 @@ async function compile(id: string, source: string, assets: Record<string, string
   const pdf = await readFile(path.join(dir, 'document.pdf'));
   if (pdf.length > 10 * 1024 * 1024 || pdf.subarray(0, 5).toString() !== '%PDF-')
     throw new Error('Invalid compiler output');
-  await mkdir(config.storage, { recursive: true, mode: 0o700 });
   const storageKey = `pdf-${id}`;
-  await writeFile(path.join(config.storage, storageKey), pdf, { mode: 0o600 });
+  const ref = await putBlob(storageKey, pdf, 'application/pdf');
   await rm(dir, { recursive: true, force: true });
-  return storageKey;
+  return ref;
 }
 const worker = new Worker(
   'contest-center',
@@ -60,16 +60,49 @@ const worker = new Worker(
       const p = j.payload as Record<string, unknown>;
       let result: unknown = { ok: true };
       if (j.kind === 'MAIL') {
+        const token =
+          typeof p.verificationTokenId === 'string'
+            ? await db.emailToken.findUnique({
+                where: { id: p.verificationTokenId },
+              })
+            : undefined;
+        const tokenUser = token
+          ? await db.user.findUnique({ where: { id: token.userId } })
+          : undefined;
+        if (
+          typeof p.verificationTokenId === 'string' &&
+          (!token ||
+            token.usedAt ||
+            token.expiresAt <= new Date() ||
+            !tokenUser ||
+            tokenUser.deactivatedAt ||
+            tokenUser.email !== p.to)
+        ) {
+          await db.job.update({
+            where: { id: j.id },
+            data: { state: 'SUCCESS', result: { skipped: true, reason: '验证码已失效' } },
+          });
+          return;
+        }
         result = await sendSystemMail(
           {
             to: String(p.to),
             subject: String(p.subject),
-            text: `${p.text}${typeof p.actionPath === 'string' ? `\n${await publicLink(p.actionPath)}` : ''}`,
+            text: String(p.text),
+            actionPath: typeof p.actionPath === 'string' ? p.actionPath : undefined,
+            category: String(p.category ?? 'GENERIC'),
+            code: typeof p.encryptedCode === 'string' ? decrypt(p.encryptedCode) : undefined,
+            name: typeof p.name === 'string' ? p.name : undefined,
+            status: typeof p.status === 'string' ? p.status : undefined,
           },
           p.test === true ? Number(p.configurationVersion) : undefined,
         );
       } else if (j.kind === 'PDF_PREVIEW') {
-        result = { storageKey: await compile(j.id, String(p.source)) };
+        result = await compile(j.id, String(p.source));
+      } else if (j.kind === 'STORAGE_MIGRATION') {
+        result = await migrateObjects(String(p.profileId), j.id);
+      } else if (j.kind === 'OBJECT_DELETE') {
+        await removeBlob(p.storageRef as StorageRef);
       } else if (j.kind === 'ADMISSION') {
         const document = await db.admissionDocument.findUniqueOrThrow({
           where: { id: String(p.documentId) },
@@ -89,7 +122,7 @@ const worker = new Worker(
           throw new Error('Document or template version has changed');
         const material = await admissionMaterial(r, document);
         const source = renderTemplate(template.source, material.context);
-        const storageKey = await compile(j.id, source, material.assets);
+        const storageRef = await compile(j.id, source, material.assets);
         await db.$transaction(async (tx) => {
           await lock(tx, r.id);
           const current = await tx.registration.findUniqueOrThrow({ where: { id: r.id } });
@@ -102,13 +135,19 @@ const worker = new Worker(
           await tx.admissionDocument.update({
             where: { id: document.id, version: Number(p.documentVersion) },
             data: {
-              storageKey,
+              ...storageRef,
               state: document.releaseAt && document.releaseAt <= new Date() ? 'RELEASED' : 'READY',
               releasedAt:
                 document.releaseAt && document.releaseAt <= new Date() ? new Date() : null,
               error: null,
             },
           });
+          if (document.releaseAt && document.releaseAt <= new Date())
+            await event(tx, 'NOTIFY', r.id, {
+              message: '您的准考证已发放，可以下载。',
+              category: 'ADMISSION',
+              status: 'RELEASED',
+            });
         });
         result = { documentId: document.id };
       } else if (j.kind === 'SYNC') {
@@ -325,8 +364,25 @@ async function dispatch() {
           include: { coaches: true },
         });
         if (r) {
-          const ids = [r.ownerId, ...r.coaches.map((c) => c.userId)];
-          const users = await tx.user.findMany({ where: { id: { in: ids }, verified: true } });
+          const people = await tx.registrationPerson.findMany({
+            where: { registrationId: r.id, active: true },
+            select: { userId: true },
+          });
+          const ids = [
+            r.ownerId,
+            ...r.coaches.map((c) => c.userId),
+            ...people.flatMap((x) => (x.userId ? [x.userId] : [])),
+          ];
+          const personIds = (
+            await tx.user.findMany({ where: { id: { in: ids } }, select: { personId: true } })
+          ).flatMap((x) => (x.personId ? [x.personId] : []));
+          const users = await tx.user.findMany({
+            where: {
+              OR: [{ id: { in: ids } }, { personId: { in: personIds } }],
+              verified: true,
+              deactivatedAt: null,
+            },
+          });
           for (const u of users)
             await tx.job.upsert({
               where: { dedupeKey: `mail:${e.id}:${u.id}` },
@@ -336,8 +392,16 @@ async function dispatch() {
                 dedupeKey: `mail:${e.id}:${u.id}`,
                 payload: json({
                   to: u.email,
-                  subject: '竞赛报名状态更新',
+                  subject:
+                    p.category === 'ADMISSION'
+                      ? '准考证已发放'
+                      : p.category === 'INVOICE'
+                        ? '开票处理结果'
+                        : '竞赛报名状态更新',
+                  name: u.name,
+                  status: typeof p.status === 'string' ? p.status : '',
                   text: String(p.message),
+                  category: String(p.category ?? 'REGISTRATION'),
                   actionPath: `/registrations/${r.id}`,
                 }),
               },
@@ -428,9 +492,28 @@ async function dispatch() {
       r.version === a.registrationVersion &&
       (await activeTemplate(r.contestId))?.id === a.templateId
     )
-      await db.admissionDocument.update({
-        where: { id: a.id },
-        data: { state: 'RELEASED', releasedAt: new Date() },
+      await db.$transaction(async (tx) => {
+        await lock(tx, a.registrationId);
+        const current = await tx.admissionDocument.findUniqueOrThrow({ where: { id: a.id } }),
+          registration = await tx.registration.findUniqueOrThrow({
+            where: { id: a.registrationId },
+          });
+        if (
+          current.state !== 'READY' ||
+          !registration.eligible ||
+          registration.version !== a.registrationVersion ||
+          (await activeTemplate(registration.contestId, tx))?.id !== a.templateId
+        )
+          return;
+        await tx.admissionDocument.update({
+          where: { id: a.id },
+          data: { state: 'RELEASED', releasedAt: new Date() },
+        });
+        await event(tx, 'NOTIFY', a.registrationId, {
+          message: '您的准考证已发放，可以下载。',
+          category: 'ADMISSION',
+          status: 'RELEASED',
+        });
       });
   }
   await db.setting.upsert({

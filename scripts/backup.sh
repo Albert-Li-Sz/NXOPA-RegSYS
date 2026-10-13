@@ -11,7 +11,9 @@ restart(){ compose start api worker >/dev/null; rm -rf "$stage"; }
 trap restart EXIT
 compose stop api worker >/dev/null
 compose exec -T postgres pg_dump -U contest -d contest_center -Fc > "$stage/database.dump"
+compose run --rm -T --no-deps --user 1000 worker sh -c 'if test -f src/storage-cli.ts; then node --import tsx src/storage-cli.ts export /data/storage/.s3-backup; fi'
 compose run --rm -T --no-deps --user 1000 worker tar -czf - -C /data/storage . > "$stage/files.tgz"
+compose run --rm -T --no-deps --user 1000 worker sh -c 'if test -f src/storage-cli.ts; then node --import tsx src/storage-cli.ts clean /data/storage/.s3-backup; fi'
 cp "$contest_env_file" "$stage/environment.env"
 COPYFILE_DISABLE=1 tar -czf "$stage/raw.tgz" -C "$stage" database.dump files.tgz environment.env
 # Host-owned output remains readable and chmod-able for non-root Linux installers.

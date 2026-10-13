@@ -11,10 +11,12 @@ import {
   accountInvitationKinds,
   accountInvitationLabels,
   accountInvitationSchema,
+  adminPermissions,
   type Principal,
 } from '@contest-center/contracts';
 import { db, audit, lock, type Tx } from './db.js';
-import { opaqueToken, requireAdmin, sha } from './security.js';
+import { opaqueToken, requireAdmin, requireSystemAdmin, sha } from './security.js';
+import { effectiveAuthorization, ensurePermanentAdministrator } from './authorization.js';
 import { publicLink } from './site-settings.js';
 import { pageOptions, dateFilter, type ListQuery } from './pagination.js';
 import { RegistrationService, dirty, loaded } from './registrations.js';
@@ -24,8 +26,8 @@ const isAccountInvitation = (kind: string): kind is (typeof accountInvitationKin
 const roleLock = (tx: Tx) => lock(tx, 'role-authorizations');
 async function currentAdmin(tx: Tx, u: Principal) {
   requireAdmin(u);
-  const actor = await tx.user.findUnique({ where: { id: u.id } });
-  if (!actor?.isAdmin) throw new ForbiddenException('系统管理员权限已被撤销');
+  if (!(await effectiveAuthorization(u.id, tx)).isAdmin)
+    throw new ForbiddenException('管理员授权已被撤销');
 }
 function available(invitation: Invitation | null): asserts invitation is Invitation {
   if (!invitation || invitation.revoked || invitation.expiresAt <= new Date())
@@ -46,15 +48,12 @@ function destination(kind: string) {
 async function authorizationActive(tx: Tx, i: Invitation, userId: string) {
   const receiver = await tx.user.findUnique({ where: { id: userId } });
   if (!receiver) return false;
-  if (i.kind === 'SYSTEM_ADMIN') return receiver.isAdmin;
+  const authority = await effectiveAuthorization(userId, tx);
+  if (i.kind === 'SYSTEM_ADMIN') return authority.isSystemAdmin;
+  if (i.kind === 'SENIOR_ADMIN') return authority.isSeniorAdmin;
   if (i.kind === 'COACH_ROLE') return receiver.isCoach;
   if (i.kind === 'CONTEST_ADMIN')
-    return (
-      !!i.contestId &&
-      !!(await tx.roleAssignment.findUnique({
-        where: { userId_contestId: { userId, contestId: i.contestId } },
-      }))
-    );
+    return !!i.contestId && authority.contestIds.includes(i.contestId);
   return receiver.verified;
 }
 export class InvitationService {
@@ -63,9 +62,17 @@ export class InvitationService {
   async create(u: Principal, body: unknown) {
     requireAdmin(u);
     const b = accountInvitationSchema.parse(body);
+    if (['SYSTEM_ADMIN', 'SENIOR_ADMIN'].includes(b.kind)) requireSystemAdmin(u);
+    if (b.grantExpiresAt && new Date(b.grantExpiresAt) <= new Date())
+      throw new BadRequestException('授权到期时间必须在未来');
     return db.$transaction(async (tx) => {
       await roleLock(tx);
       await currentAdmin(tx, u);
+      if (
+        ['SYSTEM_ADMIN', 'SENIOR_ADMIN'].includes(b.kind) &&
+        !(await effectiveAuthorization(u.id, tx)).isSystemAdmin
+      )
+        throw new ForbiddenException('授权权限已失效');
       const target = b.userId
         ? await tx.user.findUnique({ where: { id: b.userId } })
         : await tx.user.findUnique({ where: { email: b.targetEmail!.toLowerCase() } });
@@ -85,6 +92,8 @@ export class InvitationService {
           targetEmail,
           contestId: b.contestId,
           expiresAt: new Date(Date.now() + b.expiresInDays * 86400000),
+          grantExpiresAt: b.grantExpiresAt ? new Date(b.grantExpiresAt) : null,
+          permissions: b.permissions ?? [...adminPermissions],
         },
       });
       await audit(tx, u.id, 'AUTHORIZATION_INVITE_CREATE', invitation.id, {
@@ -180,7 +189,13 @@ export class InvitationService {
       where: { id: i.inviterId },
       select: { name: true, isAdmin: true },
     });
-    if (!inviter?.isAdmin && !i.acceptedBy) throw new BadRequestException('邀请人的授权权限已失效');
+    const inviterAuthority = await effectiveAuthorization(i.inviterId);
+    if (
+      (!inviterAuthority.isAdmin ||
+        (['SYSTEM_ADMIN', 'SENIOR_ADMIN'].includes(i.kind) && !inviterAuthority.isSystemAdmin)) &&
+      !i.acceptedBy
+    )
+      throw new BadRequestException('邀请人的授权权限已失效');
     const contest = i.contestId
       ? await db.contest.findUnique({
           where: { id: i.contestId },
@@ -197,6 +212,8 @@ export class InvitationService {
       inviter: { name: inviter?.name ?? '管理员' },
       contest,
       expiresAt: i.expiresAt,
+      grantExpiresAt: i.grantExpiresAt,
+      permissions: i.permissions,
       accepted: i.acceptedBy === u.id,
       acceptedAt: i.acceptedAt,
       authorizationActive: active,
@@ -229,7 +246,30 @@ export class InvitationService {
         };
       }
       const inviter = await tx.user.findUnique({ where: { id: i.inviterId } });
-      if (!inviter?.isAdmin) throw new BadRequestException('邀请人的授权权限已失效');
+      const inviterAuthority = await effectiveAuthorization(i.inviterId, tx);
+      if (
+        !inviterAuthority.isAdmin ||
+        (['SYSTEM_ADMIN', 'SENIOR_ADMIN'].includes(i.kind) && !inviterAuthority.isSystemAdmin)
+      )
+        throw new BadRequestException('邀请人的授权权限已失效');
+      if (i.grantExpiresAt && i.grantExpiresAt <= new Date())
+        throw new BadRequestException('此授权已经到期');
+      if (['SYSTEM_ADMIN', 'SENIOR_ADMIN', 'CONTEST_ADMIN'].includes(i.kind))
+        await tx.adminGrant.create({
+          data: {
+            userId: u.id,
+            level:
+              i.kind === 'SYSTEM_ADMIN'
+                ? 'SYSTEM'
+                : i.kind === 'SENIOR_ADMIN'
+                  ? 'SENIOR'
+                  : 'CONTEST',
+            contestId: i.contestId,
+            grantedBy: i.inviterId,
+            expiresAt: i.grantExpiresAt,
+            permissions: [...new Set(['VIEW', ...i.permissions])],
+          },
+        });
       if (i.kind === 'SYSTEM_ADMIN')
         await tx.user.update({
           where: { id: u.id },
@@ -311,6 +351,20 @@ export class InvitationService {
       const target = await tx.user.findUniqueOrThrow({ where: { id: b.userId } });
       if (kind === 'SYSTEM_ADMIN' && b.userId === u.id)
         throw new BadRequestException('不能移除自己的系统管理员身份');
+      if (kind === 'SYSTEM_ADMIN') {
+        requireSystemAdmin(u);
+        await ensurePermanentAdministrator(tx, undefined, b.userId);
+      }
+      if (kind === 'SYSTEM_ADMIN' || kind === 'CONTEST_ADMIN')
+        await tx.adminGrant.updateMany({
+          where: {
+            userId: b.userId,
+            level: kind === 'SYSTEM_ADMIN' ? 'SYSTEM' : 'CONTEST',
+            ...(b.contestId ? { contestId: b.contestId } : {}),
+            revokedAt: null,
+          },
+          data: { revokedAt: new Date() },
+        });
       if (kind === 'SYSTEM_ADMIN')
         await tx.user.update({
           where: { id: b.userId },

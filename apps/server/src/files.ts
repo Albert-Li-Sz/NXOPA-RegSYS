@@ -1,45 +1,98 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import type { Principal } from '@contest-center/contracts';
-import { db } from './db.js';
-import { config } from './config.js';
-import { getRegistration, canRead } from './security.js';
+import { db, audit, enqueue } from './db.js';
+import { getRegistration, owns, ownerIds, manages, requireManager } from './security.js';
+import { putBlob, readBlob, type StorageRef } from './storage.js';
+import { publicLink } from './site-settings.js';
+const purposeSchema = z.enum([
+  'PRIVATE',
+  'PERSONAL',
+  'TEAM',
+  'CONTEST_PUBLIC',
+  'CONTEST_PRIVATE',
+  'AVATAR',
+]);
 export class FileService {
   async upload(
     u: Principal,
     file: Express.Multer.File,
     registrationId?: string,
     ticketId?: string,
+    options: { contestId?: string; purpose?: string } = {},
   ) {
-    if (!file?.buffer?.length || file.size > 10 * 1024 * 1024)
-      throw new BadRequestException('文件需小于 10 MB');
-    if (registrationId) await getRegistration(u, registrationId);
+    const purpose = purposeSchema.parse(options.purpose ?? 'PRIVATE');
+    const limit = purpose === 'AVATAR' ? 5 : purpose === 'PRIVATE' ? 10 : 50;
+    if (!file?.buffer?.length || file.size > limit * 1024 * 1024)
+      throw new BadRequestException(`文件需小于 ${limit} MB`);
+    let contestId = options.contestId;
+    if (registrationId) {
+      const registration = await getRegistration(u, registrationId);
+      if (contestId && contestId !== registration.contestId)
+        throw new BadRequestException('文件的竞赛与队伍不一致');
+      contestId = registration.contestId;
+      if (
+        !owns(u, registration.ownerId) &&
+        !registration.people.some((p) => p.active && p.userId && owns(u, p.userId)) &&
+        !registration.coaches.some((c) => owns(u, c.userId))
+      )
+        requireManager(u, contestId, 'FILES');
+    }
+    if (purpose.startsWith('CONTEST_')) {
+      if (!contestId || registrationId || ticketId)
+        throw new BadRequestException('竞赛材料需指定竞赛');
+      requireManager(u, contestId, 'FILES');
+    } else if (purpose === 'TEAM' && !registrationId)
+      throw new BadRequestException('队伍附件需指定报名');
+    else if (['PERSONAL', 'AVATAR'].includes(purpose) && (registrationId || ticketId || contestId))
+      throw new BadRequestException('个人文件不能绑定其他对象');
+    if (purpose === 'PRIVATE' && contestId && !registrationId && !ticketId)
+      requireManager(u, contestId, 'FILES');
     if (ticketId) {
-      const t = await db.supportTicket.findUniqueOrThrow({ where: { id: ticketId } });
-      if (t.registrationId) await getRegistration(u, t.registrationId);
-      else if (t.ownerId !== u.id && !u.isAdmin && !u.contestIds.includes(t.contestId ?? ''))
+      const ticket = await db.supportTicket.findUniqueOrThrow({ where: { id: ticketId } });
+      if (ticket.registrationId) await getRegistration(u, ticket.registrationId);
+      else if (
+        !owns(u, ticket.ownerId) &&
+        !u.isAdmin &&
+        !manages(u, ticket.contestId ?? '', 'SUPPORT')
+      )
         throw new ForbiddenException();
+      contestId = ticket.contestId ?? undefined;
     }
     let mime = '';
-    const b = file.buffer;
-    if (b.subarray(0, 5).toString() === '%PDF-') mime = 'application/pdf';
-    else if (b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
+    const bytes = file.buffer;
+    if (bytes.subarray(0, 5).toString() === '%PDF-') mime = 'application/pdf';
+    else if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
       mime = 'image/png';
-    else if (b[0] === 255 && b[1] === 216 && b[2] === 255) mime = 'image/jpeg';
-    else if (file.mimetype === 'text/plain' && !b.includes(0)) mime = 'text/plain';
-    if (!mime) throw new BadRequestException('支持 PDF、PNG、JPEG 和文本文件');
-    const id = randomUUID();
-    await mkdir(config.storage, { recursive: true, mode: 0o700 });
-    await writeFile(path.join(config.storage, id), b, { mode: 0o600 });
-    return db.attachment.create({
+    else if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) mime = 'image/jpeg';
+    else if (file.mimetype === 'text/plain' && !bytes.includes(0)) mime = 'text/plain';
+    else if (
+      purpose !== 'PRIVATE' &&
+      bytes[0] === 80 &&
+      bytes[1] === 75 &&
+      [3, 5, 7].includes(bytes[2]!)
+    )
+      mime = 'application/zip';
+    if (!mime || (purpose === 'AVATAR' && !mime.startsWith('image/')))
+      throw new BadRequestException(
+        purpose === 'AVATAR'
+          ? '头像支持 PNG、JPEG 图片'
+          : '支持 PDF、PNG、JPEG、文本及附件 ZIP 文件',
+      );
+    const id = randomUUID(),
+      ref = await putBlob(id, bytes, mime);
+    const result = await db.attachment.create({
       data: {
         id,
-        storageKey: id,
+        ...ref,
         ownerId: u.id,
         registrationId,
         ticketId,
+        contestId,
+        purpose,
+        public: ['CONTEST_PUBLIC', 'AVATAR'].includes(purpose),
         name: path
           .basename(file.originalname.replaceAll('\\', '/'))
           .replace(/[\r\n\u0000]/g, '')
@@ -47,21 +100,169 @@ export class FileService {
         mime,
         size: file.size,
       },
-      select: { id: true, name: true, mime: true, size: true },
+    });
+    if (purpose === 'TEAM')
+      await db.teamFile.create({
+        data: { attachmentId: id, registrationId: registrationId!, assignedBy: u.id },
+      });
+    await audit(db, u.id, 'FILE_UPLOAD', id, {
+      purpose,
+      contestId,
+      registrationId,
+      size: file.size,
+    });
+    return {
+      id,
+      name: result.name,
+      mime,
+      size: file.size,
+      public: result.public,
+      url: await publicLink(`/api/v1/files/${result.public ? 'public/' : ''}${id}`),
+    };
+  }
+  async read(u: Principal | null, id: string) {
+    const file = await db.attachment.findUnique({ where: { id } });
+    if (!file || file.deletedAt) throw new NotFoundException('文件不存在或已删除');
+    let publicRead = file.public;
+    if (file.purpose === 'AVATAR')
+      publicRead =
+        publicRead &&
+        !!(await db.user.findFirst({
+          where: { id: file.ownerId, deactivatedAt: null, avatarAttachmentId: file.id },
+        }));
+    else if (publicRead && file.contestId)
+      publicRead = !!(await db.contest.findFirst({
+        where: { id: file.contestId, published: true, archived: false },
+      }));
+    if (!publicRead) {
+      if (!u) throw new ForbiddenException('请先登录');
+      if (file.registrationId) await getRegistration(u, file.registrationId);
+      else if (file.ticketId) {
+        const ticket = await db.supportTicket.findUniqueOrThrow({ where: { id: file.ticketId } });
+        if (!owns(u, ticket.ownerId) && !u.isAdmin && !manages(u, ticket.contestId ?? '')) {
+          if (!ticket.registrationId) throw new ForbiddenException();
+          await getRegistration(u, ticket.registrationId);
+        }
+      } else if (file.contestId && !manages(u, file.contestId, 'FILES') && !owns(u, file.ownerId)) {
+        const assignments = await db.teamFile.findMany({ where: { attachmentId: id } });
+        let allowed = false;
+        for (const assignment of assignments) {
+          try {
+            await getRegistration(u, assignment.registrationId);
+            allowed = true;
+            break;
+          } catch {}
+        }
+        if (!allowed) throw new ForbiddenException();
+      } else if (!file.contestId && !owns(u, file.ownerId) && !u.isAdmin)
+        throw new ForbiddenException();
+    }
+    return {
+      ...file,
+      buffer: await readBlob(file),
+      inline: publicRead && file.mime.startsWith('image/'),
+    };
+  }
+  async list(u: Principal, query: { contestId?: string; registrationId?: string }) {
+    if (query.registrationId) {
+      await getRegistration(u, query.registrationId);
+      return (
+        await db.teamFile.findMany({
+          where: { registrationId: query.registrationId, attachment: { deletedAt: null } },
+          include: { attachment: true },
+          orderBy: { createdAt: 'desc' },
+        })
+      ).map((x) => ({ ...x.attachment, assignmentId: x.id, assignedAt: x.createdAt }));
+    }
+    if (query.contestId) {
+      requireManager(u, query.contestId, 'FILES');
+      return db.attachment.findMany({
+        where: {
+          contestId: query.contestId,
+          deletedAt: null,
+          purpose: { in: ['CONTEST_PUBLIC', 'CONTEST_PRIVATE'] },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+    const ids = ownerIds(u);
+    const teams = await db.registration.findMany({
+      where: {
+        OR: [
+          { ownerId: { in: ids } },
+          { people: { some: { userId: { in: ids }, active: true } } },
+          { coaches: { some: { userId: { in: ids } } } },
+        ],
+      },
+      select: { id: true },
+    });
+    const assigned = await db.teamFile.findMany({
+      where: { registrationId: { in: teams.map((x) => x.id) }, attachment: { deletedAt: null } },
+      select: { attachmentId: true },
+    });
+    return db.attachment.findMany({
+      where: {
+        deletedAt: null,
+        OR: [{ ownerId: { in: ids } }, { id: { in: assigned.map((x) => x.attachmentId) } }],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
     });
   }
-  async read(u: Principal, id: string) {
-    const f = await db.attachment.findUnique({ where: { id } });
-    if (!f) throw new NotFoundException();
-    if (f.registrationId) await getRegistration(u, f.registrationId);
-    else if (f.ticketId) {
-      const t = await db.supportTicket.findUniqueOrThrow({ where: { id: f.ticketId } });
-      if (t.ownerId !== u.id && !u.isAdmin && !u.contestIds.includes(t.contestId ?? '')) {
-        if (!t.registrationId) throw new ForbiddenException();
-        await getRegistration(u, t.registrationId);
-      }
-    } else if (f.ownerId !== u.id && !u.isAdmin) throw new ForbiddenException();
-    return { ...f, buffer: await readFile(path.join(config.storage, f.storageKey)) };
+  async distribute(u: Principal, contestId: string, body: unknown) {
+    requireManager(u, contestId, 'FILES');
+    const b = z
+      .object({
+        attachmentId: z.string().uuid(),
+        registrationIds: z.array(z.string().uuid()).min(1).max(500),
+      })
+      .parse(body);
+    const file = await db.attachment.findFirst({
+      where: { id: b.attachmentId, contestId, purpose: 'CONTEST_PRIVATE', deletedAt: null },
+    });
+    if (!file) throw new BadRequestException('请选择当前竞赛的私有材料');
+    const registrations = await db.registration.findMany({
+      where: { id: { in: [...new Set(b.registrationIds)] }, contestId },
+      select: { id: true },
+    });
+    if (registrations.length !== new Set(b.registrationIds).size)
+      throw new BadRequestException('报名不属于此竞赛');
+    await db.teamFile.createMany({
+      data: registrations.map((r) => ({
+        attachmentId: file.id,
+        registrationId: r.id,
+        assignedBy: u.id,
+      })),
+      skipDuplicates: true,
+    });
+    await audit(db, u.id, 'FILE_DISTRIBUTE', file.id, { registrationIds: b.registrationIds });
+    return { count: registrations.length };
+  }
+  async remove(u: Principal, id: string) {
+    const file = await db.attachment.findUniqueOrThrow({ where: { id } });
+    if (!owns(u, file.ownerId) && !u.isAdmin) {
+      if (!file.contestId) throw new ForbiddenException('仅可删除本人上传的文件');
+      requireManager(u, file.contestId, 'FILES');
+    }
+    if (file.deletedAt) return { ok: true };
+    const linked = await Promise.all([
+      db.paymentVoucher.count({ where: { attachmentId: id } }),
+      db.invoiceRequest.count({ where: { attachmentId: id } }),
+      db.refund.count({ where: { attachmentId: id } }),
+    ]);
+    if (linked.some(Boolean)) throw new BadRequestException('文件已用于财务记录，需保留凭证');
+    await db.$transaction(async (tx) => {
+      await tx.attachment.update({ where: { id }, data: { deletedAt: new Date() } });
+      await tx.user.updateMany({
+        where: { avatarAttachmentId: id },
+        data: { avatarAttachmentId: null },
+      });
+      await enqueue(tx, 'OBJECT_DELETE', id, `file-delete:${id}`, {
+        storageRef: file as unknown as StorageRef,
+      });
+      await audit(tx, u.id, 'FILE_DELETE', id);
+    });
+    return { ok: true };
   }
 }
 export async function bindFile(
@@ -70,13 +271,15 @@ export async function bindFile(
   id: string,
   registrationId: string,
 ) {
-  const f = await tx.attachment.findUnique({ where: { id } });
+  const file = await tx.attachment.findUnique({ where: { id } });
   if (
-    !f ||
-    (f.registrationId && f.registrationId !== registrationId) ||
-    (!f.registrationId && f.ownerId !== u.id)
+    !file ||
+    file.deletedAt ||
+    file.public ||
+    (file.registrationId && file.registrationId !== registrationId) ||
+    (!file.registrationId && !owns(u, file.ownerId))
   )
-    throw new ForbiddenException('附件不属于此报名');
+    throw new ForbiddenException('附件不属于此报名或不能用于私有资料');
   await tx.attachment.update({ where: { id }, data: { registrationId } });
-  return f;
+  return file;
 }

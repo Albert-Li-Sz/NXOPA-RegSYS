@@ -173,3 +173,13 @@ X-ContestCenter-Signature: sha256=<hex HMAC>
 用户列表接受 `tag`；报名列表、统计和 CSV 接受 `tag` 并检查管理员管理范围。最多 20 个标签，每个不超过 40 字。
 
 报名新增 `number: number|null`，每个竞赛从 1 开始按首次成功提交分配，`submittedAt` 保留首次提交时间。草稿不编号，并发提交不重号；重新提交、补正和取消不重新编号。历史已提交报名按首次提交的审计时间自动回填，计数器接续最大编号；CSV 首列为报名编号。
+
+## V0.3 账号、授权、存储和邮件
+
+用户 `kind` 为 STUDENT / TEACHER，`grants` 返回有效管理授权与到期时间；`isAdmin` 为系统管理员或高级管理员的兼容字段，核心设置使用 `isSystemAdmin` 检查。管理员授权 API 为 GET / POST `/admin/grants`、DELETE `/admin/grants/:id`，用户可通过 DELETE `/auth/grants/:id` 卸任。级别 SYSTEM / SENIOR / CONTEST；竞赛授权传 `permissions` 与 `contestId`，可传 `expiresAt`。邀请新增 SENIOR_ADMIN、grantExpiresAt 与 permissions。
+
+GET / POST `/auth/identity`、GET `/admin/identities`、POST `/admin/identities/:id/review` 完成实名审核；GET `/admin/students` 与详情按 STUDENTS 权限筛选竞赛。POST `/auth/verify-code`、`/auth/reset-code` 使用六位验证码，注销通过 POST `/auth/closure-code` 与 DELETE `/auth/account`（confirmation、password 或 code）完成。GET `/admissions/mine` 返回本人的有效已发放准考证。
+
+GET / PUT `/admin/storage`、POST `/admin/storage/test`、POST `/admin/storage/migrate` 配置、实测和迁移存储。POST `/files` 的 purpose 可为 PRIVATE / PERSONAL / AVATAR / TEAM / CONTEST_PUBLIC / CONTEST_PRIVATE，结合 registrationId / contestId / ticketId；GET `/files` 查询，DELETE `/files/:id` 删除，POST `/contests/:id/files/distribute` 分发指定 registrationIds。公开文件 GET `/files/public/:id`，私有文件下载仍校验会话及授权。
+
+GET `/contests/:id/public-teams` 与 `/export` 不要求登录，按竞赛 publicRosterEnabled、publicRosterReviews 筛选并仅输出公示字段。PUT `/registrations/:id/public-rank` 配置排名。GET `/admin/mail/templates`、PUT `/admin/mail/templates/:key` 设置邮件完整格式；GET `/notifications/mail?resourceId=UUID` 查看投递状态，POST `/notifications/mail/:id/retry` 重发失败业务邮件，均验证资源访问权限。详细操作见 [平台功能说明](PLATFORM_GUIDE.md)。

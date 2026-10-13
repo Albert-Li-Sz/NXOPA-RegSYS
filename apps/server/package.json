@@ -16,6 +16,7 @@
     "restore:public-url": "tsx ../../scripts/restore-public-url.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1150.0",
     "@contest-center/connectors": "workspace:*",
     "@contest-center/contracts": "workspace:*",
     "@nestjs/common": "^11.1.0",

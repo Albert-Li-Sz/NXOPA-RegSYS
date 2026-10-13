@@ -32,6 +32,8 @@ import {
   sha,
   safeUrl,
   requireAdmin,
+  requireSystemAdmin,
+  owns,
   requireManager,
   manages,
   getRegistration,
@@ -353,7 +355,7 @@ export class IntegrationService {
     });
   }
   async instance(u: Principal, body: unknown, id?: string) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     const b = z
       .object({
         name: z.string().min(1).max(100),
@@ -402,7 +404,7 @@ export class IntegrationService {
     return { id: saved.id };
   }
   async bindings(u: Principal, contestId: string) {
-    requireManager(u, contestId);
+    requireManager(u, contestId, 'INTEGRATIONS');
     return db.platformBinding.findMany({
       where: { contestId },
       include: { instance: { select: { id: true, name: true, type: true } } },
@@ -426,7 +428,7 @@ export class IntegrationService {
         enabled: z.boolean().default(true),
       })
       .parse(body);
-    requireManager(u, b.contestId);
+    requireManager(u, b.contestId, 'INTEGRATIONS');
     const instance = await db.platformInstance.findUniqueOrThrow({ where: { id: b.instanceId } });
     if (!u.isAdmin && !(instance.allowedContestIds as string[]).includes(b.contestId))
       throw new ForbiddenException('该竞赛未获授权使用此平台实例');
@@ -501,7 +503,7 @@ export class IntegrationService {
   }
   async remoteMetadata(u: Principal, id: string) {
     const b = await db.platformBinding.findUniqueOrThrow({ where: { id } });
-    requireManager(u, b.contestId);
+    requireManager(u, b.contestId, 'INTEGRATIONS');
     const c = await platformConfig(id);
     if (c.type !== 'DOMJUDGE') throw new BadRequestException('仅 DOMjudge 支持学校和分组查询');
     const adapter = new (await import('@contest-center/connectors')).DOMjudgeConnector();
@@ -512,7 +514,7 @@ export class IntegrationService {
   }
   async schools(u: Principal, bindingId: string, query: ListQuery = {}) {
     const b = await db.platformBinding.findUniqueOrThrow({ where: { id: bindingId } });
-    requireManager(u, b.contestId);
+    requireManager(u, b.contestId, 'INTEGRATIONS');
     const registrations = await db.registration.findMany({
       where: {
         contestId: b.contestId,
@@ -542,7 +544,7 @@ export class IntegrationService {
   }
   async confirmSchool(u: Principal, bindingId: string, id: string, body: unknown) {
     const b = await db.platformBinding.findUniqueOrThrow({ where: { id: bindingId } });
-    requireManager(u, b.contestId);
+    requireManager(u, b.contestId, 'INTEGRATIONS');
     const input = organizationSchema
       .extend({
         shortName: z.string().trim().min(1).max(32),
@@ -629,7 +631,7 @@ export class IntegrationService {
 
   async probe(u: Principal, id: string) {
     const b = await db.platformBinding.findUniqueOrThrow({ where: { id } });
-    requireManager(u, b.contestId);
+    requireManager(u, b.contestId, 'INTEGRATIONS');
     const c = await platformConfig(id);
     try {
       return await connector(c.type).probe(c.configuration);
@@ -642,19 +644,26 @@ export class IntegrationService {
   async sync(u: Principal, id: string, body: unknown) {
     const { bindingId } = z.object({ bindingId: z.string().uuid() }).parse(body);
     const r = await getRegistration(u, id);
-    requireManager(u, r.contestId);
+    requireManager(u, r.contestId, 'INTEGRATIONS');
     return db.$transaction((tx) => scheduleSync(tx, id, bindingId));
   }
   async credentials(u: Principal, id: string) {
     const r = await getRegistration(u, id);
+    const manager = manages(u, r.contestId, 'INTEGRATIONS');
+    if (
+      !manager &&
+      !owns(u, r.ownerId) &&
+      !r.people.some((p) => p.active && p.userId && owns(u, p.userId)) &&
+      !r.coaches.some((c) => owns(u, c.userId))
+    )
+      throw new ForbiddenException('没有领取比赛账号的权限');
     if (
       policySchema.parse(r.policySnapshot ?? r.contest.policy).mode === 'INDIVIDUAL' &&
-      r.ownerId !== u.id &&
-      !manages(u, r.contestId)
+      !owns(u, r.ownerId) &&
+      !manager
     )
       throw new ForbiddenException('个人比赛账号仅向参赛者本人及管理员交付');
-    if (!r.eligible && !manages(u, r.contestId))
-      throw new ForbiddenException('此报名暂不能领取比赛账号');
+    if (!r.eligible && !manager) throw new ForbiddenException('此报名暂不能领取比赛账号');
     const rows = await db.accountMapping.findMany({
       where: { registrationId: id, state: 'VERIFIED' },
     });
@@ -707,10 +716,19 @@ export class IntegrationService {
   }
   async retry(u: Principal, id: string) {
     const job = await db.job.findUniqueOrThrow({ where: { id } });
+    if (job.kind === 'STORAGE_MIGRATION') requireSystemAdmin(u);
     if (!u.isAdmin) {
       const r = await getRegistration(u, job.resourceId);
-      requireManager(u, r.contestId);
+      requireManager(u, r.contestId, 'INTEGRATIONS');
     }
+    if (
+      job.kind === 'MAIL' &&
+      (String((job.payload as any).category ?? '').startsWith('AUTH_') ||
+        (job.payload as any).category === 'ACCOUNT_CLOSE')
+    )
+      throw new BadRequestException('验证码请在账号页面重新发送');
+    if (job.kind === 'MAIL' && !u.isSystemAdmin)
+      throw new ForbiddenException('请通过邮件推送页面重发业务通知');
     if (!['FAILED', 'PENDING'].includes(job.state)) throw new BadRequestException('任务不能重试');
     return db.job.update({
       where: { id },
@@ -719,7 +737,7 @@ export class IntegrationService {
     });
   }
   async token(u: Principal, body: unknown) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     const b = z
       .object({
         name: z.string().min(1).max(100),
@@ -754,7 +772,7 @@ export class IntegrationService {
     return { id: row.id, token };
   }
   async tokens(u: Principal) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     return db.apiToken.findMany({
       select: {
         id: true,
@@ -768,14 +786,14 @@ export class IntegrationService {
     });
   }
   async revokeToken(u: Principal, id: string) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     await db.apiToken.update({ where: { id }, data: { revoked: true } });
     return { ok: true };
   }
   async webhook(u: Principal, body: unknown) {
     const b = z.object({ contestId: z.string().uuid().optional(), url: z.url() }).parse(body);
-    if (b.contestId) requireManager(u, b.contestId);
-    else requireAdmin(u);
+    if (b.contestId) requireManager(u, b.contestId, 'INTEGRATIONS');
+    else requireSystemAdmin(u);
     await safeUrl(b.url);
     const secret = opaqueToken();
     const row = await db.webhook.create({ data: { ...b, secret: encrypt(secret) } });

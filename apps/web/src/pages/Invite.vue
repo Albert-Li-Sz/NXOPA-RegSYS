@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { accountInvitationKinds } from '@contest-center/contracts';
+import { accountInvitationKinds, adminPermissionLabels } from '@contest-center/contracts';
 import { api, auth, loadAuth, date } from '../api';
 import type { Data } from '../types';
+const permissionLabel = (p: string) =>
+  adminPermissionLabels[p as keyof typeof adminPermissionLabels] || p;
 const route = useRoute(),
   router = useRouter();
 const invitation = ref<Data>(),
@@ -16,6 +18,8 @@ const authorization = computed(() =>
 );
 const descriptions: Record<string, string> = {
   ACCOUNT: '确认账号邀请后，您可以使用此账号登录并报名。',
+  SENIOR_ADMIN:
+    '您将获得全站竞赛和事务管理权限，可审核实名资料，不能配置 SMTP、S3、公网地址等核心信息。',
   SYSTEM_ADMIN: '您将获得全站管理权限，包括竞赛、账号权限、财务、平台配置和全局设置。',
   CONTEST_ADMIN:
     '您将获得下方竞赛的配置、报名审核、财务核账、工单和准考证管理权限。其他竞赛不在此次授权范围内。',
@@ -81,14 +85,21 @@ async function accept() {
           <dd>
             {{
               invitation.contest?.title ||
-              (invitation.kind === 'SYSTEM_ADMIN'
+              (['SYSTEM_ADMIN', 'SENIOR_ADMIN'].includes(invitation.kind)
                 ? '整个系统'
                 : invitation.kind === 'COACH_ROLE'
                   ? '经确认关联的报名'
                   : '本人账号')
             }}
           </dd>
-          <dt>有效期至</dt>
+          <template
+            v-if="['SYSTEM_ADMIN', 'SENIOR_ADMIN', 'CONTEST_ADMIN'].includes(invitation.kind)"
+            ><dt>授权期限</dt>
+            <dd>{{ invitation.grantExpiresAt ? date(invitation.grantExpiresAt) : '永久' }}</dd>
+            <dt>权限项</dt>
+            <dd>{{ (invitation.permissions || []).map(permissionLabel).join('、') }}</dd></template
+          >
+          <dt>邀请有效期至</dt>
           <dd>{{ date(invitation.expiresAt) }}</dd>
         </dl>
         <p class="notice">{{ descriptions[invitation.kind] }}只有点击确认后才会生效。</p>

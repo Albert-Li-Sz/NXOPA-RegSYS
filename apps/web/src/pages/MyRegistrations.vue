@@ -6,7 +6,7 @@ import { usePagedList } from '../composables/usePagedList';
 import { api, auth, label } from '../api';
 import type { RegistrationView } from '../types';
 const list = usePagedList<RegistrationView>('my-registrations', () =>
-  route.path === '/coach' ? '/registrations?role=coach' : '/registrations',
+  route.path === '/coach' ? '/registrations?role=coach' : '/registrations?role=mine',
 );
 const summary = ref({ total: 0, pending: 0, eligible: 0, correction: 0 }),
   summaryError = ref('');
@@ -20,7 +20,9 @@ let summarySequence = 0;
 async function refreshSummary() {
   const sequence = ++summarySequence;
   try {
-    const query = [coach.value ? 'role=coach' : '', list.query(false)].filter(Boolean).join('&');
+    const query = [coach.value ? 'role=coach' : 'role=mine', list.query(false)]
+      .filter(Boolean)
+      .join('&');
     const value = await api(`/registrations/summary?${query}`);
     if (sequence === summarySequence) {
       summary.value = value;

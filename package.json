@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -36,6 +36,7 @@
     "test:install-cli": "node --test tests/install-cli.test.mjs",
     "test:install-images": "node --test tests/install-images.test.mjs",
     "test:install-proxy": "tsx tests/integrations/install-proxy.ts",
+    "test:platform-features": "tsx tests/integrations/platform-features.ts",
     "test:release-features": "tsx tests/integrations/release-features.ts",
     "test:install-bootstrap": "node --test tests/install-bootstrap.test.mjs",
     "test:install-gateway": "tsx tests/integrations/install-gateway.ts",

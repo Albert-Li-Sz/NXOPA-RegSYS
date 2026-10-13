@@ -691,3 +691,18 @@ h2 {
     max-width: calc(100vw - 24px);
   }
 }
+
+.file-upload-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  color: #606266;
+  min-width: 0;
+  max-width: 100%;
+}
+.file-upload-label input {
+  max-width: 100%;
+  width: 250px;
+  min-width: 0;
+}

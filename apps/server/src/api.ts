@@ -38,6 +38,12 @@ import { AdminService } from './admin.js';
 import { InvitationService } from './invitations.js';
 import { MailService } from './mail.js';
 import { GithubService } from './github.js';
+import { AuthorizationService } from './authorization.js';
+import { PeopleService } from './people.js';
+import { StorageService } from './storage.js';
+import { MailTemplateService } from './mail-templates.js';
+import { PublicRosterService } from './public-roster.js';
+import { MailDeliveryService } from './mail-delivery.js';
 import { db, registrationInclude, json, lock } from './db.js';
 import { requireManager, requireAdmin } from './security.js';
 import { redis } from './auth.js';
@@ -57,7 +63,147 @@ export class ApiController {
     @Inject(InvitationService) private invitations: InvitationService,
     @Inject(MailService) private mail: MailService,
     @Inject(GithubService) private github: GithubService,
+    @Inject(AuthorizationService) private authorizations: AuthorizationService,
+    @Inject(PeopleService) private people: PeopleService,
+    @Inject(StorageService) private storage: StorageService,
+    @Inject(MailTemplateService) private mailTemplates: MailTemplateService,
+    @Inject(PublicRosterService) private publicRoster: PublicRosterService,
+    @Inject(MailDeliveryService) private mailDelivery: MailDeliveryService,
   ) {}
+  @Get('admin/storage') storageView(@Req() r: AuthRequest) {
+    return this.storage.view(user(r));
+  }
+  @Get('notifications/mail') mailDeliveryStatus(
+    @Req() r: AuthRequest,
+    @Query('resourceId') id: string,
+  ) {
+    return this.mailDelivery.list(user(r), z.string().uuid().parse(id));
+  }
+  @Post('notifications/mail/:id/retry') mailDeliveryRetry(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return this.mailDelivery.retry(user(r), id);
+  }
+  @Put('admin/storage') storageSave(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.storage.save(user(r), b);
+  }
+  @Post('admin/storage/test') storageTest(@Req() r: AuthRequest) {
+    return this.storage.probe(user(r));
+  }
+  @Post('admin/storage/migrate') storageMigrate(@Req() r: AuthRequest) {
+    return this.storage.migrate(user(r));
+  }
+  @Get('admin/grants') grants(@Req() r: AuthRequest, @Query('userId') id?: string) {
+    return this.authorizations.list(user(r), id);
+  }
+  @Post('admin/grants') grant(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.authorizations.grant(user(r), b);
+  }
+  @Delete('admin/grants/:id') revokeGrant(@Req() r: AuthRequest, @Param('id') id: string) {
+    return this.authorizations.revoke(user(r), id);
+  }
+  @Get('admin/students') students(@Req() r: AuthRequest, @Query() q: Record<string, string>) {
+    return this.people.students(user(r), q);
+  }
+  @Get('admin/students/:id') studentDetail(@Req() r: AuthRequest, @Param('id') id: string) {
+    return this.people.studentDetail(user(r), id);
+  }
+  @Get('admin/identities') identities(@Req() r: AuthRequest, @Query() q: Record<string, string>) {
+    return this.people.requests(user(r), q);
+  }
+  @Post('admin/identities/:id/review') identityReview(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.people.reviewIdentity(user(r), id, b);
+  }
+  @Get('auth/identity') identity(@Req() r: AuthRequest) {
+    return this.people.identity(user(r));
+  }
+  @Delete('auth/grants/:id') resignGrant(@Req() r: AuthRequest, @Param('id') id: string) {
+    return this.authorizations.resign(user(r), id);
+  }
+  @Get('admissions/mine') myAdmissions(@Req() r: AuthRequest) {
+    return this.admissions.mine(user(r));
+  }
+  @Post('auth/identity') identitySubmit(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.people.submitIdentity(user(r), b);
+  }
+  @Post('auth/verify-code') verifyCode(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.auth.verifyCode(r, b);
+  }
+  @Post('auth/reset-code') resetCode(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.auth.verifyCode(r, b, 'RESET');
+  }
+  @Post('auth/closure-code') closureCode(@Req() r: AuthRequest) {
+    return this.auth.closureCode(r);
+  }
+  @Delete('auth/account') closeAccount(@Req() r: AuthRequest, @Body() b: any) {
+    return this.people.close(user(r), b, () =>
+      this.auth.verifyCode(r, { code: b.code }, 'CLOSE').then(() => undefined),
+    );
+  }
+  @Get('admin/mail/templates') templatesList(@Req() r: AuthRequest) {
+    return this.mailTemplates.list(user(r));
+  }
+  @Put('admin/mail/templates/:key') templateSave(
+    @Req() r: AuthRequest,
+    @Param('key') key: string,
+    @Body() b: unknown,
+  ) {
+    return this.mailTemplates.save(user(r), key, b);
+  }
+  @Get('contests/:id/public-teams') publicTeams(
+    @Param('id') id: string,
+    @Query() q: Record<string, string>,
+  ) {
+    return this.publicRoster.list(id, q);
+  }
+  @Get('contests/:id/public-teams/export') async publicTeamsExport(
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    res
+      .type('text/csv; charset=utf-8')
+      .setHeader('Content-Disposition', 'attachment; filename="public-teams.csv"')
+      .send(await this.publicRoster.csv(id));
+  }
+  @Put('registrations/:id/public-rank') publicRank(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.publicRoster.rank(user(r), id, b);
+  }
+  @Get('files') fileList(
+    @Req() r: AuthRequest,
+    @Query('contestId') contestId?: string,
+    @Query('registrationId') registrationId?: string,
+  ) {
+    return this.files.list(user(r), { contestId, registrationId });
+  }
+  @Delete('files/:id') fileRemove(@Req() r: AuthRequest, @Param('id') id: string) {
+    return this.files.remove(user(r), id);
+  }
+  @Post('contests/:id/files/distribute') distributeFiles(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.files.distribute(user(r), id, b);
+  }
+  @Get('files/public/:id') async publicFile(@Param('id') id: string, @Res() res: Response) {
+    const file = await this.files.read(null, id);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader(
+      'Content-Disposition',
+      `${file.inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+    );
+    res.type(file.mime).send(file.buffer);
+  }
   @Get('auth/providers') providers(@Req() r: AuthRequest) {
     return this.github.providers(r);
   }
@@ -390,14 +536,16 @@ export class ApiController {
     return this.finance.invoiceDecision(user(r), id, b);
   }
   @Post('files')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
   upload(
     @Req() r: AuthRequest,
     @UploadedFile() file: Express.Multer.File,
     @Query('registrationId') id?: string,
     @Query('ticketId') t?: string,
+    @Query('contestId') contestId?: string,
+    @Query('purpose') purpose?: string,
   ) {
-    return this.files.upload(user(r), file, id, t);
+    return this.files.upload(user(r), file, id, t, { contestId, purpose });
   }
   @Get('files/:id') async file(
     @Req() r: AuthRequest,
@@ -485,7 +633,7 @@ export class ApiController {
     zip.on('error', () => res.destroy());
     zip.pipe(res);
     res.once('close', () => zip.abort());
-    for (const d of documents) zip.file(d.path, { name: d.name });
+    for (const d of documents) zip.append(d.buffer, { name: d.name });
     await zip.finalize();
   }
   @Get('admissions/:id/download') async admissionFile(

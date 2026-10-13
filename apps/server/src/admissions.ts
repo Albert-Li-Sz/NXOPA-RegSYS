@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { readBlob, type StorageRef } from './storage.js';
 import path from 'node:path';
 import type { Principal } from '@contest-center/contracts';
 import { fieldsSchema } from '@contest-center/contracts';
@@ -16,7 +17,14 @@ import {
   type Registration,
   type Tx,
 } from './db.js';
-import { getRegistration, requireManager, requireAdmin, manages, canRead } from './security.js';
+import {
+  getRegistration,
+  requireManager,
+  requireAdmin,
+  manages,
+  canRead,
+  ownerIds,
+} from './security.js';
 import { config } from './config.js';
 import { renderTemplate } from './templates.js';
 
@@ -77,7 +85,7 @@ export async function admissionMaterial(
         throw new Error('Invalid admission photo');
       const name = `photo-${file.id}.${file.mime === 'image/png' ? 'png' : 'jpg'}`;
       if (!assets[name]) {
-        const buffer = await readFile(path.join(config.storage, file.storageKey));
+        const buffer = await readBlob(file);
         bytes += buffer.length;
         if (Object.keys(assets).length >= 30 || bytes > 25 * 1024 * 1024)
           throw new Error('Admission assets exceed limits');
@@ -108,6 +116,44 @@ const seatSchema = z.object({
   seat: z.string().max(100),
 });
 export class AdmissionService {
+  async mine(u: Principal) {
+    const ids = ownerIds(u);
+    const registrations = await db.registration.findMany({
+      where: {
+        eligible: true,
+        OR: [
+          { ownerId: { in: ids } },
+          { people: { some: { userId: { in: ids }, active: true } } },
+          { coaches: { some: { userId: { in: ids } } } },
+        ],
+      },
+      include: {
+        contest: true,
+        admissions: {
+          where: { state: 'RELEASED', storageKey: { not: null } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+    const result = [];
+    for (const registration of registrations) {
+      const template = await activeTemplate(registration.contestId);
+      for (const document of registration.admissions)
+        if (
+          document.registrationVersion === registration.version &&
+          document.templateId === template?.id
+        )
+          result.push({
+            id: document.id,
+            registrationId: registration.id,
+            name: document.number,
+            contestTitle: registration.contest.title,
+            createdAt: document.createdAt,
+          });
+    }
+    return result;
+  }
+
   async templates(u: Principal, contestId?: string) {
     if (contestId) requireManager(u, contestId);
     else requireAdmin(u);
@@ -124,7 +170,7 @@ export class AdmissionService {
         source: z.string().min(20).max(100000),
       })
       .parse(body);
-    if (b.contestId) requireManager(u, b.contestId);
+    if (b.contestId) requireManager(u, b.contestId, 'ADMISSIONS');
     else requireAdmin(u);
     renderTemplate(b.source, {});
     return db.$transaction(async (tx) => {
@@ -163,7 +209,7 @@ export class AdmissionService {
     const b = z
       .object({ contestId: z.string().uuid().optional(), source: z.string().max(100000) })
       .parse(body);
-    if (b.contestId) requireManager(u, b.contestId);
+    if (b.contestId) requireManager(u, b.contestId, 'ADMISSIONS');
     else requireAdmin(u);
     const source = renderTemplate(b.source, {
       contest: { title: '示例程序设计竞赛', startsAt: '2026/10/18 09:00' },
@@ -211,7 +257,7 @@ export class AdmissionService {
       throw new BadRequestException('座位表包含重复或未选择的报名');
     for (const [index, id] of b.registrationIds.entries()) {
       const r = await getRegistration(u, id);
-      requireManager(u, r.contestId);
+      requireManager(u, r.contestId, 'ADMISSIONS');
       if (!r.eligible) {
         results.push({ registrationId: id, error: '尚未取得参赛资格' });
         continue;
@@ -290,7 +336,7 @@ export class AdmissionService {
       const a = await tx.admissionDocument.findUniqueOrThrow({ where: { id } });
       await lock(tx, a.registrationId);
       const r = await getRegistration(u, a.registrationId);
-      requireManager(u, r.contestId);
+      requireManager(u, r.contestId, 'ADMISSIONS');
       if (
         !r.eligible ||
         r.version !== a.registrationVersion ||
@@ -303,7 +349,10 @@ export class AdmissionService {
         data: { state: 'RELEASED', releasedAt: new Date() },
       });
       await audit(tx, u.id, 'ADMISSION_RELEASE', r.id, { documentId: id });
-      await event(tx, 'NOTIFY', r.id, { message: '您的准考证已发放，可以下载。' });
+      await event(tx, 'NOTIFY', r.id, {
+        message: '您的准考证已发放，可以下载。',
+        category: 'ADMISSION',
+      });
       return { ok: true };
     });
   }
@@ -351,12 +400,12 @@ export class AdmissionService {
       throw new ForbiddenException('准考证未发放或已经失效');
     return {
       name: `${a.number}.pdf`,
-      path: path.join(config.storage, a.storageKey),
+      buffer: await readBlob(a),
     };
   }
   async download(u: Principal, id: string) {
     const file = await this.downloadLocation(u, id);
-    return { name: file.name, buffer: await readFile(file.path) };
+    return { name: file.name, buffer: file.buffer };
   }
   async job(u: Principal, id: string) {
     const j = await db.job.findUniqueOrThrow({ where: { id } });
@@ -376,9 +425,7 @@ export class AdmissionService {
       throw new ForbiddenException();
     return {
       name: 'preview.pdf',
-      buffer: await readFile(
-        path.join(config.storage, String((j.result as Record<string, unknown>).storageKey)),
-      ),
+      buffer: await readBlob(j.result as unknown as StorageRef),
     };
   }
 }

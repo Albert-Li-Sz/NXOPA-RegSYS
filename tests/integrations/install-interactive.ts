@@ -124,7 +124,7 @@ try {
   console.log(`[交互安装验收] 从空数据卷交互安装 ${initialTag}……`);
   const output = await run(
     'install.sh',
-    `${project}\n1\n${initialTag}\n${gatewayPort}\nhttp://localhost:${httpPort}\ny\ny\ninteractive_admin\ninteractive@example.test\n${password}\n${password}\n`,
+    `${project}\n\n1\n${initialTag}\n3\n${gatewayPort}\nhttp://localhost:${httpPort}\ny\ny\ninteractive_admin\ninteractive@example.test\n${password}\n${password}\n`,
   );
   assert.ok(!output.includes(password));
   await writeFile(path.join(stage, 'install.log'), output, { mode: 0o600 });

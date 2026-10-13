@@ -4,8 +4,15 @@ import { useRoute, useRouter } from 'vue-router';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { defaultSite } from '@contest-center/contracts';
 import { api, auth, loadAuth } from './api';
+import PersonalShell from './components/PersonalShell.vue';
+import { adminLevelLabels } from '@contest-center/contracts';
 const router = useRouter();
 const route = useRoute();
+const personal = computed(
+  () =>
+    !!auth.user &&
+    (route.path.startsWith('/me/') || route.path === '/registrations' || route.path === '/account'),
+);
 const isLanding = computed(() => route.path === '/');
 const site = ref({ ...defaultSite });
 const brand = computed(() =>
@@ -50,7 +57,9 @@ async function logout() {
             >
           </nav>
           <div class="header-account" v-if="auth.user">
-            <span class="role-pill" v-if="auth.user.isAdmin">系统管理员</span
+            <span class="role-pill" v-if="auth.user.adminLevel">{{
+              adminLevelLabels[auth.user.adminLevel]
+            }}</span
             ><span class="role-pill" v-else-if="auth.user.isCoach">指导老师</span
             ><el-dropdown
               ><button class="user-menu">
@@ -59,7 +68,7 @@ async function logout() {
                 ><el-icon><ArrowDown /></el-icon></button
               ><template #dropdown
                 ><el-dropdown-menu
-                  ><el-dropdown-item @click="router.push('/account')">账号中心</el-dropdown-item
+                  ><el-dropdown-item @click="router.push('/me/profile')">个人中心</el-dropdown-item
                   ><el-dropdown-item @click="logout">退出登录</el-dropdown-item></el-dropdown-menu
                 ></template
               ></el-dropdown
@@ -71,7 +80,10 @@ async function logout() {
         </template>
       </div>
     </header>
-    <main class="page"><router-view :key="$route.fullPath" /></main>
+    <main class="page">
+      <PersonalShell v-if="personal"><router-view :key="$route.fullPath" /></PersonalShell
+      ><router-view v-else :key="$route.fullPath" />
+    </main>
     <footer class="site-footer">
       <div class="footer-brand">
         <img src="/brand/openatom-club.jpg" width="30" height="30" alt="" />

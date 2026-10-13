@@ -96,6 +96,9 @@ const seasons = computed(() => [...new Set(props.contests.map((c) => c.season))]
         ><el-button type="primary" class="view-button"
           >查看竞赛 <el-icon><ArrowRight /></el-icon></el-button
       ></router-link>
+      <router-link v-if="c.publicRosterEnabled" :to="`/contests/${c.id}/public-teams`"
+        ><el-button class="view-button" style="margin-top: 10px">队伍公示</el-button></router-link
+      >
     </article>
   </section>
 </template>

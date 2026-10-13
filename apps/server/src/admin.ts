@@ -6,11 +6,13 @@ import { db, json, audit } from './db.js';
 import { lock } from './db.js';
 import { siteSettings, validatePublicUrl } from './site-settings.js';
 import { paginated, dateFilter, type ListQuery } from './pagination.js';
-import { requireAdmin, requireManager, checkVersion } from './security.js';
+import { activeGrantWhere } from './authorization.js';
+import { requireAdmin, requireSystemAdmin, requireManager, checkVersion } from './security.js';
 export class AdminService {
   async users(u: Principal, query: ListQuery = {}) {
     requireAdmin(u);
     const where = {
+      deactivatedAt: null,
       ...(query.tag ? { tags: { has: z.string().min(1).max(40).parse(query.tag) } } : {}),
       ...(query.search
         ? {
@@ -20,7 +22,7 @@ export class AdminService {
           }
         : {}),
     };
-    return paginated(
+    const result = await paginated(
       query,
       (options) =>
         db.user.findMany({
@@ -34,7 +36,10 @@ export class AdminService {
             isCoach: true,
             verified: true,
             version: true,
-            roles: true,
+            grants: { where: activeGrantWhere() },
+            kind: true,
+            createdAt: true,
+            identityStatus: true,
             tags: true,
             profile: true,
           },
@@ -43,6 +48,16 @@ export class AdminService {
         }),
       () => db.user.count({ where }),
     );
+    const rows = Array.isArray(result) ? result : result.items;
+    const items = rows.map((row) => ({
+      ...row,
+      isAdmin: row.grants.some((g) => ['SYSTEM', 'SENIOR'].includes(g.level)),
+      isSystemAdmin: row.grants.some((g) => g.level === 'SYSTEM'),
+      roles: [
+        ...new Set(row.grants.filter((g) => g.level === 'CONTEST').map((g) => g.contestId)),
+      ].map((contestId) => ({ contestId })),
+    }));
+    return Array.isArray(result) ? items : { ...result, items };
   }
   async userTags(u: Principal) {
     requireAdmin(u);
@@ -71,7 +86,7 @@ export class AdminService {
     return siteSettings();
   }
   async saveSite(u: Principal, body: unknown) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     const b = z
       .object({
         name: z.string().min(1).max(80),

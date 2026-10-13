@@ -10,6 +10,13 @@ model User {
   username String @unique
   passwordHash String?
   name String
+  kind String @default("STUDENT")
+  personId String? @db.Uuid
+  person PersonRecord? @relation(fields:[personId],references:[id])
+  identityStatus String @default("UNSUBMITTED")
+  avatarAttachmentId String? @db.Uuid
+  deactivatedAt DateTime?
+  previousEmailHash String?
   verified Boolean @default(false)
   isAdmin Boolean @default(false)
   isCoach Boolean @default(false)
@@ -19,9 +26,48 @@ model User {
   createdAt DateTime @default(now())
   sessions Session[]
   roles RoleAssignment[]
+  grants AdminGrant[]
+  identityRequests IdentityRequest[]
   identities ExternalIdentity[]
   coachedRegistrations RegistrationCoach[]
   @@index([tags], type: Gin)
+  @@index([personId])
+}
+model PersonRecord {
+  id String @id @default(uuid()) @db.Uuid
+  identityKey String @unique
+  kind String
+  identifier String
+  institution String
+  data Json
+  createdAt DateTime @default(now())
+  users User[]
+}
+model IdentityRequest {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields:[userId],references:[id])
+  data Json
+  status String @default("PENDING")
+  reason String @default("")
+  reviewedBy String? @db.Uuid
+  createdAt DateTime @default(now())
+  reviewedAt DateTime?
+  @@index([userId,status])
+}
+model AdminGrant {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields:[userId],references:[id])
+  level String
+  contestId String? @db.Uuid
+  permissions String[] @default([])
+  grantedBy String @db.Uuid
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId,revokedAt,expiresAt])
+  @@index([contestId])
 }
 model Session {
   id String @id
@@ -39,6 +85,8 @@ model EmailToken {
   purpose String
   expiresAt DateTime
   usedAt DateTime?
+  codeHash String?
+  attempts Int @default(0)
 }
 model RoleAssignment {
   id String @id @default(uuid()) @db.Uuid
@@ -99,6 +147,8 @@ model Contest {
   published Boolean @default(false)
   archived Boolean @default(false)
   manuallyClosed Boolean @default(false)
+  publicRosterEnabled Boolean @default(false)
+  publicRosterReviews String[] @default(["APPROVED"])
   policy Json
   version Int @default(1)
   formVersion Int @default(1)
@@ -132,6 +182,7 @@ model Registration {
   contest Contest @relation(fields:[contestId],references:[id])
   ownerId String @db.Uuid
   number Int?
+  publicRank Int?
   teamName String @default("")
   teamEnglishName String @default("")
   participationType String @default("OFFICIAL")
@@ -204,6 +255,8 @@ model Invitation {
   acceptedAt DateTime?
   revoked Boolean @default(false)
   createdAt DateTime @default(now())
+  grantExpiresAt DateTime?
+  permissions String[] @default([])
   @@index([kind,createdAt])
   @@index([inviterId])
 }
@@ -223,11 +276,52 @@ model Attachment {
   ownerId String @db.Uuid
   registrationId String? @db.Uuid
   ticketId String? @db.Uuid
+  contestId String? @db.Uuid
+  purpose String @default("PRIVATE")
+  public Boolean @default(false)
+  deletedAt DateTime?
   name String
   mime String
   size Int
   storageKey String @unique
+  storageBackend String @default("LOCAL")
+  storageConfigId String? @db.Uuid
+  sha256 String @default("")
+  teamFiles TeamFile[]
   createdAt DateTime @default(now())
+  @@index([ownerId,deletedAt])
+  @@index([contestId,purpose])
+}
+model TeamFile {
+  id String @id @default(uuid()) @db.Uuid
+  attachmentId String @db.Uuid
+  attachment Attachment @relation(fields:[attachmentId],references:[id])
+  registrationId String @db.Uuid
+  assignedBy String @db.Uuid
+  createdAt DateTime @default(now())
+  @@unique([attachmentId,registrationId])
+  @@index([registrationId])
+}
+model StorageConfiguration {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  endpoint String
+  region String
+  bucket String
+  prefix String @default("nxopa")
+  accessKey String
+  encryptedSecret String
+  forcePathStyle Boolean @default(true)
+  createBucket Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+model MailTemplate {
+  key String @id
+  subject String
+  text String
+  html String
+  enabled Boolean @default(true)
+  version Int @default(1)
 }
 model PaymentVoucher {
   id String @id @default(uuid()) @db.Uuid
@@ -303,6 +397,7 @@ model SupportTicket {
   category String
   status String @default("OPEN")
   version Int @default(1)
+  emailNotifications Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   messages SupportMessage[]
@@ -340,6 +435,9 @@ model AdmissionDocument {
   version Int @default(1)
   state String @default("QUEUED")
   storageKey String?
+  storageBackend String @default("LOCAL")
+  storageConfigId String? @db.Uuid
+  sha256 String @default("")
   error String?
   releasedAt DateTime?
   releaseAt DateTime?

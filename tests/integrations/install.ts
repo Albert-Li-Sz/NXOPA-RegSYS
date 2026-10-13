@@ -126,11 +126,15 @@ try {
   if (installMode === 'source')
     assert.equal(model.services.api.build.context, root.replace(/\/$/, ''));
   else {
-    for (const service of ['initialize', 'api', 'worker', 'web', 'latex']) {
+    for (const service of ['initialize', 'api', 'worker', 'web', 'latex', 'minio']) {
       assert.ok(!model.services[service].build, `${service} does not build in image mode`);
       assert.ok(model.services[service].image.startsWith('ghcr.io/'));
     }
   }
+  assert.ok(model.services.minio);
+  assert.equal(model.services.minio.ports[0].host_ip, '127.0.0.1');
+  assert.equal(model.services.minio.ports[0].target, 9001);
+  assert.equal(model.services.api.environment.STORAGE_MODE, 'MINIO');
   assert.equal(model.services.latex.network_mode, 'none');
   assert.equal(model.services.latex.read_only, true);
   for (const service of ['postgres', 'redis', 'worker', 'latex', 'api', 'web'])
@@ -146,6 +150,7 @@ try {
     'caddy_data',
     'files',
     'latex_jobs',
+    'minio_data',
     'postgres_data',
     'redis_data',
   ]);
@@ -208,7 +213,7 @@ try {
   const imageModel = JSON.parse(
     await run(['compose', 'config', '--format', 'json'], { INSTALL_MODE: 'images' }),
   );
-  for (const service of ['initialize', 'api', 'worker', 'web', 'latex'])
+  for (const service of ['initialize', 'api', 'worker', 'web', 'latex', 'minio'])
     assert.ok(!imageModel.services[service].build);
   assert.equal(imageModel.services.initialize.image, imageModel.services.api.image);
   assert.equal(imageModel.services.api.volumes[0].source, model.services.api.volumes[0].source);
@@ -224,7 +229,16 @@ try {
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line));
-  for (const name of ['postgres', 'redis', 'api', 'worker', 'web', 'caddy', 'acceptance-proxy'])
+  for (const name of [
+    'postgres',
+    'redis',
+    'api',
+    'worker',
+    'web',
+    'caddy',
+    'minio',
+    'acceptance-proxy',
+  ])
     assert.equal(services.find((s) => s.Service === name).Health, 'healthy');
   for (const [service, image] of Object.entries(officialImages)) {
     const containerId = (await run(['compose', 'ps', '-q', service])).trim();

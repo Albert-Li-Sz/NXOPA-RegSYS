@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { verifyManifestGraph } from './verify-registry.mjs';
 
-const tag = process.argv[2] ?? 'v0.2.2';
+const tag = process.argv[2] ?? 'v0.3.0';
 assert.match(tag, /^v\d+\.\d+\.\d+$/);
 const prefix = process.env.IMAGE_PREFIX ?? 'ghcr.io/albert-li-sz/nxopa-regsys';
 assert.ok(prefix.startsWith('ghcr.io/'));
@@ -12,7 +12,7 @@ const commit = execFileSync('git', ['rev-parse', `${tag}^{commit}`], { encoding:
 const accept =
   'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json';
 const images = [];
-for (const service of ['api', 'worker', 'web', 'latex']) {
+for (const service of ['api', 'worker', 'web', 'latex', 'minio']) {
   const image = `${prefix}-${service}`;
   const repository = image.slice('ghcr.io/'.length);
   // Request an anonymous, pull-only registry token. No Docker or GitHub credentials are read.

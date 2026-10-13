@@ -6,6 +6,18 @@ export const router = createRouter({
     { path: '/', component: () => import('./pages/Home.vue') },
     { path: '/contests', component: () => import('./pages/Contests.vue'), meta: { auth: true } },
     { path: '/contests/:id', component: () => import('./pages/Contest.vue'), meta: { auth: true } },
+    { path: '/contests/:id/public-teams', component: () => import('./pages/PublicRoster.vue') },
+    {
+      path: '/me/profile',
+      component: () => import('./pages/ProfileCenter.vue'),
+      meta: { auth: true },
+    },
+    { path: '/me/files', component: () => import('./pages/MyFiles.vue'), meta: { auth: true } },
+    {
+      path: '/me/admissions',
+      component: () => import('./pages/MyAdmissions.vue'),
+      meta: { auth: true },
+    },
     { path: '/login', component: () => import('./pages/Account.vue') },
     { path: '/account/:action?', component: () => import('./pages/Account.vue') },
     {

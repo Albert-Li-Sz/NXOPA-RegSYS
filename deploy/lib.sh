@@ -57,7 +57,8 @@ set_env_value() {
 # Interactive operations always use the selected file, rather than unrelated shell overrides.
 use_saved_environment() {
   unset INSTALL_MODE IMAGE_TAG IMAGE_PREFIX COMPOSE_PROJECT_NAME PUBLIC_URL SITE_ADDRESS \
-    HTTP_PORT HTTPS_PORT WEB_PORT API_PORT GATEWAY_PORT REVERSE_PROXY_MODE POSTGRES_PASSWORD ENCRYPTION_KEY
+    HTTP_PORT HTTPS_PORT WEB_PORT API_PORT GATEWAY_PORT REVERSE_PROXY_MODE POSTGRES_PASSWORD ENCRYPTION_KEY \
+    STORAGE_MODE MINIO_ROOT_USER MINIO_ROOT_PASSWORD MINIO_CONSOLE_PORT S3_ENDPOINT S3_REGION S3_BUCKET S3_PREFIX S3_ACCESS_KEY S3_SECRET_KEY S3_FORCE_PATH_STYLE
 }
 
 ask() {
@@ -112,13 +113,17 @@ init_env() {
     return
   fi
   command -v openssl >/dev/null 2>&1 || fail '缺少 openssl，请先安装后再生成配置。'
-  local database_password encryption_key
+  local database_password encryption_key minio_user minio_password
   database_password="$(openssl rand -hex 24)"
   encryption_key="$(openssl rand -hex 32)"
+  minio_user="nxopa$(openssl rand -hex 8)"
+  minio_password="$(openssl rand -hex 32)"
   (
     set -o noclobber
     sed -e "s/^POSTGRES_PASSWORD=GENERATE_ON_INSTALL$/POSTGRES_PASSWORD=$database_password/" \
       -e "s/^ENCRYPTION_KEY=GENERATE_ON_INSTALL$/ENCRYPTION_KEY=$encryption_key/" \
+      -e "s/^MINIO_ROOT_USER=GENERATE_ON_INSTALL$/MINIO_ROOT_USER=$minio_user/" \
+      -e "s/^MINIO_ROOT_PASSWORD=GENERATE_ON_INSTALL$/MINIO_ROOT_PASSWORD=$minio_password/" \
       "$install_dir/.env.example" > "$install_env"
   )
   chmod 600 "$install_env"
@@ -127,6 +132,7 @@ init_env() {
 
 compose() {
   local compose_args=(--project-directory "$install_dir" --env-file "$install_env" -f "$install_dir/compose.yaml")
+  if [[ "$(env_value STORAGE_MODE)" == MINIO ]]; then compose_args+=(--profile minio); fi
   if [[ -n "$platform_override" ]]; then compose_args+=(-f "$platform_override"); fi
   if [[ "$install_mode" == images ]]; then compose_args+=(-f "$install_dir/compose.images.yaml"); fi
   if [[ -n "$proxy_override" ]]; then compose_args+=(-f "$proxy_override" -f "$proxy_platform_override"); fi
@@ -159,6 +165,10 @@ require_docker() {
 
 require_config() {
   [[ -f "$install_env" ]] || fail '尚未生成配置，请先运行 bash ../install.sh 或 bash ../install.sh init。'
+  if [[ "$(env_value STORAGE_MODE)" == MINIO ]]; then
+    [[ -n "$(env_value MINIO_ROOT_USER)" && -n "$(env_value MINIO_ROOT_PASSWORD)" ]] || fail '内置 MinIO 需要设置私有凭据。'
+    [[ "$(env_value MINIO_ROOT_USER)" != GENERATE_ON_INSTALL && "$(env_value MINIO_ROOT_PASSWORD)" != GENERATE_ON_INSTALL ]] || fail '请先运行 init 生成 MinIO 凭据。'
+  fi
   if awk '/^(ENCRYPTION_KEY|POSTGRES_PASSWORD)=GENERATE_ON_INSTALL$/ { found=1 } END { exit !found }' "$install_env"; then
     fail '配置仍包含未生成的密钥。请使用 init 创建配置，或填写有效的随机密钥。'
   fi

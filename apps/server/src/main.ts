@@ -27,6 +27,12 @@ import { AdminService } from './admin.js';
 import { InvitationService } from './invitations.js';
 import { MailService } from './mail.js';
 import { GithubService } from './github.js';
+import { AuthorizationService } from './authorization.js';
+import { PeopleService } from './people.js';
+import { StorageService } from './storage.js';
+import { MailTemplateService } from './mail-templates.js';
+import { PublicRosterService } from './public-roster.js';
+import { MailDeliveryService } from './mail-delivery.js';
 import { describeApi } from './openapi.js';
 import path from 'node:path';
 import { defaultSite } from '@contest-center/contracts';
@@ -71,6 +77,12 @@ class Errors implements ExceptionFilter {
     InvitationService,
     MailService,
     GithubService,
+    AuthorizationService,
+    PeopleService,
+    StorageService,
+    MailTemplateService,
+    PublicRosterService,
+    MailDeliveryService,
   ],
 })
 class AppModule {}

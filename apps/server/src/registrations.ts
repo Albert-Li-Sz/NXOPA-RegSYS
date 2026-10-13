@@ -41,6 +41,7 @@ import {
 import {
   canRead,
   canEdit,
+  ownerIds,
   requireAdmin,
   requireManager,
   manages,
@@ -59,9 +60,9 @@ function registrationAccess(u: Principal, contestId?: string) {
     ...(!u.isAdmin && !(contestId && manages(u, contestId))
       ? {
           OR: [
-            { ownerId: u.id },
-            { people: { some: { userId: u.id, active: true } } },
-            { coaches: { some: { userId: u.id } } },
+            { ownerId: { in: ownerIds(u) } },
+            { people: { some: { userId: { in: ownerIds(u) }, active: true } } },
+            { coaches: { some: { userId: { in: ownerIds(u) } } } },
             { contestId: { in: u.contestIds } },
           ],
         }
@@ -72,7 +73,18 @@ async function filteredAccess(u: Principal, query: ListQuery, contestId?: string
   const conditions: Prisma.RegistrationWhereInput[] = [
     registrationAccess(u, contestId),
     registrationFilters(query),
-    ...(query.role === 'coach' ? [{ coaches: { some: { userId: u.id } } }] : []),
+    ...(query.role === 'coach' ? [{ coaches: { some: { userId: { in: ownerIds(u) } } } }] : []),
+    ...(query.role === 'mine'
+      ? [
+          {
+            OR: [
+              { ownerId: { in: ownerIds(u) } },
+              { people: { some: { userId: { in: ownerIds(u) }, active: true } } },
+              { coaches: { some: { userId: { in: ownerIds(u) } } } },
+            ],
+          },
+        ]
+      : []),
   ];
   if (query.tag) {
     if (contestId) requireManager(u, contestId);
@@ -216,7 +228,7 @@ export class RegistrationService {
   }
   async saveContest(u: Principal, id: string | undefined, body: unknown) {
     const b = contestSchema.parse(body);
-    if (id) requireManager(u, id);
+    if (id) requireManager(u, id, 'CONTEST');
     else requireAdmin(u);
     return db.$transaction(async (tx) => {
       if (id) {
@@ -525,7 +537,7 @@ export class RegistrationService {
             ],
           },
         },
-        select: { id: true, name: true, profile: true },
+        select: { id: true, name: true, profile: true, kind: true },
       });
       if (participants.some((p) => !profileComplete(p)))
         throw new BadRequestException('请参赛成员先完善学号、姓名、班级、学院和性别');
@@ -689,7 +701,7 @@ export class RegistrationService {
     return db.$transaction(async (tx) => {
       await lock(tx, id);
       const r = await loaded(tx, id);
-      requireManager(u, r.contestId);
+      requireManager(u, r.contestId, 'REGISTRATIONS');
       checkVersion(r.version, b.version);
       const p = policy(r);
       if (r.status !== 'SUBMITTED') throw new BadRequestException('当前报名不能审核');

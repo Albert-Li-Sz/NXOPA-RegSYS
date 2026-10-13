@@ -4,6 +4,9 @@ import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, auth, money, date, label, upload } from '../api';
 import type { RegistrationView, PersonView, Data } from '../types';
+import FileLibrary from '../components/FileLibrary.vue';
+import MailDelivery from '../components/MailDelivery.vue';
+import { canManage, ownUser } from '../permissions';
 import InvoiceApplication from '../components/InvoiceApplication.vue';
 import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
@@ -57,14 +60,17 @@ async function loadFinance() {
 watch(tab, (value) => {
   if (value === 'finance') loadFinance();
 });
-const manager = computed(
-  () => !!r.value && (auth.user?.isAdmin || auth.user?.contestIds.includes(r.value.contestId)),
+const manager = computed(() => !!r.value && canManage(r.value.contestId, 'REGISTRATIONS'));
+const financeManager = computed(() => !!r.value && canManage(r.value.contestId, 'FINANCE'));
+const admissionManager = computed(() => !!r.value && canManage(r.value.contestId, 'ADMISSIONS'));
+const integrationManager = computed(
+  () => !!r.value && canManage(r.value.contestId, 'INTEGRATIONS'),
 );
 const editor = computed(
   () =>
     manager.value ||
-    r.value?.ownerId === auth.user?.id ||
-    r.value?.coaches.some((c) => c.userId === auth.user?.id),
+    (r.value && ownUser(r.value.ownerId)) ||
+    r.value?.coaches.some((c) => ownUser(c.userId)),
 );
 const policy = computed(() =>
   r.value ? policySchema.parse(r.value.policySnapshot ?? r.value.contest.policy) : undefined,
@@ -81,6 +87,12 @@ const invoicePolicy = computed(() =>
 const canSave = computed(
   () => editor.value && !['CANCELLED', 'CANCEL_REQUESTED'].includes(r.value?.status ?? ''),
 );
+async function saveRank() {
+  await api(`/registrations/${r.value!.id}/public-rank`, 'PUT', {
+    rank: r.value!.publicRank || null,
+  });
+  ElMessage.success('排名已保存');
+}
 async function refresh() {
   try {
     loadError.value = '';
@@ -96,7 +108,7 @@ async function refresh() {
         people: x.people,
       }),
     );
-    if (manager.value)
+    if (integrationManager.value)
       bindings.value = await api(`/integrations/bindings?contestId=${x.contestId}`);
     if (tab.value === 'finance') await loadFinance();
   } catch (e) {
@@ -297,8 +309,21 @@ async function memberSave(id: string, index: number) {
         label="准考证"
         name="admissions" /><el-tab-pane label="财务" name="finance" /><el-tab-pane
         label="比赛账号"
-        name="accounts"
+        name="accounts" /><el-tab-pane label="队伍附件" name="files" /><el-tab-pane
+        label="邮件通知"
+        name="mail"
     /></el-tabs>
+    <FileLibrary
+      v-if="tab === 'files'"
+      :registration-id="r.id"
+      :can-upload="
+        canManage(r.contestId, 'FILES') ||
+        ownUser(r.ownerId) ||
+        r.people.some((p) => p.active !== false && p.userId && ownUser(p.userId)) ||
+        r.coaches.some((c) => ownUser(c.userId))
+      "
+    />
+    <MailDelivery v-if="tab === 'mail'" :resource-id="r.id" />
     <div class="panel" v-if="tab === 'registration'">
       <div class="stats">
         <div class="stat">
@@ -521,6 +546,14 @@ async function memberSave(id: string, index: number) {
           ><el-button text type="danger" @click="cancel">取消报名</el-button>
         </div>
       </el-form>
+      <div v-if="manager" class="card">
+        <h3>队伍公示排名</h3>
+        <el-input-number v-model="r.publicRank" :min="1" aria-label="网络赛排名" /><el-button
+          @click="saveRank"
+          >保存排名</el-button
+        >
+        <p class="form-help">留空表示未设置排名。</p>
+      </div>
       <div v-if="manager && r.status === 'SUBMITTED'" class="card">
         <h3>竞赛管理员审核</h3>
         <div class="actions">
@@ -619,7 +652,7 @@ async function memberSave(id: string, index: number) {
           ><el-table-column label="操作" min-width="180"
             ><template #default="{ row }"
               ><a :href="`/api/v1/files/${row.attachmentId}`" target="_blank">查看凭证</a
-              ><template v-if="manager && row.status === 'PENDING'"
+              ><template v-if="financeManager && row.status === 'PENDING'"
                 ><el-button text type="primary" @click="confirmVoucher(row.id)">核账</el-button
                 ><el-button text type="danger" @click="rejectVoucher(row.id)"
                   >拒绝</el-button
@@ -680,7 +713,7 @@ async function memberSave(id: string, index: number) {
           ><el-table-column label="金额"
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
           ><el-table-column label="说明" prop="note" min-width="160" /><el-table-column
-            v-if="manager"
+            v-if="financeManager"
             label="操作"
             ><template #default="{ row }"
               ><el-button v-if="row.kind === 'PAYMENT'" text type="danger" @click="reverse(row.id)"
@@ -736,7 +769,7 @@ async function memberSave(id: string, index: number) {
             label="状态"
             ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
           ><el-table-column label="实际退款参考号" prop="reference" /><el-table-column
-            v-if="manager"
+            v-if="financeManager"
             label="操作"
             min-width="180"
             ><template #default="{ row }"
@@ -829,7 +862,7 @@ async function memberSave(id: string, index: number) {
                 target="_blank"
                 >下载发票</a
               ><el-button
-                v-if="manager && row.status === 'REQUESTED'"
+                v-if="financeManager && row.status === 'REQUESTED'"
                 text
                 type="primary"
                 @click="
@@ -838,7 +871,7 @@ async function memberSave(id: string, index: number) {
                 "
                 >上传发票</el-button
               ><el-button
-                v-if="manager && row.status === 'ISSUED'"
+                v-if="financeManager && row.status === 'ISSUED'"
                 text
                 type="danger"
                 @click="
@@ -866,7 +899,7 @@ async function memberSave(id: string, index: number) {
           policy?.mode === 'TEAM' ? '全队共用一张准考证' : '个人报名一人一张准考证'
         }}。资料或资格变更后，原准考证会失效。
       </div>
-      <div v-if="manager" class="actions">
+      <div v-if="admissionManager" class="actions">
         <el-button type="primary" @click="generate">生成准考证</el-button
         ><router-link :to="`/admin/contests/${r.contestId}?tab=templates`"
           ><el-button>配置模板</el-button></router-link
@@ -882,13 +915,13 @@ async function memberSave(id: string, index: number) {
           ><el-table-column label="操作" min-width="160"
             ><template #default="{ row }"
               ><el-button
-                v-if="manager && row.state === 'READY'"
+                v-if="admissionManager && row.state === 'READY'"
                 text
                 type="primary"
                 @click="action(`/admissions/${row.id}/release`)"
                 >发放</el-button
               ><a
-                v-if="row.state === 'RELEASED' || (manager && row.state === 'READY')"
+                v-if="row.state === 'RELEASED' || (admissionManager && row.state === 'READY')"
                 :href="`/api/v1/admissions/${row.id}/download`"
                 target="_blank"
                 >下载 PDF</a
@@ -900,7 +933,7 @@ async function memberSave(id: string, index: number) {
     </div>
     <div v-if="tab === 'accounts'" class="panel">
       <div class="notice">比赛账号与本站账号分别管理。请妥善保存比赛账号。</div>
-      <div v-if="manager" class="actions">
+      <div v-if="integrationManager" class="actions">
         <el-button
           v-for="b in bindings"
           :key="b.id"
@@ -922,7 +955,7 @@ async function memberSave(id: string, index: number) {
         <div class="actions">
           <el-button
             type="primary"
-            :disabled="!r.eligible && !manager"
+            :disabled="!r.eligible && !integrationManager"
             @click="
               api(`/integrations/registrations/${r.id}/credentials`).then((v) => (credentials = v))
             "

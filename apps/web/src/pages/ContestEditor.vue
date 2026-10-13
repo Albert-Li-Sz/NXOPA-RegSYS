@@ -13,6 +13,8 @@ import { api, date, label, money, downloadArchive } from '../api';
 import type { Data, FieldDefinition } from '../types';
 import MarkdownEditor from '../components/MarkdownEditor.vue';
 import PlatformBindings from '../components/PlatformBindings.vue';
+import FileLibrary from '../components/FileLibrary.vue';
+import { canManage } from '../permissions';
 import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
 const roster = usePagedList('contest-registrations', () =>
@@ -42,6 +44,8 @@ const form = ref<Data>({
   opensAt: new Date().toISOString(),
   closesAt: new Date(Date.now() + 6 * 86400000).toISOString(),
   correctionUntil: null,
+  publicRosterEnabled: false,
+  publicRosterReviews: ['APPROVED'],
   published: false,
   archived: false,
   manuallyClosed: false,
@@ -56,6 +60,8 @@ const selected = ref<Data[]>([]),
   editingField = ref(-1),
   field = ref<Data>({}),
   options = ref('');
+const permission = (item: Parameters<typeof canManage>[1]) =>
+  isNew.value || canManage(String(route.params.id), item);
 const filtered = computed(() => rows.value);
 watch([statusFilter, search], ([review, value]) => {
   roster.filters.value = { ...roster.filters.value, review, search: value };
@@ -78,6 +84,7 @@ async function load() {
     if (!isNew.value) {
       form.value = await api(`/contests/${route.params.id}`);
       form.value.policy = policySchema.parse(form.value.policy);
+      if (tab.value === 'settings' && !permission('CONTEST')) tab.value = 'registrations';
       await refreshModules();
     }
   } catch (e) {
@@ -94,7 +101,7 @@ async function refreshModules() {
       await roster.load();
       sum.value = await api(`/contests/${route.params.id}/statistics?${roster.query(false)}`);
     }
-    if (['templates', 'registrations'].includes(tab.value)) {
+    if (['templates', 'registrations'].includes(tab.value) && permission('ADMISSIONS')) {
       templates.value = await api(`/admissions/templates?contestId=${route.params.id}`);
       const active =
         templates.value.find((t) => t.contestId === route.params.id && t.active) ??
@@ -295,19 +302,30 @@ function insertVariable(v: string) {
       >
     </div>
     <el-tabs v-model="tab"
-      ><el-tab-pane label="竞赛设置" name="settings" /><el-tab-pane
+      ><el-tab-pane v-if="permission('CONTEST')" label="竞赛设置" name="settings" /><el-tab-pane
+        v-if="permission('CONTEST')"
         label="报名字段"
         name="fields" /><el-tab-pane
         v-if="!isNew"
         label="报名管理"
         name="registrations" /><el-tab-pane
-        v-if="!isNew"
+        v-if="!isNew && permission('ADMISSIONS')"
         label="准考证模板"
-        name="templates" /><el-tab-pane v-if="!isNew" label="平台联动" name="integrations"
+        name="templates" /><el-tab-pane
+        v-if="!isNew && permission('INTEGRATIONS')"
+        label="平台联动"
+        name="integrations" /><el-tab-pane
+        v-if="!isNew && permission('FILES')"
+        label="竞赛附件"
+        name="files"
     /></el-tabs>
     <el-alert v-if="moduleError" :title="moduleError" type="error" :closable="false"
       ><el-button @click="refreshModules">重新加载</el-button></el-alert
     >
+    <FileLibrary
+      v-if="tab === 'files' && permission('FILES')"
+      :contest-id="String(route.params.id)"
+    />
     <div class="panel" v-if="tab === 'settings'">
       <el-form label-position="top"
         ><div class="card">
@@ -345,6 +363,22 @@ function insertVariable(v: string) {
                 style="margin-left: 15px"
             /></el-form-item>
           </div>
+          <el-form-item label="队伍公示"
+            ><el-switch v-model="form.publicRosterEnabled" active-text="开启公示名单"
+          /></el-form-item>
+          <el-form-item v-if="form.publicRosterEnabled" label="公示的审核状态"
+            ><el-checkbox-group v-model="form.publicRosterReviews"
+              ><el-checkbox
+                v-for="state in ['APPROVED', 'PENDING', 'CORRECTION', 'REJECTED']"
+                :key="state"
+                :value="state"
+                >{{ label(state) }}</el-checkbox
+              ></el-checkbox-group
+            >
+            <p class="form-help">
+              公示仅包含队名、学校、队员姓名、指导老师、排名与审核状态。
+            </p></el-form-item
+          >
           <el-form-item label="竞赛介绍"
             ><MarkdownEditor
               v-model="form.description"

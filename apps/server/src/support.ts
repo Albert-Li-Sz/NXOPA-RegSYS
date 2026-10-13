@@ -3,7 +3,8 @@ import { z } from 'zod';
 import type { Principal } from '@contest-center/contracts';
 import { db, json, lock, audit, event } from './db.js';
 import { paginated, dateFilter, type ListQuery } from './pagination.js';
-import { getRegistration, manages, checkVersion } from './security.js';
+import { getRegistration, manages, checkVersion, owns, ownerIds } from './security.js';
+import { activeGrantWhere } from './authorization.js';
 const message = z.object({
   text: z.string().trim().min(1).max(10000),
   attachments: z.array(z.string().uuid()).max(10).default([]),
@@ -14,7 +15,7 @@ export class SupportService {
       ? {}
       : {
           OR: [
-            { ownerId: u.id },
+            { ownerId: { in: ownerIds(u) } },
             { contestId: { in: u.contestIds } },
             {
               registrationId: {
@@ -22,9 +23,9 @@ export class SupportService {
                   await db.registration.findMany({
                     where: {
                       OR: [
-                        { ownerId: u.id },
-                        { people: { some: { userId: u.id, active: true } } },
-                        { coaches: { some: { userId: u.id } } },
+                        { ownerId: { in: ownerIds(u) } },
+                        { people: { some: { userId: { in: ownerIds(u) }, active: true } } },
+                        { coaches: { some: { userId: { in: ownerIds(u) } } } },
                       ],
                     },
                     select: { id: true },
@@ -60,7 +61,7 @@ export class SupportService {
   }
   async access(u: Principal, id: string) {
     const t = await db.supportTicket.findUniqueOrThrow({ where: { id } });
-    if (t.ownerId !== u.id && !(t.contestId && manages(u, t.contestId)) && !u.isAdmin) {
+    if (!owns(u, t.ownerId) && !(t.contestId && manages(u, t.contestId)) && !u.isAdmin) {
       if (!t.registrationId) throw new ForbiddenException();
       await getRegistration(u, t.registrationId);
     }
@@ -89,6 +90,7 @@ export class SupportService {
         registrationId: z.string().uuid().optional(),
         title: z.string().min(2).max(200),
         category: z.string().min(1).max(100),
+        emailNotifications: z.boolean().default(true),
       })
       .extend(message.shape)
       .parse(body);
@@ -106,6 +108,7 @@ export class SupportService {
           registrationId: b.registrationId,
           title: b.title,
           category: b.category,
+          emailNotifications: b.emailNotifications,
         },
       });
       for (const id of b.attachments) {
@@ -121,10 +124,28 @@ export class SupportService {
       const administrators = await tx.user.findMany({
         where: {
           verified: true,
-          OR: [
-            { isAdmin: true },
-            ...(t.contestId ? [{ roles: { some: { contestId: t.contestId } } }] : []),
-          ],
+          deactivatedAt: null,
+          grants: {
+            some: {
+              AND: [
+                activeGrantWhere(),
+                {
+                  OR: [
+                    { level: { in: ['SYSTEM', 'SENIOR'] } },
+                    ...(t.contestId
+                      ? [
+                          {
+                            level: 'CONTEST',
+                            contestId: t.contestId,
+                            permissions: { has: 'SUPPORT' },
+                          },
+                        ]
+                      : []),
+                  ],
+                },
+              ],
+            },
+          },
         },
         select: { email: true },
       });
@@ -134,6 +155,7 @@ export class SupportService {
           subject: '新工单待处理',
           text: t.title,
           actionPath: `/support/${t.id}`,
+          category: 'SUPPORT_NEW',
         });
       return t;
     });
@@ -150,7 +172,17 @@ export class SupportService {
       await lock(tx, id);
       const t = await tx.supportTicket.findUniqueOrThrow({ where: { id } });
       checkVersion(t.version, b.version);
-      const manager = u.isAdmin || (!!t.contestId && manages(u, t.contestId));
+      const manager = u.isAdmin || (!!t.contestId && manages(u, t.contestId, 'SUPPORT'));
+      if (!manager && !owns(u, t.ownerId)) {
+        if (!t.registrationId) throw new ForbiddenException();
+        const registration = await getRegistration(u, t.registrationId);
+        if (
+          !owns(u, registration.ownerId) &&
+          !registration.people.some((p) => p.active && p.userId && owns(u, p.userId)) &&
+          !registration.coaches.some((c) => owns(u, c.userId))
+        )
+          throw new ForbiddenException('没有回复工单的权限');
+      }
       if (b.status && !manager && !['OPEN', 'CLOSED'].includes(b.status))
         throw new ForbiddenException();
       for (const fileId of b.attachments) {
@@ -175,12 +207,50 @@ export class SupportService {
       });
       await audit(tx, u.id, 'TICKET_REPLY', id);
       const owner = await tx.user.findUniqueOrThrow({ where: { id: t.ownerId } });
-      await event(tx, 'MAIL', id, {
-        to: owner.email,
-        subject: '工单有新回复',
-        text: `${t.title}\n${b.text}`,
-        actionPath: `/support/${id}`,
-      });
+      const recipients = manager
+        ? await tx.user.findMany({
+            where: {
+              verified: true,
+              deactivatedAt: null,
+              ...(owner.personId ? { personId: owner.personId } : { id: owner.id }),
+            },
+          })
+        : await tx.user.findMany({
+            where: {
+              verified: true,
+              deactivatedAt: null,
+              grants: {
+                some: {
+                  AND: [
+                    activeGrantWhere(),
+                    {
+                      OR: [
+                        { level: { in: ['SYSTEM', 'SENIOR'] } },
+                        ...(t.contestId
+                          ? [
+                              {
+                                level: 'CONTEST',
+                                contestId: t.contestId,
+                                permissions: { has: 'SUPPORT' },
+                              },
+                            ]
+                          : []),
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          });
+      if (t.emailNotifications)
+        for (const recipient of recipients.filter((x) => !x.deactivatedAt))
+          await event(tx, 'MAIL', id, {
+            to: recipient.email,
+            subject: '工单有新回复',
+            text: `${t.title}\n${b.text}`,
+            actionPath: `/support/${id}`,
+            category: 'SUPPORT_REPLY',
+          });
       return result;
     });
   }

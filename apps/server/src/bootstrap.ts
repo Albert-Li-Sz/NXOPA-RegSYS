@@ -38,15 +38,20 @@ if (!password) {
 passwordSchema.parse(password);
 if (await db.user.findUnique({ where: { email } }))
   throw new Error('This email already exists; bootstrap never overwrites an account');
-await db.user.create({
-  data: {
-    email,
-    username: process.env.ADMIN_USERNAME ?? 'administrator',
-    name: '系统管理员',
-    passwordHash: await hash(password, { type: argon2id }),
-    verified: true,
-    isAdmin: true,
-  },
+await db.$transaction(async (tx) => {
+  const administrator = await tx.user.create({
+    data: {
+      email,
+      username: process.env.ADMIN_USERNAME ?? 'administrator',
+      name: '系统管理员',
+      passwordHash: await hash(password, { type: argon2id }),
+      verified: true,
+      isAdmin: true,
+    },
+  });
+  await tx.adminGrant.create({
+    data: { userId: administrator.id, level: 'SYSTEM', grantedBy: administrator.id },
+  });
 });
 if (!(await db.admissionTemplate.count()))
   await db.admissionTemplate.create({

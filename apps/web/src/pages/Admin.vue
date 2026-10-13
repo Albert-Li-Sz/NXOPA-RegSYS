@@ -11,6 +11,12 @@ import type { Data, ContestView } from '../types';
 import PlatformBindings from '../components/PlatformBindings.vue';
 import MailSettings from '../components/MailSettings.vue';
 import GithubSettings from '../components/GithubSettings.vue';
+import StorageSettings from '../components/StorageSettings.vue';
+import MailTemplates from '../components/MailTemplates.vue';
+import StudentsView from '../components/StudentsView.vue';
+import IdentityReviews from '../components/IdentityReviews.vue';
+import AdminGrants from '../components/AdminGrants.vue';
+import { isSystemAdmin, canManage } from '../permissions';
 import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
 import { useRoute } from 'vue-router';
@@ -20,7 +26,11 @@ const allowedTabs = [
   'contests',
   'jobs',
   'instances',
-  ...(auth.user?.isAdmin ? ['users', 'tokens', 'site', 'mail', 'github', 'audit'] : []),
+  ...(auth.user?.isAdmin ? ['users', 'grants', 'identities', 'audit'] : []),
+  ...(auth.user?.isAdmin || auth.user?.contestIds.some((id) => canManage(id, 'STUDENTS'))
+    ? ['students']
+    : []),
+  ...(isSystemAdmin() ? ['tokens', 'site', 'mail', 'github', 'storage', 'mail-templates'] : []),
 ];
 const jobsPage = usePagedList('jobs', () => '/admin/jobs'),
   usersPage = usePagedList('users', () => '/admin/users'),
@@ -230,6 +240,8 @@ async function generateAuthorization() {
         ? { contestId: authorization.value.contestId }
         : {}),
       expiresInDays: authorization.value.expiresInDays,
+      grantExpiresAt: authorization.value.grantExpiresAt || undefined,
+      permissions: authorization.value.permissions,
     });
     authorizationUrl.value = result.url;
     authorizationExpiresAt.value = result.expiresAt;
@@ -339,18 +351,31 @@ async function webhook() {
       label="评测平台"
       name="instances"
     />
+    <el-tab-pane v-if="allowedTabs.includes('students')" label="学生视图" name="students" />
     <template v-if="auth.user?.isAdmin"
-      ><el-tab-pane label="用户权限" name="users" /><el-tab-pane
-        label="API 与 Webhook"
-        name="tokens" /><el-tab-pane label="全局设置" name="site" /><el-tab-pane
-        label="邮件设置"
-        name="mail" /><el-tab-pane label="GitHub 登录" name="github" /><el-tab-pane
+      ><el-tab-pane label="用户与邀请" name="users" /><el-tab-pane
+        label="管理员授权"
+        name="grants" /><el-tab-pane label="实名审核" name="identities" /><el-tab-pane
         label="审计日志"
         name="audit"
     /></template>
+    <template v-if="isSystemAdmin()"
+      ><el-tab-pane label="API 与 Webhook" name="tokens" /><el-tab-pane
+        label="全局设置"
+        name="site" /><el-tab-pane label="邮件设置" name="mail" /><el-tab-pane
+        label="邮件模板"
+        name="mail-templates" /><el-tab-pane label="文件存储" name="storage" /><el-tab-pane
+        label="GitHub 登录"
+        name="github"
+    /></template>
   </el-tabs>
-  <div class="panel" v-if="tab === 'mail' && auth.user?.isAdmin"><MailSettings /></div>
-  <div class="panel" v-if="tab === 'github' && auth.user?.isAdmin"><GithubSettings /></div>
+  <div class="panel" v-if="tab === 'mail' && isSystemAdmin()"><MailSettings /></div>
+  <div class="panel" v-if="tab === 'github' && isSystemAdmin()"><GithubSettings /></div>
+  <StorageSettings v-if="tab === 'storage' && isSystemAdmin()" />
+  <MailTemplates v-if="tab === 'mail-templates' && isSystemAdmin()" />
+  <StudentsView v-if="tab === 'students' && allowedTabs.includes('students')" />
+  <IdentityReviews v-if="tab === 'identities' && auth.user?.isAdmin" />
+  <AdminGrants v-if="tab === 'grants' && auth.user?.isAdmin" />
   <div class="panel" v-if="tab === 'contests'">
     <div class="actions" v-if="auth.user?.isAdmin">
       <router-link to="/admin/contests/new"
@@ -521,9 +546,12 @@ async function webhook() {
           label="身份"
           min-width="200"
           ><template #default="{ row }"
-            ><el-tag v-if="row.isAdmin">系统管理员</el-tag
+            ><el-tag type="info">{{ row.kind === 'TEACHER' ? '教师' : '学生' }}</el-tag
+            ><el-tag v-if="row.isAdmin">{{
+              row.isSystemAdmin ? '系统管理员' : '高级管理员'
+            }}</el-tag
             ><el-tag v-if="row.isCoach" type="success">指导老师</el-tag
-            ><el-tag v-for="role in row.roles" :key="role.id"
+            ><el-tag v-for="role in row.roles" :key="role.contestId"
               >竞赛管理员 · {{ contestName(role.contestId) }}</el-tag
             ></template
           ></el-table-column
@@ -533,7 +561,7 @@ async function webhook() {
             ><el-button text type="primary" @click="inviteRole('CONTEST_ADMIN', row)"
               >授权竞赛</el-button
             ><el-button
-              v-if="row.id !== auth.user?.id"
+              v-if="isSystemAdmin() && row.id !== auth.user?.id"
               text
               :type="row.isAdmin ? 'danger' : 'primary'"
               @click="
@@ -649,7 +677,7 @@ async function webhook() {
     <div class="notice">
       系统管理员维护平台地址与接入凭据，竞赛管理员可为获授权的竞赛配置比赛绑定。本站账号与比赛账号分别管理。
     </div>
-    <div class="actions" v-if="auth.user?.isAdmin">
+    <div class="actions" v-if="isSystemAdmin()">
       <el-button type="primary" @click="editInstance()">添加 Hydro / DOMjudge 实例</el-button>
     </div>
     <div class="card">
@@ -662,7 +690,7 @@ async function webhook() {
         ><el-table-column label="地址" prop="baseUrl" min-width="250" /><el-table-column
           label="操作"
           ><template #default="{ row }"
-            ><el-button text v-if="auth.user?.isAdmin" @click="editInstance(row)"
+            ><el-button text v-if="isSystemAdmin()" @click="editInstance(row)"
               >编辑实例</el-button
             ></template
           ></el-table-column
@@ -916,7 +944,11 @@ async function webhook() {
       <el-form-item label="邀请类型" for="authorization-kind"
         ><el-select id="authorization-kind" v-model="authorization.kind" style="width: 100%"
           ><el-option
-            v-for="(value, kind) in accountInvitationLabels"
+            v-for="(value, kind) in Object.fromEntries(
+              Object.entries(accountInvitationLabels).filter(
+                ([k]) => isSystemAdmin() || !['SYSTEM_ADMIN', 'SENIOR_ADMIN'].includes(k),
+              ),
+            )"
             :key="kind"
             :label="value"
             :value="kind" /></el-select
@@ -963,6 +995,14 @@ async function webhook() {
           v-model="authorization.expiresInDays"
           :min="1"
           :max="30"
+      /></el-form-item>
+      <el-form-item
+        v-if="['SYSTEM_ADMIN', 'SENIOR_ADMIN', 'CONTEST_ADMIN'].includes(authorization.kind || '')"
+        label="授权到期时间（留空为永久）"
+        ><el-date-picker
+          v-model="authorization.grantExpiresAt"
+          type="datetime"
+          value-format="YYYY-MM-DDTHH:mm:ssZ"
       /></el-form-item>
       <p class="muted">
         邀请仅限指定账号或邮箱接受。新增身份须由接收者确认，账号邀请不会附加管理员权限。

@@ -9,8 +9,9 @@ import {
   type Principal,
 } from '@contest-center/contracts';
 import { db, lock, audit, enqueue, json, type Tx } from './db.js';
-import { requireAdmin, encrypt, decrypt, checkVersion } from './security.js';
+import { requireSystemAdmin, encrypt, decrypt, checkVersion } from './security.js';
 import { config } from './config.js';
+import { formatMail } from './mail-templates.js';
 
 const key = 'mail';
 type StoredMail = Omit<MailSettingsInput, 'version' | 'password'> & { encryptedPassword: string };
@@ -81,7 +82,16 @@ function mailError(error: unknown) {
   return '邮件发送失败，请检查邮件服务器设置后重试';
 }
 export async function sendSystemMail(
-  message: { to: string; subject: string; text: string },
+  message: {
+    to: string;
+    subject: string;
+    text: string;
+    category?: string;
+    code?: string;
+    actionPath?: string;
+    name?: string;
+    status?: string;
+  },
   expectedVersion?: number,
 ) {
   const s = await settings();
@@ -90,8 +100,13 @@ export async function sendSystemMail(
   if (!s.value.enabled) throw new Error('邮件服务已停用，请启用邮件服务后重试');
   const client = transport(s.value);
   try {
+    const formatted = await formatMail(message);
+    if ('skipped' in formatted) return { configurationVersion: s.version, skipped: true };
     await client.sendMail({
-      ...message,
+      to: message.to,
+      subject: formatted.subject,
+      text: formatted.text,
+      html: formatted.html,
       from: { name: s.value.fromName, address: s.value.fromAddress },
     });
     return { configurationVersion: s.version };
@@ -103,11 +118,11 @@ export async function sendSystemMail(
 }
 export class MailService {
   async get(u: Principal) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     return view(await settings());
   }
   async save(u: Principal, body: unknown) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     const b = mailSettingsSchema.parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, 'system:mail');
@@ -144,7 +159,7 @@ export class MailService {
     });
   }
   async probe(u: Principal, body: unknown) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     const { version } = z.object({ version: z.number().int().min(0) }).parse(body);
     const s = await settings();
     checkVersion(s.version, version);
@@ -160,7 +175,7 @@ export class MailService {
     }
   }
   async test(u: Principal, body: unknown) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     const { version } = z.object({ version: z.number().int().min(0) }).parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, 'system:mail');
@@ -179,7 +194,7 @@ export class MailService {
     });
   }
   async testStatus(u: Principal, id: string) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     const job = await db.job.findFirstOrThrow({
       where: { id: z.string().uuid().parse(id), kind: 'MAIL', resourceId: key },
     });

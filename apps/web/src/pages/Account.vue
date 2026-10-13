@@ -6,12 +6,24 @@ import { defaultFields, invitationReturnPathSchema } from '@contest-center/contr
 import { api, auth, loadAuth, date } from '../api';
 import type { Data } from '../types';
 import DynamicFields from '../components/DynamicFields.vue';
+import ProfileCenter from './ProfileCenter.vue';
 const route = useRoute(),
   router = useRouter(),
   mode = ref(route.query.mode === 'register' ? 'register' : 'login'),
   busy = ref(false),
   notice = ref('');
-const form = reactive({ account: '', email: '', username: '', name: '', password: '' });
+const form = reactive({
+  account: '',
+  email: '',
+  username: '',
+  name: '',
+  password: '',
+  code: '',
+  kind: 'STUDENT',
+  identifier: '',
+  enrollmentYear: new Date().getFullYear(),
+  employedAt: '',
+});
 const profile = reactive<Data>({});
 const sessions = ref<Data[]>([]);
 const github = ref({ enabled: false, linked: false });
@@ -75,11 +87,19 @@ async function submit() {
   try {
     if (mode.value === 'forgot') {
       await api('/auth/forgot', 'POST', { email: form.email });
-      notice.value = '如果邮箱已注册，我们会发送重置邮件。';
+      notice.value =
+        '如果邮箱已注册，我们会发送重置邮件。请输入邮件中的六位验证码，或打开邮件链接。';
+      mode.value = 'resetCode';
       return;
     }
-    if (mode.value === 'reset') {
-      await api('/auth/reset', 'POST', { token: route.query.token, password: form.password });
+    if (['reset', 'resetCode'].includes(mode.value)) {
+      await api(
+        mode.value === 'resetCode' ? '/auth/reset-code' : '/auth/reset',
+        'POST',
+        mode.value === 'resetCode'
+          ? { email: form.email, code: form.code, password: form.password }
+          : { token: route.query.token, password: form.password },
+      );
       await loadAuth();
       ElMessage.success('密码已重置，请登录');
       await router.replace('/login');
@@ -89,7 +109,12 @@ async function submit() {
       `/auth/${mode.value === 'register' ? 'register' : 'login'}`,
       'POST',
       mode.value === 'register'
-        ? { ...form, next: invitationReturn.value }
+        ? {
+            ...form,
+            employedAt: form.kind === 'TEACHER' ? form.employedAt : undefined,
+            enrollmentYear: form.kind === 'STUDENT' ? form.enrollmentYear : undefined,
+            next: invitationReturn.value,
+          }
         : { account: form.account, password: form.password },
     );
     auth.user = data.user;
@@ -145,7 +170,7 @@ async function revokeSession(id: string) {
       >返回邀请确认</router-link
     >
   </div>
-  <div v-if="!auth.user || mode === 'reset'" class="auth-layout">
+  <div v-if="!auth.user || ['reset', 'resetCode'].includes(mode)" class="auth-layout">
     <div class="auth-intro">
       <span class="eyebrow">OPENATOM CLUB · NANXIAO</span>
       <h1>每一次竞赛，<br />从这里开始。</h1>
@@ -159,7 +184,7 @@ async function revokeSession(id: string) {
             ? '创建账号'
             : mode === 'forgot'
               ? '找回密码'
-              : mode === 'reset'
+              : ['reset', 'resetCode'].includes(mode)
                 ? '设置新密码'
                 : '欢迎回来'
         }}
@@ -179,7 +204,10 @@ async function revokeSession(id: string) {
             autocomplete="username"
             placeholder="输入用户名或邮箱"
         /></el-form-item>
-        <el-form-item v-if="['register', 'forgot'].includes(mode)" label="邮箱" for="email"
+        <el-form-item
+          v-if="['register', 'forgot', 'resetCode'].includes(mode)"
+          label="邮箱"
+          for="email"
           ><el-input id="email" v-model="form.email" type="email" autocomplete="email"
         /></el-form-item>
         <template v-if="mode === 'register'"
@@ -192,6 +220,37 @@ async function revokeSession(id: string) {
           ><el-form-item label="姓名" for="name"
             ><el-input id="name" v-model="form.name" autocomplete="name" /></el-form-item
         ></template>
+        <template v-if="mode === 'register'"
+          ><el-form-item label="用户类型"
+            ><el-radio-group v-model="form.kind"
+              ><el-radio-button value="STUDENT">学生</el-radio-button
+              ><el-radio-button value="TEACHER">教师</el-radio-button></el-radio-group
+            ></el-form-item
+          ><el-form-item
+            :label="form.kind === 'TEACHER' ? '工号' : '学号'"
+            for="register-identifier"
+            required
+            ><el-input id="register-identifier" v-model="form.identifier" /></el-form-item
+          ><el-form-item
+            v-if="form.kind === 'STUDENT'"
+            label="入学年份"
+            for="register-year"
+            required
+            ><el-input-number
+              id="register-year"
+              v-model="form.enrollmentYear"
+              :min="1950"
+              :max="new Date().getFullYear() + 1" /></el-form-item
+          ><el-form-item v-else label="入职日期" for="register-employment" required
+            ><el-date-picker
+              id="register-employment"
+              v-model="form.employedAt"
+              type="date"
+              value-format="YYYY-MM-DD" /></el-form-item
+        ></template>
+        <el-form-item v-if="mode === 'resetCode'" label="邮箱验证码" for="reset-code"
+          ><el-input id="reset-code" v-model="form.code" maxlength="6" inputmode="numeric"
+        /></el-form-item>
         <el-form-item v-if="mode !== 'forgot'" label="密码" for="password"
           ><el-input
             id="password"
@@ -211,7 +270,7 @@ async function revokeSession(id: string) {
               ? '注册账号'
               : mode === 'forgot'
                 ? '发送重置邮件'
-                : mode === 'reset'
+                : ['reset', 'resetCode'].includes(mode)
                   ? '重置密码'
                   : '登录'
           }}</el-button
@@ -231,91 +290,7 @@ async function revokeSession(id: string) {
       </div>
     </div>
   </div>
-  <template v-else
-    ><div class="page-heading">
-      <div>
-        <h1>账号中心</h1>
-        <p class="subtitle">完善个人资料，管理邮箱和登录会话</p>
-      </div>
-      <el-tag :type="auth.user.verified ? 'success' : 'warning'">{{
-        auth.user.verified ? '邮箱已验证' : '邮箱未验证'
-      }}</el-tag>
-    </div>
-    <div v-if="!auth.user.verified" class="notice">
-      请验证邮箱后提交报名。
-      <el-button text type="primary" @click="resend">重新发送验证邮件</el-button>
-    </div>
-    <div class="profile-layout">
-      <div class="card">
-        <h3>个人资料</h3>
-        <el-alert
-          v-if="!auth.user.profileComplete"
-          title="请完善学号、姓名、班级、学院和性别后再报名"
-          type="warning"
-          :closable="false"
-          style="margin-bottom: 16px"
-        />
-        <el-form label-position="top"
-          ><div class="form-grid">
-            <el-form-item label="姓名" for="profile-name" required
-              ><el-input id="profile-name" v-model="profile.name" /></el-form-item
-            ><el-form-item label="邮箱" for="profile-email"
-              ><el-input id="profile-email" v-model="profile.email"
-            /></el-form-item>
-          </div>
-          <DynamicFields
-            :fields="profileFields"
-            scope="PERSON"
-            :answers="profile.profile || {}"
-            prefix="profile"
-          /><el-form-item label="指导老师身份"
-            ><el-tag :type="auth.user?.isCoach ? 'success' : 'info'">{{
-              auth.user?.isCoach ? '已获授权' : '尚未授权'
-            }}</el-tag
-            ><span class="form-help" style="margin-left: 10px"
-              >由管理员生成邀请链接，确认后生效。</span
-            ></el-form-item
-          ><el-button type="primary" :loading="busy" @click="save">保存资料</el-button></el-form
-        >
-      </div>
-    </div>
-    <div class="card" v-if="github.enabled || github.linked">
-      <h3>GitHub 账号</h3>
-      <p>
-        {{
-          github.linked
-            ? '已绑定 GitHub，可使用 GitHub 登录。'
-            : '绑定后可使用 GitHub 登录当前账号。'
-        }}
-      </p>
-      <a v-if="!github.linked" href="/api/v1/auth/github?mode=link&next=%2Faccount"
-        ><el-button>绑定 GitHub</el-button></a
-      >
-      <el-button
-        v-else
-        :disabled="!auth.user.hasPassword"
-        @click="api('/auth/github', 'DELETE').then(() => (github.linked = false))"
-        >解除 GitHub 绑定</el-button
-      >
-      <p v-if="github.linked && !auth.user.hasPassword" class="form-help">
-        如需解除绑定，请先通过邮箱找回流程设置本站密码。
-      </p>
-    </div>
-    <div class="card">
-      <h3>登录会话</h3>
-      <el-table :data="sessions"
-        ><el-table-column label="设备" prop="userAgent" min-width="220" /><el-table-column
-          label="登录时间"
-          width="190"
-          ><template #default="{ row }">{{ date(row.createdAt) }}</template></el-table-column
-        ><el-table-column label="操作" width="100"
-          ><template #default="{ row }"
-            ><el-button text type="danger" @click="revokeSession(row.id)">撤销</el-button></template
-          ></el-table-column
-        ></el-table
-      >
-    </div></template
-  >
+  <ProfileCenter v-else />
 </template>
 <style scoped>
 .auth-layout {

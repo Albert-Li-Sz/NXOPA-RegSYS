@@ -18,9 +18,48 @@ export const studentProfileSchema = z.object({
   college: z.string().trim().min(1, '请填写学院').max(100),
   gender: z.enum(['男', '女', '其他', '不便透露'], '请选择性别'),
 });
-export function profileComplete(value: { name: string; profile: unknown }) {
-  return !!value.name.trim() && studentProfileSchema.safeParse(value.profile).success;
+export const teacherProfileSchema = z.object({
+  employee_id: z.string().trim().min(1, '请填写工号').max(100),
+  employed_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '请填写入职日期'),
+  college: z.string().trim().min(1, '请填写院系').max(100),
+  gender: z.enum(['男', '女', '其他', '不便透露']),
+});
+export function profileComplete(value: { name: string; profile: unknown; kind?: string }) {
+  return (
+    !!value.name.trim() &&
+    (value.kind === 'TEACHER' ? teacherProfileSchema : studentProfileSchema).safeParse(
+      value.profile,
+    ).success
+  );
 }
+export const adminPermissions = [
+  'VIEW',
+  'CONTEST',
+  'REGISTRATIONS',
+  'FINANCE',
+  'ADMISSIONS',
+  'FILES',
+  'SUPPORT',
+  'STUDENTS',
+  'INTEGRATIONS',
+] as const;
+export type AdminPermission = (typeof adminPermissions)[number];
+export const adminPermissionLabels: Record<AdminPermission, string> = {
+  VIEW: '查看竞赛',
+  CONTEST: '竞赛与报名字段配置',
+  REGISTRATIONS: '报名审核',
+  FINANCE: '财务与开票',
+  ADMISSIONS: '准考证',
+  FILES: '附件分发与删除',
+  SUPPORT: '工单处理',
+  STUDENTS: '学生视图',
+  INTEGRATIONS: '竞赛平台联动',
+};
+export const adminLevelLabels = {
+  SYSTEM: '系统管理员',
+  SENIOR: '高级管理员',
+  CONTEST: '竞赛管理员',
+};
 export const userTagsSchema = z
   .array(z.string().trim().min(1).max(40))
   .max(20)
@@ -101,12 +140,14 @@ export type MailSettingsView = z.infer<typeof mailSettingsViewSchema>;
 export const accountInvitationKinds = [
   'ACCOUNT',
   'SYSTEM_ADMIN',
+  'SENIOR_ADMIN',
   'CONTEST_ADMIN',
   'COACH_ROLE',
 ] as const;
 export const accountInvitationLabels: Record<(typeof accountInvitationKinds)[number], string> = {
   ACCOUNT: '账号邀请',
   SYSTEM_ADMIN: '系统管理员',
+  SENIOR_ADMIN: '高级管理员',
   CONTEST_ADMIN: '竞赛管理员',
   COACH_ROLE: '指导老师',
 };
@@ -117,6 +158,8 @@ export const accountInvitationSchema = z
     targetEmail: z.email().optional(),
     contestId: uuid.optional(),
     expiresInDays: z.number().int().min(1).max(30).default(7),
+    grantExpiresAt: z.iso.datetime({ offset: true }).nullable().optional(),
+    permissions: z.array(z.enum(adminPermissions)).optional(),
   })
   .superRefine((value, ctx) => {
     if (!value.userId && !value.targetEmail)
@@ -226,6 +269,11 @@ export const contestSchema = z
     published: z.boolean().default(false),
     archived: z.boolean().default(false),
     manuallyClosed: z.boolean().default(false),
+    publicRosterEnabled: z.boolean().default(false),
+    publicRosterReviews: z
+      .array(z.enum(['PENDING', 'APPROVED', 'REJECTED']))
+      .max(3)
+      .default(['APPROVED']),
     policy: policySchema,
     fields: fieldsSchema,
   })
@@ -262,6 +310,21 @@ export interface Principal {
   profile: Answers;
   version: number;
   contestIds: string[];
+  kind?: 'STUDENT' | 'TEACHER';
+  isSystemAdmin?: boolean;
+  isSeniorAdmin?: boolean;
+  adminLevel?: 'SYSTEM' | 'SENIOR' | 'CONTEST' | null;
+  permissions?: Record<string, string[]>;
+  grants?: {
+    id: string;
+    level: string;
+    contestId: string | null;
+    permissions: string[];
+    expiresAt: string | null;
+  }[];
+  relatedUserIds?: string[];
+  avatarUrl?: string | null;
+  identityStatus?: string;
 }
 export type ContestStatus = 'UPCOMING' | 'OPEN' | 'CLOSED';
 export function contestStatus(

@@ -93,7 +93,7 @@ export class FinanceService {
     return db.$transaction(async (tx) => {
       await lock(tx, v.registrationId);
       const r = await loaded(tx, v.registrationId);
-      requireManager(u, r.contestId);
+      requireManager(u, r.contestId, 'FINANCE');
       const current = await tx.paymentVoucher.findUniqueOrThrow({ where: { id } });
       if (current.status !== 'PENDING') {
         if (current.status === b.decision) return current;
@@ -139,7 +139,7 @@ export class FinanceService {
     return db.$transaction(async (tx) => {
       await lock(tx, e.registrationId);
       const r = await loaded(tx, e.registrationId);
-      requireManager(u, r.contestId);
+      requireManager(u, r.contestId, 'FINANCE');
       if (e.kind !== 'PAYMENT') throw new BadRequestException('只能冲正确认收款');
       const prior = await tx.ledgerEntry.findUnique({ where: { sourceId: `reverse:${id}` } });
       if (prior) return prior;
@@ -201,7 +201,7 @@ export class FinanceService {
     return db.$transaction(async (tx) => {
       await lock(tx, refund.registrationId);
       const r = await loaded(tx, refund.registrationId);
-      requireManager(u, r.contestId);
+      requireManager(u, r.contestId, 'FINANCE');
       const x = await tx.refund.findUniqueOrThrow({ where: { id } });
       if (x.status === b.decision) return x;
       if (['REJECTED', 'COMPLETED'].includes(x.status)) throw new BadRequestException('退款已结束');
@@ -275,7 +275,11 @@ export class FinanceService {
         data: { ...b, snapshot: json(b), registrationId: id },
       });
       await audit(tx, u.id, 'INVOICE_REQUEST', id, { invoiceId: x.id });
-      await event(tx, 'NOTIFY', id, { message: '开票申请已提交，等待管理员上传发票。' });
+      await event(tx, 'NOTIFY', id, {
+        message: '开票申请已提交，等待管理员上传发票。',
+        category: 'INVOICE',
+        status: 'REQUESTED',
+      });
       return x;
     });
   }
@@ -291,7 +295,7 @@ export class FinanceService {
     return db.$transaction(async (tx) => {
       await lock(tx, x.registrationId);
       const r = await loaded(tx, x.registrationId);
-      requireManager(u, r.contestId);
+      requireManager(u, r.contestId, 'FINANCE');
       const current = await tx.invoiceRequest.findUniqueOrThrow({ where: { id } });
       if (current.status === b.decision) return current;
       if (
@@ -315,7 +319,18 @@ export class FinanceService {
         },
       });
       await audit(tx, u.id, 'INVOICE_REVIEW', r.id, { invoiceId: id, decision: b.decision });
-      await event(tx, 'NOTIFY', r.id, { message: `开票处理：${b.decision}` });
+      await event(tx, 'NOTIFY', r.id, {
+        message: `开票处理：${b.decision}`,
+        category: 'INVOICE',
+        status: b.decision,
+      });
+      await event(tx, 'MAIL', r.id, {
+        to: current.email,
+        subject: '开票申请处理结果',
+        text: `开票状态：${b.decision}${b.reason ? `；${b.reason}` : ''}`,
+        category: 'INVOICE',
+        actionPath: `/registrations/${r.id}?tab=finance`,
+      });
       return out;
     });
   }

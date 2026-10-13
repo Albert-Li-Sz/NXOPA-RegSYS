@@ -5,7 +5,7 @@ import type { Response } from 'express';
 import type { Principal } from '@contest-center/contracts';
 import { db, lock, audit, json, type Tx } from './db.js';
 import {
-  requireAdmin,
+  requireSystemAdmin,
   encrypt,
   decrypt,
   checkVersion,
@@ -77,7 +77,7 @@ async function githubJson(url: string, options: RequestInit) {
 }
 export class GithubService {
   async view(u: Principal, req: AuthRequest) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     const s = await settings();
     return {
       enabled: s.value.enabled,
@@ -89,7 +89,7 @@ export class GithubService {
     };
   }
   async save(u: Principal, req: AuthRequest, body: unknown) {
-    requireAdmin(u);
+    requireSystemAdmin(u);
     const b = z
       .object({
         version: z.number().int().min(0),

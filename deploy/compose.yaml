@@ -39,6 +39,31 @@ x-app: &app
   logging: *logging
 
 services:
+  minio:
+    profiles: [minio]
+    build:
+      context: ../infra/minio
+      args:
+        GITHUB_PROXY_PREFIX: ${NXOPA_GITHUB_PREFIX:-}
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-MINIO_NOT_CONFIGURED}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-MINIO_NOT_CONFIGURED}
+    volumes:
+      - minio_data:/data
+    networks:
+      - data
+    ports:
+      - '${MINIO_CONSOLE_PORT:-127.0.0.1:9001}:9001'
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:9000/minio/health/live]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 600m
+    logging: *logging
   postgres:
     image: postgres:17.6-alpine
     environment:
@@ -191,6 +216,7 @@ services:
     logging: *logging
 
 volumes:
+  minio_data:
   postgres_data:
   redis_data:
   files:

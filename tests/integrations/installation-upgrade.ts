@@ -17,9 +17,15 @@ export async function verifyInstallationUpgrade(
   assert.match(previousTag, /^v\d+\.\d+\.\d+$/);
   assert.notEqual(previousTag, targetTag);
   await run(['compose', 'down', '-v', '--remove-orphans']);
-  await writeFile(envFile, source.replace(/^IMAGE_TAG=.+$/m, `IMAGE_TAG=${previousTag}`), {
-    mode: 0o600,
-  });
+  await writeFile(
+    envFile,
+    source
+      .replace(/^IMAGE_TAG=.+$/m, `IMAGE_TAG=${previousTag}`)
+      .replace(/^STORAGE_MODE=.+$/m, 'STORAGE_MODE=LOCAL'),
+    {
+      mode: 0o600,
+    },
+  );
   // Keep the installation script's env-file authoritative, including in CI.
   await run(['up'], { INSTALL_MODE: 'images', IMAGE_TAG: previousTag });
   assert.equal(

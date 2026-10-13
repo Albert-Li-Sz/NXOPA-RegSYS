@@ -68,7 +68,13 @@ async function fixture(fn) {
     });
   }
   let wrongHash = false;
+  const visited = [];
   const server = createServer((req, res) => {
+    visited.push(req.url);
+    req.url = req.url?.replace(
+      /^\/accelerate\/https:\/\/github.com\/Albert-Li-Sz\/NXOPA-RegSYS\/releases\/download/,
+      '',
+    );
     const requestedTag = req.url?.split('/')[1],
       release = releases.get(requestedTag);
     if (!release) {
@@ -149,6 +155,8 @@ process.exit(1);
       target,
       log,
       addRelease,
+      proxyPrefix: `http://127.0.0.1:${address.port}/accelerate/`,
+      visited,
       badChecksum: () => {
         wrongHash = true;
       },
@@ -160,7 +168,10 @@ process.exit(1);
 }
 test('单文件启动下载并校验发布包，菜单安装后保留配置、仅加载内部 Caddy', () =>
   fixture(async ({ run, target, log }) => {
-    const response = await run([], '1\nbootstrap-check\n1\n\n\nhttp://proxy.example.test\ny\nn\n');
+    const response = await run(
+      [],
+      '1\nbootstrap-check\n\n1\n\n3\n\nhttp://proxy.example.test\ny\nn\n',
+    );
     assert.equal(response.code, 0, response.output);
     const envFile = path.join(target, 'deploy/.env'),
       before = await readFile(envFile, 'utf8');
@@ -181,10 +192,38 @@ test('校验和错误不会安装配置或调用 Docker', () =>
     await assert.rejects(stat(path.join(target, 'deploy/.env')), { code: 'ENOENT' });
     await assert.rejects(stat(log), { code: 'ENOENT' });
   }));
+test('自定义 GitHub 加速前缀用于安装包和校验文件并保存在配置中', () =>
+  fixture(async ({ run, target, proxyPrefix, visited }) => {
+    const result = await run(
+      ['--github-prefix', proxyPrefix, 'install'],
+      'proxy-check\n\n1\n\n3\n\nhttp://proxy.example.test\ny\nn\n',
+      {
+        env: {
+          NXOPA_RELEASE_BASE_URL: 'https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/download',
+        },
+      },
+    );
+    assert.equal(result.code, 0, result.output);
+    assert.ok(
+      visited.some(
+        (url) => url.includes('/accelerate/https://github.com/') && url.endsWith('-install.tar.gz'),
+      ),
+    );
+    assert.ok(
+      visited.some(
+        (url) => url.includes('/accelerate/https://github.com/') && url.endsWith('/SHA256SUMS'),
+      ),
+    );
+    assert.ok(
+      (await readFile(path.join(target, 'deploy/.env'), 'utf8')).includes(
+        `NXOPA_GITHUB_PREFIX=${proxyPrefix}`,
+      ),
+    );
+  }));
 test('旧 install/.env 自动迁移，先备份并保留原项目名和密钥', () =>
   fixture(async ({ run, target }) => {
     assert.equal(
-      (await run(['install'], 'legacy-check\n1\n\n\nhttp://proxy.example.test\ny\nn\n')).code,
+      (await run(['install'], 'legacy-check\n\n1\n\n3\n\nhttp://proxy.example.test\ny\nn\n')).code,
       0,
     );
     const previous = await readFile(path.join(target, 'deploy/.env'), 'utf8');
@@ -208,7 +247,7 @@ test('旧 install/.env 自动迁移，先备份并保留原项目名和密钥', 
 test('跨版本更新先备份，下载新版材料并执行新入口，保留原实例密钥', () =>
   fixture(async ({ run, target, log, addRelease }) => {
     assert.equal(
-      (await run(['install'], 'update-check\n1\n\n\nhttp://proxy.example.test\ny\nn\n')).code,
+      (await run(['install'], 'update-check\n\n1\n\n3\n\nhttp://proxy.example.test\ny\nn\n')).code,
       0,
     );
     const previous = await readFile(path.join(target, 'deploy/.env'), 'utf8');

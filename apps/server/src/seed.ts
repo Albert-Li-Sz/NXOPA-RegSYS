@@ -19,7 +19,7 @@ const users = [
   ['carol', '许同学', false, false],
 ] as const;
 for (const [username, name, isAdmin, isCoach] of users) {
-  await db.user.upsert({
+  const seeded = await db.user.upsert({
     where: { username },
     create: {
       username,
@@ -42,6 +42,15 @@ for (const [username, name, isAdmin, isCoach] of users) {
     },
     update: {},
   });
+  if (
+    isAdmin &&
+    !(await db.adminGrant.count({
+      where: { userId: seeded.id, level: 'SYSTEM', revokedAt: null, expiresAt: null },
+    }))
+  )
+    await db.adminGrant.create({
+      data: { userId: seeded.id, level: 'SYSTEM', grantedBy: seeded.id },
+    });
 }
 const now = Date.now(),
   day = 86400000;
@@ -189,6 +198,30 @@ for (const [
     create: { userId: manager.id, contestId: id },
     update: {},
   });
+  if (
+    !(await db.adminGrant.count({
+      where: { userId: manager.id, level: 'CONTEST', contestId: id, revokedAt: null },
+    }))
+  )
+    await db.adminGrant.create({
+      data: {
+        userId: manager.id,
+        level: 'CONTEST',
+        contestId: id,
+        grantedBy: manager.id,
+        permissions: [
+          'VIEW',
+          'CONTEST',
+          'REGISTRATIONS',
+          'FINANCE',
+          'ADMISSIONS',
+          'FILES',
+          'SUPPORT',
+          'STUDENTS',
+          'INTEGRATIONS',
+        ],
+      },
+    });
 }
 if (!(await db.admissionTemplate.count()))
   await db.admissionTemplate.create({

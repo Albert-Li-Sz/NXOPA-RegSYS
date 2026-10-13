@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import MailDelivery from '../components/MailDelivery.vue';
+import { canManage } from '../permissions';
 import { api, auth, date, label, upload } from '../api';
 import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
@@ -26,8 +28,7 @@ const form = reactive({
   reply = reactive({ text: '', status: '', attachments: [] as string[] });
 const manager = computed(
   () =>
-    auth.user?.isAdmin ||
-    (ticket.value?.contestId && auth.user?.contestIds.includes(ticket.value.contestId)),
+    auth.user?.isAdmin || (ticket.value?.contestId && canManage(ticket.value.contestId, 'SUPPORT')),
 );
 async function refresh() {
   loading.value = true;
@@ -161,8 +162,9 @@ async function send() {
             >查看关联报名 →</router-link
           >
         </aside>
-      </div></template
-    >
+      </div>
+      <MailDelivery :resource-id="ticket.id"
+    /></template>
     <div v-else class="panel">
       <div class="card">
         <div class="toolbar">

@@ -23,6 +23,8 @@ export interface ContestView {
   opensAt: string;
   closesAt: string;
   correctionUntil?: string | null;
+  publicRosterEnabled: boolean;
+  publicRosterReviews: string[];
   published: boolean;
   archived: boolean;
   manuallyClosed: boolean;
@@ -33,6 +35,7 @@ export interface ContestView {
   status: 'OPEN' | 'CLOSED' | 'UPCOMING';
 }
 export interface PersonView {
+  active?: boolean;
   id?: string;
   userId?: string | null;
   name: string;
@@ -48,6 +51,7 @@ export interface RegistrationView {
   contestId: string;
   contest: ContestView;
   ownerId: string;
+  publicRank: number | null;
   teamName: string;
   teamEnglishName: string;
   participationType: 'OFFICIAL' | 'UNOFFICIAL';

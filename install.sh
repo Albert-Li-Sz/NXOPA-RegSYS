@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
-NXOPA_INSTALLER_VERSION=v0.2.2
+NXOPA_INSTALLER_VERSION=v0.3.0
 
 usage() {
   cat <<'EOF'
 NXOPA-RegSYS · 一键安装、更新与卸载
-用法：bash install.sh [--dir 安装目录] [命令]
+用法：bash install.sh [--dir 安装目录] [--github-prefix 加速前缀] [命令]
   不带参数       交互选择安装、更新、卸载或查看状态
   install        交互安装，默认使用发布镜像和本机 Caddy 8080
   update         先加密备份，再更新镜像与安装材料；--yes 按已保存配置执行
@@ -20,6 +20,13 @@ NXOPA-RegSYS · 一键安装、更新与卸载
 默认下载到 /opt/nxopa-regsys；可用 --dir 选择其他目录。
 EOF
 }
+github_url() {
+  local prefix="${NXOPA_GITHUB_PREFIX:-}"
+  if [[ -n "$prefix" && ! "$prefix" =~ ^https?://[A-Za-z0-9._:-]+(/[A-Za-z0-9/_-]*)?/?$ ]]; then
+    echo 'GitHub 加速前缀格式无效，请填写不含账号、查询或片段的 HTTP(S) 前缀。' >&2; return 1
+  fi
+  if [[ -n "$prefix" ]]; then printf '%s/%s\n' "${prefix%/}" "$1"; else printf '%s\n' "$1"; fi
+}
 
 fetch_bundle() {
   local tag="$1" output="$2" repository="${NXOPA_REPOSITORY:-Albert-Li-Sz/NXOPA-RegSYS}"
@@ -27,8 +34,8 @@ fetch_bundle() {
   [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '版本标签无效。' >&2; return 1; }
   command -v curl >/dev/null || { echo '缺少 curl。' >&2; return 1; }
   command -v openssl >/dev/null || { echo '缺少 openssl。' >&2; return 1; }
-  curl -fsSL --retry 3 --connect-timeout 15 --max-time 180 "$base/$tag/$name" -o "$output/$name" || return
-  curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 "$base/$tag/SHA256SUMS" -o "$output/SHA256SUMS" || return
+  curl -fsSL --retry 3 --connect-timeout 15 --max-time 180 "$(github_url "$base/$tag/$name")" -o "$output/$name" || return
+  curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 "$(github_url "$base/$tag/SHA256SUMS")" -o "$output/SHA256SUMS" || return
   expected="$(awk -v name="$name" '$2==name {print $1}' "$output/SHA256SUMS")"
   actual="$(openssl dgst -sha256 "$output/$name" | awk '{print $NF}')"
   [[ "$expected" =~ ^[a-f0-9]{64}$ && "$actual" == "$expected" ]] || { echo '安装包 SHA-256 校验失败。' >&2; return 1; }
@@ -62,9 +69,12 @@ copy_bundle() {
 }
 
 latest_tag() {
-  local repository="${NXOPA_REPOSITORY:-Albert-Li-Sz/NXOPA-RegSYS}"
-  curl -fsSL --connect-timeout 10 --max-time 15 "https://api.github.com/repos/$repository/releases/latest" 2>/dev/null |
-    sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"(v[0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' | head -1
+  local repository="${NXOPA_REPOSITORY:-Albert-Li-Sz/NXOPA-RegSYS}" discovered location
+  discovered="$(curl -fsSL --connect-timeout 10 --max-time 15 "$(github_url "https://api.github.com/repos/$repository/releases/latest")" 2>/dev/null | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"(v[0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' | head -1)" || true
+  if [[ -n "$discovered" ]]; then printf '%s\n' "$discovered"; return; fi
+  # Some release accelerators support github.com but do not proxy the API domain.
+  location="$(curl -fsSLI --connect-timeout 10 --max-time 15 -o /dev/null -w '%{url_effective}' "$(github_url "https://github.com/$repository/releases/latest")" 2>/dev/null)" || return
+  if [[ "$location" =~ /releases/tag/(v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then printf '%s\n' "${BASH_REMATCH[1]}"; fi
 }
 
 interactive_admin() {
@@ -96,7 +106,7 @@ interactive_admin() {
 }
 
 interactive_install() {
-  local choice project tag public_url gateway_port api_bind web_bind gateway_bind
+  local choice project tag public_url gateway_port api_bind web_bind gateway_bind storage_choice storage_mode s3_endpoint s3_region s3_bucket s3_access_key s3_secret github_prefix
   local existing=false admin_default=y
   printf '南晓开放原子社在线报名系统 · 交互安装\n'
   use_saved_environment
@@ -115,6 +125,9 @@ interactive_install() {
       if [[ "$project" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then break; fi
       printf '项目名称须以小写字母或数字开头，仅含小写字母、数字、连字符和下划线。\n' >&2
     done
+    ask github_prefix 'GitHub 加速前缀（例如 https://gh-proxy.org/，留空直连）' "${NXOPA_GITHUB_PREFIX:-}"
+    export NXOPA_GITHUB_PREFIX="$github_prefix"
+    github_url https://github.com >/dev/null || fail 'GitHub 加速前缀无效。'
     if [[ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$project")" || \
           -n "$(docker volume ls -q --filter "label=com.docker.compose.project=$project")" ]]; then
       fail '此项目已有容器或数据卷，请恢复原 .env，或选择新项目名称。'
@@ -132,6 +145,28 @@ interactive_install() {
     done
     tag="$(env_value IMAGE_TAG "$install_dir/.env.example")"
     if [[ "$install_mode" == images ]]; then ask_tag tag "$tag"; fi
+    printf '\n1) 内置 MinIO（推荐，文件集中存储）\n2) 第三方 S3 兼容存储\n3) 本地存储（保留兼容）\n'
+    while true; do
+      ask storage_choice '文件存储方式' 1
+      case "$storage_choice" in
+        1) storage_mode=MINIO; break ;;
+        2)
+          storage_mode=S3
+          ask s3_endpoint 'S3 端点（完整 HTTP / HTTPS 地址）'
+          [[ "$s3_endpoint" =~ ^https?://[^[:space:]@?#]+$ ]] || fail 'S3 端点无效。'
+          ask s3_region 'S3 区域' us-east-1
+          ask s3_bucket 'S3 桶名称'
+          [[ "$s3_bucket" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || fail 'S3 桶名无效。'
+          ask s3_access_key 'S3 Access Key ID'
+          [[ "$s3_access_key" =~ ^[A-Za-z0-9_/-]+$ ]] || fail 'Access Key ID 无效。'
+          printf 'S3 Secret Access Key（输入不显示）: ' >&2
+          IFS= read -r -s s3_secret || fail '输入已结束。'; printf '\n' >&2
+          [[ "$s3_secret" =~ ^[A-Za-z0-9_+/=-]+$ ]] || fail 'Secret Access Key 格式无效。'
+          break ;;
+        3) storage_mode=LOCAL; break ;;
+        *) printf '请选择 1、2 或 3。\n' >&2 ;;
+      esac
+    done
     printf '\n内部 Caddy 提供统一 HTTP 入口。公网域名和 HTTPS 由您自己的反向代理配置，整个站点转发到此入口。\n'
     ask_port gateway_port 'Caddy 的本机 HTTP 入口端口' '8080'
     while true; do
@@ -155,6 +190,13 @@ interactive_install() {
     set_env_value INSTALL_MODE "$install_mode"
     set_env_value IMAGE_TAG "$tag"
     set_env_value PUBLIC_URL "$public_url"
+    set_env_value NXOPA_GITHUB_PREFIX "$github_prefix"
+    set_env_value STORAGE_MODE "$storage_mode"
+    if [[ "$storage_mode" == S3 ]]; then
+      set_env_value S3_ENDPOINT "$s3_endpoint"; set_env_value S3_REGION "$s3_region"; set_env_value S3_BUCKET "$s3_bucket"
+      set_env_value S3_ACCESS_KEY "$s3_access_key"; set_env_value S3_SECRET_KEY "$s3_secret"
+      unset s3_secret
+    fi
     set_env_value REVERSE_PROXY_MODE gateway
     set_env_value GATEWAY_PORT "127.0.0.1:$gateway_port"
     require_config
@@ -248,17 +290,31 @@ interactive_uninstall() {
 main() {
   local script_root action target_root staged initial_tag material_tag
   script_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  if [[ "${1:-}" == --dir ]]; then
+  while [[ "${1:-}" == --dir || "${1:-}" == --github-prefix ]]; do
+    if [[ "$1" == --github-prefix ]]; then
+      export NXOPA_GITHUB_PREFIX="${2:?加速前缀缺失}"
+      github_url https://github.com >/dev/null || exit 1
+      shift 2; continue
+    fi
     case "${2:?安装目录缺失}" in /*) NXOPA_ROOT="$2" ;; *) NXOPA_ROOT="$PWD/$2" ;; esac
     [[ "$NXOPA_ROOT" != / ]] || { echo '不能使用根目录作为安装目录。' >&2; exit 1; }
     export NXOPA_ROOT; shift 2
-  fi
+  done
   action="${1:-}"
   case "$action" in help|-h|--help) usage; exit 0 ;; esac
   target_root="${NXOPA_ROOT:-$script_root}"
+  if [[ -z "${NXOPA_GITHUB_PREFIX+x}" && -f "$target_root/deploy/.env" ]]; then
+    NXOPA_GITHUB_PREFIX="$(awk -F= '$1=="NXOPA_GITHUB_PREFIX" {sub(/^[^=]*=/, ""); print; exit}' "$target_root/deploy/.env")"; export NXOPA_GITHUB_PREFIX
+  fi
   material_tag="$(awk -F= '$1=="IMAGE_TAG" {print $2; exit}' "$target_root/deploy/.env.example" 2>/dev/null || true)"
   if [[ ! -f "$target_root/deploy/lib.sh" || ( "$material_tag" != "$NXOPA_INSTALLER_VERSION" && "${NXOPA_SKIP_RELEASE_DOWNLOAD:-}" != 1 ) ]]; then
     target_root="${NXOPA_ROOT:-${NXOPA_INSTALL_DIR:-/opt/nxopa-regsys}}"
+    if [[ -z "${NXOPA_GITHUB_PREFIX+x}" && -z "${NXOPA_RELEASE_BASE_URL:-}" ]]; then
+      printf 'GitHub 加速前缀（如 https://gh-proxy.org/，留空直连）: ' >&2
+      IFS= read -r NXOPA_GITHUB_PREFIX || { echo '输入已结束。' >&2; exit 1; }
+      export NXOPA_GITHUB_PREFIX
+      github_url https://github.com >/dev/null || exit 1
+    fi
     [[ "$target_root" != / && "$target_root" == /* ]] || { echo '安装目录须为非根目录的绝对路径。' >&2; exit 1; }
     staged="$(mktemp -d "${TMPDIR:-/tmp}/nxopa-release.XXXXXX")"
     initial_tag="${NXOPA_VERSION:-$(latest_tag || true)}"

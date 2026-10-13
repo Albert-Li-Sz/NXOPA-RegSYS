@@ -13,7 +13,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import type { Principal } from '@contest-center/contracts';
+import type { Principal, AdminPermission } from '@contest-center/contracts';
 import { config } from './config.js';
 import { db, registrationInclude, type Registration } from './db.js';
 export const opaqueToken = () => randomBytes(32).toString('base64url');
@@ -34,24 +34,39 @@ export function decrypt(s: string) {
   cipher.setAuthTag(Buffer.from(tag!, 'hex'));
   return Buffer.concat([cipher.update(Buffer.from(body!, 'hex')), cipher.final()]).toString('utf8');
 }
-export const manages = (u: Principal, contestId: string) =>
-  u.isAdmin || u.contestIds.includes(contestId);
+export const manages = (u: Principal, contestId: string, permission: AdminPermission = 'VIEW') =>
+  u.isAdmin ||
+  (u.contestIds.includes(contestId) &&
+    (!u.permissions || u.permissions[contestId]?.includes(permission)));
+export const ownerIds = (u: Principal) => (u.relatedUserIds?.length ? u.relatedUserIds : [u.id]);
+export const owns = (u: Principal, id: string) => ownerIds(u).includes(id);
+export function requireSystemAdmin(u: Principal) {
+  if (!(u.isSystemAdmin ?? u.isAdmin)) throw new ForbiddenException('核心配置需要系统管理员授权');
+}
 export function requireAdmin(u: Principal) {
   if (!u.isAdmin) throw new ForbiddenException('需要系统管理员权限');
 }
-export function requireManager(u: Principal, contestId: string) {
-  if (!manages(u, contestId)) throw new ForbiddenException('没有此竞赛的管理权限');
+export function requireManager(
+  u: Principal,
+  contestId: string,
+  permission: AdminPermission = 'VIEW',
+) {
+  if (!manages(u, contestId, permission)) throw new ForbiddenException('没有此竞赛的相应管理权限');
 }
 export function canRead(u: Principal, r: Registration) {
   return (
     manages(u, r.contestId) ||
-    u.id === r.ownerId ||
-    r.people.some((p) => p.userId === u.id && p.active) ||
-    r.coaches.some((c) => c.userId === u.id)
+    owns(u, r.ownerId) ||
+    r.people.some((p) => !!p.userId && owns(u, p.userId) && p.active) ||
+    r.coaches.some((c) => owns(u, c.userId))
   );
 }
 export function canEdit(u: Principal, r: Registration) {
-  return manages(u, r.contestId) || u.id === r.ownerId || r.coaches.some((c) => c.userId === u.id);
+  return (
+    manages(u, r.contestId, 'REGISTRATIONS') ||
+    owns(u, r.ownerId) ||
+    r.coaches.some((c) => owns(u, c.userId))
+  );
 }
 export async function getRegistration(u: Principal, id: string, edit = false) {
   const r = await db.registration.findUnique({ where: { id }, include: registrationInclude });

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
-assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.2.2');
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.3.0');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
@@ -34,8 +34,11 @@ try {
     'deploy/.env.example',
     'deploy/README.md',
     'deploy/ACCEPTANCE.md',
+    'docs/PLATFORM_GUIDE.md',
     'infra/caddy/Caddyfile',
     'infra/caddy-gateway/Caddyfile',
+    'infra/minio/Dockerfile',
+    'infra/minio/entrypoint.sh',
     'scripts/backup.sh',
     'scripts/restore.sh',
     'scripts/compose-lib.sh',
@@ -68,7 +71,7 @@ try {
     },
   );
   const prefix = process.env.IMAGE_PREFIX ?? 'ghcr.io/albert-li-sz/nxopa-regsys';
-  const images = ['api', 'worker', 'web', 'latex'].map((service) => ({
+  const images = ['api', 'worker', 'web', 'latex', 'minio'].map((service) => ({
     service,
     image: `${prefix}-${service}:${tag}`,
   }));
@@ -90,7 +93,7 @@ try {
     if (error.code !== 'ENOENT') throw error;
   }
   if (records) {
-    assert.equal(records.length, 4);
+    assert.equal(records.length, 5);
     for (const record of records) {
       assert.equal(record.tag, tag);
       assert.equal(record.commit, commit);
@@ -173,6 +176,21 @@ try {
     assert.equal(features.platform, 'linux');
     assert.ok(features.checks.length >= 6);
     await writeFile(join(output, 'release-features.json'), JSON.stringify(features, null, 2));
+  } catch (error) {
+    if (error.code !== 'ENOENT' || process.env.CI) throw error;
+  }
+  await cp(
+    join(root, 'docs/PLATFORM_GUIDE.md'),
+    join(output, `nxopa-regsys-${tag}-platform-guide.md`),
+  );
+  try {
+    const report = JSON.parse(
+      await readFile(join(root, 'dist/feature-reports/platform-features.json'), 'utf8'),
+    );
+    assert.equal(report.success, true);
+    assert.equal(report.commit, commit);
+    assert.ok(report.checks.length >= 10);
+    await writeFile(join(output, 'platform-features.json'), JSON.stringify(report, null, 2));
   } catch (error) {
     if (error.code !== 'ENOENT' || process.env.CI) throw error;
   }

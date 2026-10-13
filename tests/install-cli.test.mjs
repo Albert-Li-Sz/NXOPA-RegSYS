@@ -31,7 +31,7 @@ if(a[0]!=='compose') process.exit(1);
 if(a[1]==='version') { console.log(process.env.FAKE_COMPOSE_VERSION || '2.24.4'); process.exit(0); }
 let i=1, envFile;
 const files=[];
-while(['--project-directory','--env-file','-f','--parallel'].includes(a[i])) {
+while(['--project-directory','--env-file','-f','--parallel','--profile'].includes(a[i])) {
   if(a[i]==='--env-file') envFile=a[i+1];
   if(a[i]==='-f') files.push(a[i+1]);
   i+=2;
@@ -53,7 +53,7 @@ process.exit(0);
 
 test('源码构建分支无需镜像标签，使用 build 并保留项目配置', () =>
   fixture(async ({ run, envFile, calls }) => {
-    const r = await run('install.sh', 'source-cli\n2\n18080\n\ny\nn\n');
+    const r = await run('install.sh', 'source-cli\n\n2\n3\n18080\n\ny\nn\n');
     assert.equal(r.code, 0, r.output);
     assert.match(await readFile(envFile, 'utf8'), /^INSTALL_MODE=source$/m);
     assert.match(await readFile(envFile, 'utf8'), /^PUBLIC_URL=http:\/\/localhost:18080$/m);
@@ -183,7 +183,7 @@ test('首次安装选择镜像版本、端口、隐藏管理员密码，校验�
   fixture(async ({ run, envFile, calls }) => {
     const r = await run(
       'install.sh',
-      `test-cli\n1\nv0.2.3\n70000\n18080\nhttp://localhost:18080\ny\ny\ninstaller\ninvalid\nadmin@example.test\nshort\nshort\n${password}\nmismatch\n${password}\n${password}\n`,
+      `test-cli\n\n1\nv0.2.3\n3\n70000\n18080\nhttp://localhost:18080\ny\ny\ninstaller\ninvalid\nadmin@example.test\nshort\nshort\n${password}\nmismatch\n${password}\n${password}\n`,
     );
     assert.equal(r.code, 0, r.output);
     const text = await readFile(envFile, 'utf8');
@@ -203,7 +203,7 @@ test('默认内部 Caddy 仅绑定本机 8080，用户配置公网 HTTPS 代理'
   fixture(async ({ run, envFile, calls }) => {
     const r = await run(
       'install.sh',
-      'https-cli\n1\n\n\nhttps://wrong/path\nhttps://reg.example.org\ny\nn\n',
+      'https-cli\n\n1\n\n3\n\nhttps://wrong/path\nhttps://reg.example.org\ny\nn\n',
     );
     assert.equal(r.code, 0, r.output);
     const text = await readFile(envFile, 'utf8');
@@ -235,7 +235,7 @@ test('旧配置继续启用 Caddy，显式切换 external 后不再加载 Caddy'
 
 test('取消与输入结束不会生成配置或启动服务', () =>
   fixture(async ({ run, envFile, calls }) => {
-    const r = await run('install.sh', 'cancel-cli\n1\n\n\nhttps://reg.example.org\nn\n');
+    const r = await run('install.sh', 'cancel-cli\n\n1\n\n3\n\nhttps://reg.example.org\nn\n');
     assert.equal(r.code, 0);
     await assert.rejects(stat(envFile), { code: 'ENOENT' });
     assert.notEqual((await run('install.sh')).code, 0);
