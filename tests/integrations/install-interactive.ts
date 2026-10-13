@@ -32,18 +32,31 @@ for (const key of [
 ])
   delete env[key];
 const initialTag =
-  process.env.INTERACTIVE_INSTALL_FROM ?? process.env.INSTALL_UPGRADE_FROM ?? 'v0.1.4';
+  process.env.INTERACTIVE_INSTALL_FROM ?? process.env.INSTALL_UPGRADE_FROM ?? 'v0.1.5';
 const targetTag = process.env.INTERACTIVE_INSTALL_TO ?? process.env.IMAGE_TAG ?? defaultTag;
 const checks: string[] = [];
 let success = false;
 
 async function run(entry: string, input = '', args: string[] = []) {
   return new Promise<string>((resolve, reject) => {
-    const child = spawn('bash', [path.join(root, 'install', entry), ...args], {
-      cwd: stage,
-      env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      'bash',
+      [
+        path.join(root, 'install.sh'),
+        ...(entry === 'update.sh'
+          ? ['update', ...args]
+          : entry === 'uninstall.sh'
+            ? ['uninstall', ...args]
+            : args.length
+              ? args
+              : ['install']),
+      ],
+      {
+        cwd: stage,
+        env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    );
     let output = '';
     const timer = setTimeout(() => {
       child.kill('SIGTERM');
@@ -146,6 +159,7 @@ try {
   assert.equal(originalVolumes.length, 6);
   passed('默认内部 Caddy 的空卷交互安装、隐藏密码创建管理员，经外部 Nginx 实际登录');
 
+  await admin.completeProfile();
   const contest = await admin.api('/contests', 'POST', {
     title: '交互安装脚本真实验收',
     season: '安装验收',

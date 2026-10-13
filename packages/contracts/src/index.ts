@@ -12,6 +12,19 @@ export const defaultSite = {
 };
 
 export const uuid = z.string().uuid();
+export const studentProfileSchema = z.object({
+  student_id: z.string().trim().min(1, '请填写学号').max(100),
+  class_name: z.string().trim().min(1, '请填写班级').max(100),
+  college: z.string().trim().min(1, '请填写学院').max(100),
+  gender: z.enum(['男', '女', '其他', '不便透露'], '请选择性别'),
+});
+export function profileComplete(value: { name: string; profile: unknown }) {
+  return !!value.name.trim() && studentProfileSchema.safeParse(value.profile).success;
+}
+export const userTagsSchema = z
+  .array(z.string().trim().min(1).max(40))
+  .max(20)
+  .transform((values) => [...new Set(values)]);
 export interface PageResult<T> {
   items: T[];
   total: number;
@@ -245,6 +258,7 @@ export interface Principal {
   isAdmin: boolean;
   isCoach: boolean;
   hasPassword: boolean;
+  profileComplete: boolean;
   profile: Answers;
   version: number;
   contestIds: string[];
@@ -439,7 +453,7 @@ export interface PaymentProvider {
 }
 
 export const defaultFields: FieldDefinition[] = fieldsSchema.parse([
-  { key: 'school', label: '学校 / 单位', scope: 'PERSON', type: 'text', required: true },
+  { key: 'school', label: '学校 / 单位', scope: 'PERSON', type: 'text' },
   {
     key: 'student_id',
     label: '学号 / 参赛编号',
@@ -447,6 +461,16 @@ export const defaultFields: FieldDefinition[] = fieldsSchema.parse([
     type: 'text',
     required: true,
     sensitive: true,
+  },
+  { key: 'class_name', label: '班级', scope: 'PERSON', type: 'text', required: true },
+  { key: 'college', label: '学院', scope: 'PERSON', type: 'text', required: true },
+  {
+    key: 'gender',
+    label: '性别',
+    scope: 'PERSON',
+    type: 'select',
+    required: true,
+    options: ['男', '女', '其他', '不便透露'],
   },
   { key: 'major', label: '专业', scope: 'PERSON', type: 'text' },
   {

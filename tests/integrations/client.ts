@@ -44,6 +44,22 @@ export class Client {
     this.csrf = r.csrf;
     return this;
   }
+  async completeProfile() {
+    this.user = await this.api('/auth/profile', 'PUT', {
+      version: this.user.version,
+      name: this.user.name,
+      profile: {
+        ...this.user.profile,
+        student_id: `TEST-${this.user.id}`,
+        class_name: '验收一班',
+        college: '验收学院',
+        gender: '不便透露',
+        school: '验收大学',
+        phone: '00000000000',
+      },
+    });
+    return this;
+  }
   async upload(registrationId?: string) {
     const body = new FormData();
     body.append('file', new Blob(['offline payment proof'], { type: 'text/plain' }), 'receipt.txt');

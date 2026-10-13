@@ -32,6 +32,9 @@ for (const [username, name, isAdmin, isCoach] of users) {
       profile: {
         school: '示例大学',
         student_id: `DEMO-${username}`,
+        class_name: '计算机 2026 级 1 班',
+        college: '信息工程学院',
+        gender: '不便透露',
         major: '计算机科学与技术',
         phone: '00000000000',
         size: 'L',

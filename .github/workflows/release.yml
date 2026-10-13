@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v0.1.5
+        description: 已存在的版本标签，例如 v0.2.0
         required: true
-        default: v0.1.5
+        default: v0.2.0
         type: string
 
 permissions:
@@ -54,6 +54,9 @@ jobs:
           pnpm test
           pnpm test:install-cli
           pnpm test:install-images
+          pnpm test:install-bootstrap
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:release-features
           pnpm docs:build
       - name: 邮箱链接、报名资格、财务与工单权限回归
         shell: bash
@@ -66,6 +69,12 @@ jobs:
           api_pid=$!
           trap 'kill "$api_pid"; docker compose -f infra/compose/dependencies.yaml down -v' EXIT
           pnpm test:bugs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: release-feature-report
+          path: .runtime/reports/release-features.json
+          retention-days: 30
 
   images:
     name: 构建 ${{ matrix.image }} / ${{ matrix.arch }}
@@ -231,7 +240,7 @@ jobs:
         run: pnpm test:install
       - name: 交互安装、升级及两种卸载流程实际验收
         env:
-          INTERACTIVE_INSTALL_FROM: v0.1.4
+          INTERACTIVE_INSTALL_FROM: v0.1.5
           INTERACTIVE_INSTALL_TO: ${{ env.RELEASE_TAG }}
         run: pnpm test:install-interactive
       - name: 核验公开拉取、版本摘要与源码标签
@@ -274,6 +283,10 @@ jobs:
         with:
           pattern: installation-*
           path: dist/installation-reports
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-feature-report
+          path: dist/feature-reports
       - name: 按白名单打包并上传附件
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

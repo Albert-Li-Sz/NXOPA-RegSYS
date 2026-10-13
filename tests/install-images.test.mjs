@@ -73,7 +73,7 @@ for (const arch of ['amd64', 'arm64']) {
   test(`${arch} 安装使用同版本官方运行摘要，不访问缺失的证明配置`, () =>
     withIncompleteMirror(async (request, visited) => {
       const compose = await readFile(
-        new URL(`../install/compose.${arch}.yaml`, import.meta.url),
+        new URL(`../deploy/compose.${arch}.yaml`, import.meta.url),
         'utf8',
       );
       const reference = compose.match(/image: postgres:17\.6-alpine@(sha256:[a-f0-9]{64})/)[1];

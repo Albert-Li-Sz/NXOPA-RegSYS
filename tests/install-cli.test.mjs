@@ -107,17 +107,33 @@ async function fixture(fn) {
       .map(JSON.parse);
   const run = (entry, input = '', overrides = {}, args = []) =>
     new Promise((resolve, reject) => {
-      const child = spawn('bash', [path.join(root, 'install', entry), ...args], {
-        cwd: dir,
-        env: {
-          ...process.env,
-          PATH: `${bin}:${process.env.PATH}`,
-          INSTALL_ENV_FILE: envFile,
-          FAKE_LOG: log,
-          ...overrides,
+      const child = spawn(
+        'bash',
+        [
+          path.join(root, 'install.sh'),
+          ...(args.includes('--help')
+            ? ['--help']
+            : entry === 'update.sh'
+              ? ['update', ...args]
+              : entry === 'uninstall.sh'
+                ? ['uninstall', ...args]
+                : args.length
+                  ? args
+                  : ['install']),
+        ],
+        {
+          cwd: dir,
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            INSTALL_ENV_FILE: envFile,
+            FAKE_LOG: log,
+            NXOPA_SKIP_RELEASE_DOWNLOAD: '1',
+            ...overrides,
+          },
+          stdio: ['pipe', 'pipe', 'pipe'],
         },
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+      );
       let output = '';
       const timer = setTimeout(() => {
         child.kill('SIGKILL');
@@ -187,7 +203,7 @@ test('默认内部 Caddy 仅绑定本机 8080，用户配置公网 HTTPS 代理'
   fixture(async ({ run, envFile, calls }) => {
     const r = await run(
       'install.sh',
-      'https-cli\n1\n\n\nhttps://wrong/path\nhttp://reg.example.org\nhttps://reg.example.org\ny\nn\n',
+      'https-cli\n1\n\n\nhttps://wrong/path\nhttps://reg.example.org\ny\nn\n',
     );
     assert.equal(r.code, 0, r.output);
     const text = await readFile(envFile, 'utf8');

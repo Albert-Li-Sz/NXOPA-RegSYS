@@ -4,7 +4,7 @@ import { db } from './db.js';
 import { config } from './config.js';
 import { isIP } from 'node:net';
 
-export function validatePublicUrl(value: string, production = config.production) {
+export function validatePublicUrl(value: string, _production = config.production) {
   let url: URL;
   try {
     url = new URL(value.trim());
@@ -34,8 +34,6 @@ export function validatePublicUrl(value: string, production = config.production)
     (url.port && Number(url.port) < 1)
   )
     throw new BadRequestException('公网地址的域名或端口无效');
-  if (production && url.protocol !== 'https:')
-    throw new BadRequestException('生产环境公网地址须使用 HTTPS');
   return url.origin;
 }
 export async function siteSettings() {
@@ -54,14 +52,4 @@ export async function publicUrl() {
 export async function publicLink(path: string) {
   if (!path.startsWith('/') || path.startsWith('//')) throw new Error('Invalid public link path');
   return `${await publicUrl()}${path}`;
-}
-export async function trustedOrigins() {
-  return new Set([
-    new URL(await publicUrl()).origin,
-    new URL(config.publicUrl).origin,
-    ...(process.env.TRUSTED_MANAGEMENT_ORIGINS ?? '')
-      .split(',')
-      .filter(Boolean)
-      .map((x) => new URL(x.trim()).origin),
-  ]);
 }

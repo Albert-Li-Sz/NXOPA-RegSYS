@@ -33,8 +33,8 @@ try {
   const info = await (await page.request.get(new URL('build-info.json', base).href)).json();
   await expect(page.locator('.chapter')).toHaveCount(info.chapters.length);
   await expect(page.locator('figure img')).toHaveCount(info.screenshots);
-  assert.equal(info.chapters.length, 14);
-  assert.equal(info.screenshots, 23);
+  assert.equal(info.chapters.length, 15);
+  assert.equal(info.screenshots, 27);
   await expect(page.locator('#mail')).toContainText('后台保存后优先使用数据库配置');
   await expect(page.locator('#operations pre').first()).toContainText('{{#each team.members}}');
   await expect(page.locator('#operations pre').first()).toContainText('{{this.name}}');
@@ -65,7 +65,11 @@ try {
   await page.locator('#deployment .copy-code').first().click();
   await expect(page.getByRole('status')).toHaveText('配置示例已复制');
   const clipboard = await page.evaluate(() => navigator.clipboard.readText());
-  assert(clipboard.startsWith('cd install\nbash install.sh'));
+  assert(
+    clipboard.startsWith(
+      'curl -fsSL https://raw.githubusercontent.com/Albert-Li-Sz/NXOPA-RegSYS/main/install.sh -o install.sh\nbash install.sh',
+    ),
+  );
   await page.locator('#chapter-nav a[href="#mail"]').click();
   await expect(page.locator('#chapter-nav a[href="#mail"]')).toHaveAttribute(
     'aria-current',

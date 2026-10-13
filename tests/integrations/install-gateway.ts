@@ -45,7 +45,7 @@ export async function verifyGatewayTransport() {
   const args = [
     'compose',
     '--project-directory',
-    path.join(root, 'install'),
+    path.join(root, 'deploy'),
     '--env-file',
     envFile,
     '-p',
@@ -53,9 +53,9 @@ export async function verifyGatewayTransport() {
     '-f',
     path.join(root, 'tests/fixtures/gateway-transport.yaml'),
     '-f',
-    path.join(root, 'install/compose.gateway.yaml'),
+    path.join(root, 'deploy/compose.gateway.yaml'),
     '-f',
-    path.join(root, `install/compose.proxy.${arch}.yaml`),
+    path.join(root, `deploy/compose.proxy.${arch}.yaml`),
   ];
   if (process.env.GATEWAY_TEST_CONFIG) {
     const override = path.join(stage, 'caddy-override.json');
@@ -92,7 +92,7 @@ export async function verifyGatewayTransport() {
       path.join(stage, 'cert.pem'),
     ]);
     await chmod(path.join(stage, 'key.pem'), 0o600);
-    const nginx = (await readFile(path.join(root, 'install/nginx.conf.example'), 'utf8'))
+    const nginx = (await readFile(path.join(root, 'deploy/nginx.conf.example'), 'utf8'))
       .replaceAll('/etc/nginx/certs/reg.example.org/fullchain.pem', '/fixture/cert.pem')
       .replaceAll('/etc/nginx/certs/reg.example.org/privkey.pem', '/fixture/key.pem')
       .replaceAll('http://127.0.0.1:8080', 'http://caddy:80');

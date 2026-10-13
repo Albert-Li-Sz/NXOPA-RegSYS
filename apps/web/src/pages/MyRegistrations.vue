@@ -138,6 +138,7 @@ async function createLink() {
       <div class="member-heading">
         <div>
           <h3 style="margin-bottom: 8px">
+            <el-tag v-if="r.number" type="info">报名 #{{ r.number }}</el-tag>
             {{ r.teamName || r.people[0]?.name }}
             <el-tag :type="r.eligible ? 'success' : 'info'">{{
               r.eligible ? '参赛资格已确认' : label(r.status)

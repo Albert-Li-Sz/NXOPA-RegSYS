@@ -5,6 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { isDeepStrictEqual } from 'node:util';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
@@ -21,6 +22,7 @@ import {
   mergePlatformFields,
   organizationSchema,
   participationSchema,
+  profileComplete,
   type Principal,
   type ContestPolicy,
   type FieldDefinition,
@@ -66,14 +68,27 @@ function registrationAccess(u: Principal, contestId?: string) {
       : {}),
   };
 }
-function filteredAccess(u: Principal, query: ListQuery, contestId?: string) {
-  return {
-    AND: [
-      registrationAccess(u, contestId),
-      registrationFilters(query),
-      ...(query.role === 'coach' ? [{ coaches: { some: { userId: u.id } } }] : []),
-    ],
-  };
+async function filteredAccess(u: Principal, query: ListQuery, contestId?: string) {
+  const conditions: Prisma.RegistrationWhereInput[] = [
+    registrationAccess(u, contestId),
+    registrationFilters(query),
+    ...(query.role === 'coach' ? [{ coaches: { some: { userId: u.id } } }] : []),
+  ];
+  if (query.tag) {
+    if (contestId) requireManager(u, contestId);
+    else requireAdmin(u);
+    const tagged = await db.user.findMany({
+      where: { tags: { has: z.string().min(1).max(40).parse(query.tag) } },
+      select: { id: true },
+    });
+    conditions.push({
+      OR: [
+        { ownerId: { in: tagged.map((x) => x.id) } },
+        { people: { some: { active: true, userId: { in: tagged.map((x) => x.id) } } } },
+      ],
+    });
+  }
+  return { AND: conditions };
 }
 function registrationFilters(query: ListQuery) {
   return {
@@ -146,7 +161,7 @@ export class RegistrationService {
     requireManager(u, contestId);
     const groups = await db.registration.groupBy({
       by: ['status', 'review', 'eligible'],
-      where: { contestId, ...registrationFilters(query) },
+      where: await filteredAccess(u, query, contestId),
       _count: { _all: true },
     });
     return groups.reduce(
@@ -249,14 +264,18 @@ export class RegistrationService {
     });
   }
   async list(u: Principal, contestId?: string, cursor?: string, take = 500, query: ListQuery = {}) {
-    const filtered = filteredAccess(u, query, contestId);
+    const filtered = await filteredAccess(u, query, contestId);
     return paginated(
       query,
       (options) =>
         db.registration.findMany({
           where: filtered,
           include: registrationInclude,
-          orderBy: pageOptions(query) ? [{ createdAt: 'desc' }, { id: 'desc' }] : { id: 'asc' },
+          orderBy: [
+            { number: { sort: 'asc', nulls: 'last' } },
+            { createdAt: 'asc' },
+            { id: 'asc' },
+          ],
           ...options,
           ...(!pageOptions(query) && cursor
             ? { cursor: { id: z.string().uuid().parse(cursor) }, skip: 1 }
@@ -269,7 +288,7 @@ export class RegistrationService {
   async summary(u: Principal, query: ListQuery = {}) {
     const groups = await db.registration.groupBy({
       by: ['status', 'review', 'eligible'],
-      where: filteredAccess(u, query, query.contestId),
+      where: await filteredAccess(u, query, query.contestId),
       _count: { _all: true },
     });
     return groups.reduce(
@@ -367,6 +386,8 @@ export class RegistrationService {
   }
   async create(u: Principal, body: unknown) {
     if (!u.verified) throw new ForbiddenException('请先验证邮箱');
+    if (!profileComplete(u))
+      throw new BadRequestException('请先完善学号、姓名、班级、学院和性别后再报名');
     const { contestId } = z.object({ contestId: z.string().uuid() }).parse(body);
     return db.$transaction(async (tx) => {
       const c = await tx.contest.findUniqueOrThrow({ where: { id: contestId } });
@@ -490,6 +511,24 @@ export class RegistrationService {
       if (!canEdit(u, r)) throw new ForbiddenException();
       checkVersion(r.version, version);
       windowOpen(r);
+      const participants = await tx.user.findMany({
+        where: {
+          id: {
+            in: [
+              ...new Set([
+                r.ownerId,
+                ...r.people
+                  .filter((p) => p.active)
+                  .map((p) => p.userId)
+                  .filter((id): id is string => !!id),
+              ]),
+            ],
+          },
+        },
+        select: { id: true, name: true, profile: true },
+      });
+      if (participants.some((p) => !profileComplete(p)))
+        throw new BadRequestException('请参赛成员先完善学号、姓名、班级、学院和性别');
       const p = policy(r);
       if (
         r.people.length < p.minMembers ||
@@ -539,6 +578,16 @@ export class RegistrationService {
       }
       const fee = quoteFee(p, r.people.length);
       const delta = fee - r.feeCents;
+      const number =
+        r.number ??
+        (
+          await tx.contest.update({
+            where: { id: r.contestId },
+            data: { nextRegistrationNumber: { increment: 1 } },
+            select: { nextRegistrationNumber: true },
+          })
+        ).nextRegistrationNumber - 1;
+      const submittedAt = r.submittedAt ?? new Date();
       const snapshot = {
         teamName: r.teamName,
         teamEnglishName: r.teamEnglishName,
@@ -548,7 +597,8 @@ export class RegistrationService {
         people: r.people,
         coaches: r.coaches,
         fields,
-        submittedAt: new Date().toISOString(),
+        number,
+        submittedAt: submittedAt.toISOString(),
       };
       await tx.registrationRevision.create({
         data: {
@@ -570,7 +620,8 @@ export class RegistrationService {
           snapshot: json(snapshot),
           feeCents: fee,
           quoted: true,
-          submittedAt: new Date(),
+          number,
+          submittedAt,
           version: { increment: 1 },
         },
       });

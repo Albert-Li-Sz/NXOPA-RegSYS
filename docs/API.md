@@ -12,7 +12,7 @@ pnpm generate:client
 
 | 前缀                    | 能力                                                  |
 | ----------------------- | ----------------------------------------------------- |
-| `/api/v1/auth`          | 邮箱注册与验证、密码登录 / 找回、会话管理             |
+| `/api/v1/auth`          | 邮箱注册与验证、密码 / GitHub 登录、会话与资料        |
 | `/api/v1/contests`      | 官网列表、状态、配置与版本化字段                      |
 | `/api/v1/registrations` | 草稿、邀请、老师关联、提交、审核、取消和完整 CSV 导出 |
 | `/api/v1/invitations`   | 指定接收者的链接预览、明确确认与邀请撤销              |
@@ -28,7 +28,7 @@ JSON 请求上限 5 MiB，附件上限 10 MiB。竞赛后台统计与导出使�
 
 ### 分页与筛选
 
-列表显式传入 `page` 或 `pageSize` 时返回共享 `PageResult<T>`：`{items,total,page,pageSize}`。`page` 从 1 开始，`pageSize` 只接受 20／50／100，默认 20。审计、任务、用户、授权邀请、报名、工单和财务历史均支持后端分页；权限与搜索／状态／时间条件同时作用于总数和列表。按时间及唯一 ID 稳定排序。
+列表显式传入 `page` 或 `pageSize` 时返回共享 `PageResult<T>`：`{items,total,page,pageSize}`。`page` 从 1 开始，`pageSize` 只接受 20／50／100，默认 20。审计、任务、用户、授权邀请、报名、工单和财务历史均支持后端分页；权限与搜索／状态／时间条件同时作用于总数和列表。报名按每个竞赛的首次提交编号升序排列，草稿放在末尾，再按创建时间和 ID 排序。
 
 ```text
 GET /api/v1/admin/audit?page=2&pageSize=50&search=<对象ID>&status=REVIEW
@@ -36,13 +36,13 @@ GET /api/v1/registrations?page=1&pageSize=20&contestId=<UUID>&participationType=
 GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
 ```
 
-时间筛选为带时区 ISO `from`／`to`。状态键按列表使用 `status`、`review`、`kind`；完整参数见 OpenAPI。报名可使用 `eligible`、`participationType`、`search`，统计与 CSV 接收同样筛选。`GET /registrations/:id?history=false` 返回财务合计但不附带历史数组，历史分别从 `finance/vouchers`、`finance/ledger`、`finance/refunds`、`finance/invoices` 读取。
+时间筛选为带时区 ISO `from`／`to`。状态键按列表使用 `status`、`review`、`kind`；完整参数见 OpenAPI。报名可使用 `eligible`、`participationType`、`search`、`tag`，统计与 CSV 接收同样筛选。`GET /registrations/:id?history=false` 返回财务合计但不附带历史数组，历史分别从 `finance/vouchers`、`finance/ledger`、`finance/refunds`、`finance/invoices` 读取。
 
-未显式分页的旧调用继续返回原数组；报名 `cursor=<上一页最后一项ID>` 按 UUID 升序、最多 500 条，用于导出和既有集成。CSV 遍历全部筛选报名，采用 UTF-8 BOM 并转义公式前缀。
+未显式分页的旧调用继续返回原数组；报名 `cursor=<上一页最后一项ID>` 按报名列表相同顺序、最多 500 条，用于导出和既有集成。CSV 遍历全部筛选报名，采用 UTF-8 BOM 并转义公式前缀。
 
 ### 公网地址、竞赛与发票
 
-`GET /api/v1/site` 返回当前 `publicUrl` 与配置 `version`；系统管理员 `PUT /api/v1/admin/site` 保存新地址并检查版本。地址仅允许根路径 HTTP／HTTPS，生产要求 HTTPS；API 与 Worker 动态读取。环境地址和 `TRUSTED_MANAGEMENT_ORIGINS` 保留为可信管理入口，CLI `pnpm restore:public-url https://reg.example.org` 提供恢复并记录审计。
+`GET /api/v1/site` 返回当前 `publicUrl` 与配置 `version`；系统管理员 `PUT /api/v1/admin/site` 保存新地址并检查版本。地址允许根路径 HTTP／HTTPS；API 与 Worker 动态读取，只用于生成链接，不作为登录来源白名单。TLS、域名与访问控制由反向代理负责；登录后的写请求仍检查 CSRF。CLI `pnpm restore:public-url https://reg.example.org` 提供恢复并记录审计。
 
 竞赛新增 `descriptionFormat: TEXT|MARKDOWN`；旧数据保持 `TEXT`。规则新增 `allowUnofficial`、版本化 `platformProfiles`、`invoiceTypes: NORMAL|SPECIAL` 和 `invoiceRequiredFields`。报名新增 `participationType: OFFICIAL|UNOFFICIAL` 与 `organization: {name,shortName,country,icpcId?}`；旧报名默认正式，字段向后兼容。提交锁定资料快照，关键变更使审核、准考证和映射失效。非正式申请必须人工审核。
 
@@ -61,7 +61,7 @@ GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
 
 ## 账号与页面入口
 
-首页 `/` 为独立介绍页，竞赛列表为 `/contests`。竞赛列表和详情页面要求登录，未登录时跳转 `/login?next=原页面`，登录后保留原路径与参数；公开只读竞赛元数据接口保持可读。注册、登录与找回密码仅使用本站账号；OAuth2/OIDC 登录、账号绑定、回调与后台认证配置接口已移除，旧路径返回 404。旧的第三方身份记录保留用于历史恢复；没有本站密码的旧账号需通过邮箱找回密码设置密码后登录。
+首页 `/` 为独立介绍页，竞赛列表为 `/contests`。竞赛列表和详情页面要求登录，未登录时跳转 `/login?next=原页面`，登录后保留原路径与参数；公开只读竞赛元数据接口保持可读。支持本站邮箱密码与 GitHub 登录，历史通用 OAuth2/OIDC 配置继续停用。GitHub 使用专用接口；旧身份记录保留，旧账号可通过邮箱找回密码恢复，再主动绑定 GitHub。
 
 Hydro / DOMjudge 的联动是报名资格生效后创建独立比赛账号，与本站登录分开。管理员在 `/admin` 的“评测平台”页签配置实例和比赛绑定。修改同类型实例时留空凭据保留原值；新建或更换平台类型必须提供相应凭据，旧版本修改返回 409。
 
@@ -154,3 +154,22 @@ X-ContestCenter-Signature: sha256=<hex HMAC>
 ```
 
 工具为 list_contests、list_registrations（支持 cursor）、get_registration、get_finance_summary、get_support_ticket，调用 `/api/automation/v1`，始终遵守 Token 的 scope、竞赛和字段范围。无报名提交、财务确认或其他写工具。将配置密钥保存于客户端的受控配置中。
+
+## 新版账号、标签与报名审核
+
+`GET /auth/me` 返回 `user.profileComplete`。`PUT /auth/profile` 接收 `{version,name,profile}`；报名要求姓名及 `profile.student_id`、`class_name`、`college` 非空，`gender` 为 `男`、`女`、`其他` 或 `不便透露`。缺项时创建 / 提交报名返回 400，已绑定账号的参赛成员也须完善资料。
+
+| 接口（均以 `/api/v1` 为前缀）     | 行为                                                              |
+| --------------------------------- | ----------------------------------------------------------------- |
+| GET `/auth/providers`             | 公共登录开关；已登录时返回本人 GitHub 绑定状态                    |
+| GET `/auth/github?next=/contests` | GitHub 授权开始；一次性 state 与 S256 PKCE，`next` 只接受本站路径 |
+| GET `/auth/github?mode=link`      | 当前登录账号主动绑定 GitHub                                       |
+| GET `/auth/github/callback`       | 后端交换令牌，查询 GitHub 用户和已验证邮箱，建立本站会话          |
+| DELETE `/auth/github`             | 本人解除绑定，要求已设置本站密码，检查 CSRF                       |
+| GET / PUT `/admin/github`         | 管理员读取 / 版本化保存开关与凭据，密钥只返回是否已配置           |
+| GET `/admin/user-tags`            | 管理员获取已有标签用于筛选和选择                                  |
+| PUT `/admin/users/:id/tags`       | 管理员发送 `{version,tags}`，去重后保存，旧版本返回 409           |
+
+用户列表接受 `tag`；报名列表、统计和 CSV 接受 `tag` 并检查管理员管理范围。最多 20 个标签，每个不超过 40 字。
+
+报名新增 `number: number|null`，每个竞赛从 1 开始按首次成功提交分配，`submittedAt` 保留首次提交时间。草稿不编号，并发提交不重号；重新提交、补正和取消不重新编号。历史已提交报名按首次提交的审计时间自动回填，计数器接续最大编号；CSV 首列为报名编号。

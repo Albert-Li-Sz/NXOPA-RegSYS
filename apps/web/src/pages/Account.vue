@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue';
+import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { defaultFields, invitationReturnPathSchema } from '@contest-center/contracts';
@@ -14,12 +14,42 @@ const route = useRoute(),
 const form = reactive({ account: '', email: '', username: '', name: '', password: '' });
 const profile = reactive<Data>({});
 const sessions = ref<Data[]>([]);
+const github = ref({ enabled: false, linked: false });
+const profileFields = defaultFields.map((field) => ({
+  ...field,
+  required: ['student_id', 'class_name', 'college', 'gender'].includes(field.key),
+}));
+const githubErrors: Record<string, string> = {
+  state: 'GitHub 登录已过期或校验失败，请重新尝试',
+  cancelled: '已取消 GitHub 授权',
+  email: 'GitHub 账号没有已验证邮箱，请先在 GitHub 完成邮箱验证',
+  email_exists: '该邮箱已注册，请先使用本站密码登录，再在账号中心绑定 GitHub',
+  bound: '该 GitHub 账号已绑定其他用户，或当前用户已有 GitHub 绑定',
+  failed: 'GitHub 登录失败，请重新尝试或使用邮箱登录',
+};
+function nextPath() {
+  const next = String(route.query.next ?? '/contests');
+  return /^\/(?!\/)[^\\\r\n]*$/.test(next) ? next : '/contests';
+}
+watch(
+  () => auth.user,
+  async (current) => {
+    if (current) {
+      Object.assign(profile, JSON.parse(JSON.stringify(current)));
+      sessions.value = await api('/auth/sessions');
+    }
+  },
+  { immediate: true },
+);
 const action = computed(() => String(route.params.action ?? ''));
 const invitationReturn = computed(() => {
   const result = invitationReturnPathSchema.safeParse(route.query.next);
   return result.success ? result.data : undefined;
 });
 onMounted(async () => {
+  github.value = (await api('/auth/providers')).github;
+  if (route.query.github_error)
+    notice.value = githubErrors[String(route.query.github_error)] ?? githubErrors.failed!;
   if (action.value === 'verify') {
     busy.value = true;
     try {
@@ -63,8 +93,12 @@ async function submit() {
     );
     auth.user = data.user;
     auth.csrf = data.csrf;
-    const next = String(route.query.next ?? '/contests');
-    router.push(next.startsWith('/') && !next.startsWith('//') ? next : '/');
+    router.push(
+      data.user.profileComplete ||
+        (mode.value !== 'register' && (data.user.isAdmin || data.user.isCoach))
+        ? nextPath()
+        : { path: '/account', query: { next: nextPath() } },
+    );
   } finally {
     busy.value = false;
   }
@@ -81,6 +115,7 @@ async function save() {
     await loadAuth();
     Object.assign(profile, JSON.parse(JSON.stringify(auth.user)));
     ElMessage.success('资料已保存');
+    if (auth.user?.profileComplete && route.query.next) await router.push(nextPath());
   } finally {
     busy.value = false;
   }
@@ -120,7 +155,9 @@ async function resend() {
       </h2>
       <p class="subtitle" style="margin-bottom: 25px">
         {{
-          mode === 'register' ? '使用邮箱注册，验证后即可报名' : '登录南晓开放原子社在线报名系统'
+          mode === 'register'
+            ? '注册后完善个人资料并验证邮箱，即可报名'
+            : '登录南晓开放原子社在线报名系统'
         }}
       </p>
       <el-form label-position="top" @submit.prevent="submit">
@@ -169,6 +206,12 @@ async function resend() {
           }}</el-button
         >
       </el-form>
+      <a
+        v-if="github.enabled && ['login', 'register'].includes(mode)"
+        :href="`/api/v1/auth/github?next=${encodeURIComponent(nextPath())}`"
+        class="github-login"
+        ><el-button style="width: 100%; margin-top: 14px">使用 GitHub 登录</el-button></a
+      >
       <div class="auth-links">
         <el-button text @click="mode = mode === 'register' ? 'login' : 'register'">{{
           mode === 'register' ? '已有账号？登录' : '创建账号'
@@ -194,16 +237,23 @@ async function resend() {
     <div class="profile-layout">
       <div class="card">
         <h3>个人资料</h3>
+        <el-alert
+          v-if="!auth.user.profileComplete"
+          title="请完善学号、姓名、班级、学院和性别后再报名"
+          type="warning"
+          :closable="false"
+          style="margin-bottom: 16px"
+        />
         <el-form label-position="top"
           ><div class="form-grid">
-            <el-form-item label="姓名" for="profile-name"
+            <el-form-item label="姓名" for="profile-name" required
               ><el-input id="profile-name" v-model="profile.name" /></el-form-item
             ><el-form-item label="邮箱" for="profile-email"
               ><el-input id="profile-email" v-model="profile.email"
             /></el-form-item>
           </div>
           <DynamicFields
-            :fields="defaultFields"
+            :fields="profileFields"
             scope="PERSON"
             :answers="profile.profile || {}"
             prefix="profile"
@@ -217,6 +267,28 @@ async function resend() {
           ><el-button type="primary" :loading="busy" @click="save">保存资料</el-button></el-form
         >
       </div>
+    </div>
+    <div class="card" v-if="github.enabled || github.linked">
+      <h3>GitHub 账号</h3>
+      <p>
+        {{
+          github.linked
+            ? '已绑定 GitHub，可使用 GitHub 登录。'
+            : '绑定后可使用 GitHub 登录当前账号。'
+        }}
+      </p>
+      <a v-if="!github.linked" href="/api/v1/auth/github?mode=link&next=%2Faccount"
+        ><el-button>绑定 GitHub</el-button></a
+      >
+      <el-button
+        v-else
+        :disabled="!auth.user.hasPassword"
+        @click="api('/auth/github', 'DELETE').then(() => (github.linked = false))"
+        >解除 GitHub 绑定</el-button
+      >
+      <p v-if="github.linked && !auth.user.hasPassword" class="form-help">
+        如需解除绑定，请先通过邮箱找回流程设置本站密码。
+      </p>
     </div>
     <div class="card">
       <h3>登录会话</h3>

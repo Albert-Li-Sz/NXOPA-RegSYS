@@ -26,6 +26,7 @@ import { IntegrationService } from './integrations.js';
 import { AdminService } from './admin.js';
 import { InvitationService } from './invitations.js';
 import { MailService } from './mail.js';
+import { GithubService } from './github.js';
 import { describeApi } from './openapi.js';
 import path from 'node:path';
 import { defaultSite } from '@contest-center/contracts';
@@ -69,6 +70,7 @@ class Errors implements ExceptionFilter {
     AdminService,
     InvitationService,
     MailService,
+    GithubService,
   ],
 })
 class AppModule {}

@@ -4,7 +4,7 @@
 
 ## 系统总览
 
-当前结构以下方 Mermaid 为准。[初期结构图](architecture.png)及其 [SVG](architecture.svg)保留为规划留档，其中第三方认证模块已取消。首页 `/` 与竞赛报名入口 `/contests` 分开。
+当前结构以下方 Mermaid 为准。[初期结构图](architecture.png)及其 [SVG](architecture.svg)保留为规划留档，GitHub OAuth 登录使用专用接口，其他历史身份提供方保持停用。首页 `/` 与竞赛报名入口 `/contests` 分开。
 
 ```mermaid
 flowchart TB
@@ -47,20 +47,20 @@ LaTeX Runner 通过专用任务卷交付结果，容器无网络。每次编译�
 
 ## 应用模块
 
-| 模块          | 负责的业务                                       | 主要依赖                       |
-| ------------- | ------------------------------------------------ | ------------------------------ |
-| identity      | 注册、验证、密码、会话与四类身份                 | SMTP、统一授权                 |
-| invitations   | 账号与角色邀请 URL、接收确认、撤销、状态与审计   | identity、contests、coaching   |
-| contests      | 竞赛介绍、发布、报名窗口、公告和配置版本         | 全局配置、字段库               |
-| forms         | 全局字段、表单配置、版本和服务端校验             | 用户资料预填                   |
-| registrations | 个人及团队报名、成员、提交、审核、资格计算       | forms、coaching、finance       |
-| coaching      | 指导老师档案、双向关联、代办权限                 | identity、registrations        |
-| finance       | 费用快照、凭证、核账、不可覆盖的账簿、退款和开票 | registrations、附件            |
-| admissions    | 模板库、预览、生成、版本、发放与下载             | 报名快照、字段库、LaTeX Runner |
-| support       | 系统及竞赛工单、回复、附件与处理                 | 用户与竞赛权限                 |
-| integrations  | 平台实例、字段映射、连接探测、比赛账号和同步任务 | Connector 契约、报名资格       |
-| automation    | 联合注册 API、Webhook、MCP 查询与服务 Token      | 同一套应用服务和权限           |
-| shared        | 审计、Outbox、任务、通知、文件与配置             | PostgreSQL、Redis、持久卷      |
+| 模块          | 负责的业务                                        | 主要依赖                       |
+| ------------- | ------------------------------------------------- | ------------------------------ |
+| identity      | 注册、验证、密码、GitHub 登录、必填资料与用户标签 | SMTP、统一授权                 |
+| invitations   | 账号与角色邀请 URL、接收确认、撤销、状态与审计    | identity、contests、coaching   |
+| contests      | 竞赛介绍、发布、报名窗口、公告和配置版本          | 全局配置、字段库               |
+| forms         | 全局字段、表单配置、版本和服务端校验              | 用户资料预填                   |
+| registrations | 个人及团队报名、成员、提交、审核、资格计算        | forms、coaching、finance       |
+| coaching      | 指导老师档案、双向关联、代办权限                  | identity、registrations        |
+| finance       | 费用快照、凭证、核账、不可覆盖的账簿、退款和开票  | registrations、附件            |
+| admissions    | 模板库、预览、生成、版本、发放与下载              | 报名快照、字段库、LaTeX Runner |
+| support       | 系统及竞赛工单、回复、附件与处理                  | 用户与竞赛权限                 |
+| integrations  | 平台实例、字段映射、连接探测、比赛账号和同步任务  | Connector 契约、报名资格       |
+| automation    | 联合注册 API、Webhook、MCP 查询与服务 Token       | 同一套应用服务和权限           |
+| shared        | 审计、Outbox、任务、通知、文件与配置              | PostgreSQL、Redis、持久卷      |
 
 API、MCP 与平台接口通过应用服务读取和变更报名。Worker 消费任务并复用业务服务，不建立独立的报名或财务规则。
 

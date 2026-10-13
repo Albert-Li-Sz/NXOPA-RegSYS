@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Shared by the three installation entry points; never source the user's .env as shell code.
 
-install_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "$install_dir/.." && pwd)"
+repo_root="${NXOPA_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+install_dir="$repo_root/deploy"
 install_env="${INSTALL_ENV_FILE:-$install_dir/.env}"
 case "$install_env" in
   /*) ;;
@@ -135,9 +135,9 @@ compose() {
 }
 
 require_docker() {
-  command -v docker >/dev/null 2>&1 || fail '未安装 Docker。请按 install/README.md 安装 Docker Engine / Desktop。'
+  command -v docker >/dev/null 2>&1 || fail '未安装 Docker。请按 deploy/README.md 安装 Docker Engine / Desktop。'
   local version major minor patch
-  version="$(docker compose version --short 2>/dev/null)" || fail '缺少 Docker Compose 插件，请按 install/README.md 安装。'
+  version="$(docker compose version --short 2>/dev/null)" || fail '缺少 Docker Compose 插件，请按 deploy/README.md 安装。'
   if [[ ! "$version" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then fail '无法识别 Docker Compose 版本。'; fi
   major="${BASH_REMATCH[1]}"; minor="${BASH_REMATCH[2]}"; patch="${BASH_REMATCH[3]}"
   if (( major < 2 || (major == 2 && (minor < 24 || (minor == 24 && patch < 4))) )); then
@@ -158,7 +158,7 @@ require_docker() {
 }
 
 require_config() {
-  [[ -f "$install_env" ]] || fail '尚未生成配置，请先运行 bash install.sh 或 bash install.sh init。'
+  [[ -f "$install_env" ]] || fail '尚未生成配置，请先运行 bash ../install.sh 或 bash ../install.sh init。'
   if awk '/^(ENCRYPTION_KEY|POSTGRES_PASSWORD)=GENERATE_ON_INSTALL$/ { found=1 } END { exit !found }' "$install_env"; then
     fail '配置仍包含未生成的密钥。请使用 init 创建配置，或填写有效的随机密钥。'
   fi
@@ -212,7 +212,7 @@ backup() {
 start_services() {
   if [[ "$install_mode" == images ]]; then
     if ! compose pull; then
-      printf '镜像拉取失败。请记录上方失败的镜像名；若出现 content descriptor / not found，请检查镜像代理是否完整同步，并参阅 install/README.md。\n' >&2
+      printf '镜像拉取失败。请记录上方失败的镜像名；若出现 content descriptor / not found，请检查镜像代理是否完整同步，并参阅 deploy/README.md。\n' >&2
       return 1
     fi
     compose up -d --no-build --remove-orphans --wait --wait-timeout 240 || return

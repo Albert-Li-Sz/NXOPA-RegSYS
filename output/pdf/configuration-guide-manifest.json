@@ -1,7 +1,7 @@
 {
-  "sourceSha256": "66b468ebb27298527366089fe039ac10dcb34bc500f25d7109fe91ea002b1be4",
-  "pdfSha256": "d8a299979350354bdace0c4c9e54ddecb87fbbeb5e14deebb05d4893354d2224",
-  "sourceZipSha256": "36e58ffca4522a618889e2c2b9fdf24eaf3e9b51cdb75eff8521cf090fca9ad2",
+  "sourceSha256": "23dca7247d2ecbf6e3ae235b98650c52fc3d4735be193f33f66e1f7d3f027861",
+  "pdfSha256": "1277db53b37cf0539d5cee660b7711509d2f053bb8d2456203f2a2516cf531e6",
+  "sourceZipSha256": "d31866e69542738a33cee6959df9fc3f02efd62f6b4dec8d170e7f5109bf750d",
   "screenshots": {
     "01-home.png": "afac20a997452dbf93b5acde4f7174cca538cf64718fddac7dc07fddc39e343d",
     "02-login.png": "57f346b4bf286306120a52292e8f7ae6c654cd6ddecfa8f43287c2ff6ea5daf0",
@@ -25,6 +25,10 @@
     "20-domjudge-team.png": "187e5775ffa9e2039ada0bb4aeb00a4469c88268f29384dde2a98f7a6ceb6a77",
     "21-invoice-application.png": "561b62e075eba6a44989c17eb98a3796fb9731021f8dd072fb51623707ae766d",
     "22-pagination.png": "8a4b86ad68fe1f9e8f1d0ccba5cd7c69af39e5e104dbfe4ef5dfa59512ca7f5b",
-    "23-markdown.png": "5dfe110bf8da4124d4151c4f6b0bade82e518298e66b9008a3a4ac9c65a898b3"
+    "23-markdown.png": "5dfe110bf8da4124d4151c4f6b0bade82e518298e66b9008a3a4ac9c65a898b3",
+    "24-github-login.png": "6bcbe34eddebaec63691f508ecdb4c7e92013ce98e9d40e5e719eceab6b99c5d",
+    "25-user-tags.png": "53d6727f344b5ebfc6e0c774957c60bf5c104ea8214bdd958bbeb6deaf6034a9",
+    "26-profile.png": "35f4722c16289be1fa45e1958cba6d30669eaf6b37cc7c0a1e2b129a54914c4a",
+    "27-github-settings.png": "d756fc09c29ac0d4bc6c8b667e7b52f582a7e468738dd9259398ca5eea409f8f"
   }
 }

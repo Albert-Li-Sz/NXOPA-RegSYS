@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
 import type { Principal } from '@contest-center/contracts';
-import { defaultSite, fieldSchema, fieldsSchema } from '@contest-center/contracts';
+import { defaultSite, fieldSchema, fieldsSchema, userTagsSchema } from '@contest-center/contracts';
 import { db, json, audit } from './db.js';
 import { lock } from './db.js';
 import { siteSettings, validatePublicUrl } from './site-settings.js';
@@ -10,13 +10,16 @@ import { requireAdmin, requireManager, checkVersion } from './security.js';
 export class AdminService {
   async users(u: Principal, query: ListQuery = {}) {
     requireAdmin(u);
-    const where = query.search
-      ? {
-          OR: ['name', 'email', 'username'].map((k) => ({
-            [k]: { contains: query.search, mode: 'insensitive' as const },
-          })),
-        }
-      : {};
+    const where = {
+      ...(query.tag ? { tags: { has: z.string().min(1).max(40).parse(query.tag) } } : {}),
+      ...(query.search
+        ? {
+            OR: ['name', 'email', 'username'].map((k) => ({
+              [k]: { contains: query.search, mode: 'insensitive' as const },
+            })),
+          }
+        : {}),
+    };
     return paginated(
       query,
       (options) =>
@@ -32,12 +35,37 @@ export class AdminService {
             verified: true,
             version: true,
             roles: true,
+            tags: true,
+            profile: true,
           },
           ...options,
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         }),
       () => db.user.count({ where }),
     );
+  }
+  async userTags(u: Principal) {
+    requireAdmin(u);
+    const rows = await db.$queryRaw<
+      { tag: string }[]
+    >`SELECT DISTINCT unnest("tags") AS tag FROM "User" ORDER BY tag LIMIT 500`;
+    return rows.map((row) => row.tag);
+  }
+  async tagUser(u: Principal, id: string, body: unknown) {
+    requireAdmin(u);
+    const b = z.object({ version: z.number().int().positive(), tags: userTagsSchema }).parse(body);
+    return db.$transaction(async (tx) => {
+      await lock(tx, `auth:${id}`);
+      const previous = await tx.user.findUniqueOrThrow({ where: { id } });
+      checkVersion(previous.version, b.version);
+      const result = await tx.user.update({
+        where: { id, version: b.version },
+        data: { tags: b.tags, version: { increment: 1 } },
+        select: { id: true, tags: true, version: true },
+      });
+      await audit(tx, u.id, 'USER_TAGS_UPDATE', id, { before: previous.tags, tags: b.tags });
+      return result;
+    });
   }
   async site() {
     return siteSettings();

@@ -14,12 +14,14 @@ model User {
   isAdmin Boolean @default(false)
   isCoach Boolean @default(false)
   profile Json @default("{}")
+  tags String[] @default([])
   version Int @default(1)
   createdAt DateTime @default(now())
   sessions Session[]
   roles RoleAssignment[]
   identities ExternalIdentity[]
   coachedRegistrations RegistrationCoach[]
+  @@index([tags], type: Gin)
 }
 model Session {
   id String @id
@@ -51,9 +53,10 @@ model Setting {
   value Json
   version Int @default(1)
 }
-/// Historical identity data only; all third-party sign-in endpoints are removed.
+/// GitHub login uses the github slug; other historical providers remain inactive.
 model OAuthProvider {
   id String @id @default(uuid()) @db.Uuid
+  slug String? @unique
   name String
   mode String
   issuer String?
@@ -99,6 +102,7 @@ model Contest {
   policy Json
   version Int @default(1)
   formVersion Int @default(1)
+  nextRegistrationNumber Int @default(1)
   createdAt DateTime @default(now())
   roles RoleAssignment[]
   forms FormVersion[]
@@ -127,6 +131,7 @@ model Registration {
   contestId String @db.Uuid
   contest Contest @relation(fields:[contestId],references:[id])
   ownerId String @db.Uuid
+  number Int?
   teamName String @default("")
   teamEnglishName String @default("")
   participationType String @default("OFFICIAL")
@@ -158,6 +163,7 @@ model Registration {
   @@index([contestId,status,review,eligible])
   @@index([ownerId])
   @@index([contestId,createdAt,id])
+  @@unique([contestId,number])
 }
 model RegistrationPerson {
   id String @id @default(uuid()) @db.Uuid

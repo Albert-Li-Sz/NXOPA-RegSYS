@@ -37,6 +37,7 @@ import {
 import { AdminService } from './admin.js';
 import { InvitationService } from './invitations.js';
 import { MailService } from './mail.js';
+import { GithubService } from './github.js';
 import { db, registrationInclude, json, lock } from './db.js';
 import { requireManager, requireAdmin } from './security.js';
 import { redis } from './auth.js';
@@ -55,7 +56,36 @@ export class ApiController {
     @Inject(AdminService) private admin: AdminService,
     @Inject(InvitationService) private invitations: InvitationService,
     @Inject(MailService) private mail: MailService,
+    @Inject(GithubService) private github: GithubService,
   ) {}
+  @Get('auth/providers') providers(@Req() r: AuthRequest) {
+    return this.github.providers(r);
+  }
+  @Get('auth/github') githubStart(@Req() r: AuthRequest, @Res() res: Response) {
+    return this.github.start(r, res);
+  }
+  @Get('auth/github/callback') githubCallback(@Req() r: AuthRequest, @Res() res: Response) {
+    return this.github.callback(r, res);
+  }
+  @Delete('auth/github') githubUnlink(@Req() r: AuthRequest) {
+    return this.github.unlink(r);
+  }
+  @Get('admin/github') githubSettings(@Req() r: AuthRequest) {
+    return this.github.view(user(r), r);
+  }
+  @Put('admin/github') githubSave(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.github.save(user(r), r, b);
+  }
+  @Get('admin/user-tags') userTags(@Req() r: AuthRequest) {
+    return this.admin.userTags(user(r));
+  }
+  @Put('admin/users/:id/tags') tagUser(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.admin.tagUser(user(r), id, b);
+  }
   @Get('contests/:id/statistics') statistics(@Req() r: AuthRequest, @Param('id') id: string) {
     return this.registrations.statistics(user(r), id, r.query as Record<string, string>);
   }
@@ -167,6 +197,7 @@ export class ApiController {
     res.write(
       '\uFEFF' +
         csv([
+          '报名编号',
           '报名ID',
           '队名',
           '参赛性质',
@@ -192,6 +223,7 @@ export class ApiController {
         for (const p of x.people)
           res.write(
             csv([
+              x.number ?? '',
               x.id,
               x.teamName,
               x.participationType === 'UNOFFICIAL' ? '非正式' : '正式',

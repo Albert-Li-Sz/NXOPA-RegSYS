@@ -42,6 +42,8 @@ export interface PersonView {
   answers: Data;
 }
 export interface RegistrationView {
+  number: number | null;
+  submittedAt: string | null;
   id: string;
   contestId: string;
   contest: ContestView;

@@ -115,3 +115,9 @@ OJ_TYPE=DOMJUDGE pnpm test:oj-recovery
 ```
 
 Hydro 5.0.7／MongoDB 7 使用端口 58888，正式插件包不含创建验收比赛的辅助插件。DOMjudge 9.0.1／MariaDB 10.11.11 使用端口 58901；镜像由官方 9.0.1 发布归档构建，归档 SHA-256 `3d46b31c296581833ac9f8e9b249d929fc28710e834b1cec68723791a2dceb97`，packaging 固定 `396fd5446c53ec9dc6d66208b41915b9cdcd1bc1`。恢复测试通过转发真实 OJ 的 HTTP 请求、丢弃一次远端成功响应，确认自动重试不重复创建用户和队伍。
+
+## GitHub 账号登录
+
+GitHub 登录与比赛平台账号独立。在 GitHub 开发者设置创建 OAuth App，授权回调填写 `https://你的站点/api/v1/auth/github/callback`；管理员在“GitHub 登录”页填 Client ID 和 Client Secret 并启用。代理正确传递 Host 与 X-Forwarded-Proto，回调地址可在后台明确指定。
+
+实现参考 [Auth.js GitHub Provider](https://github.com/nextauthjs/next-auth/blob/main/packages/core/src/providers/github.ts)、[GitHub OAuth Web Flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps) 与 [GitHub 邮箱 API](https://docs.github.com/en/rest/users/emails)。通过后端交换令牌，只使用已验证邮箱，令牌不持久化；state 单次有效并配合 PKCE。同邮箱已有账号先登录再绑定，禁止自动合并。资料完整性由本站维护，GitHub 登录后同样先完善学号、姓名、班级、学院和性别。

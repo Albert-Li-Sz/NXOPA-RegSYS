@@ -3,10 +3,14 @@ import { hash, verify, argon2id } from 'argon2';
 import { Redis } from 'ioredis';
 import { z } from 'zod';
 import type { Request, Response } from 'express';
-import { invitationReturnPathSchema, type Principal } from '@contest-center/contracts';
+import {
+  invitationReturnPathSchema,
+  profileComplete,
+  type Principal,
+} from '@contest-center/contracts';
 import { db, audit, event, json, lock } from './db.js';
 import { config } from './config.js';
-import { publicLink, trustedOrigins } from './site-settings.js';
+import { publicLink } from './site-settings.js';
 import { opaqueToken, sha, hmac, same } from './security.js';
 
 export const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
@@ -35,6 +39,7 @@ const publicUser = async (id: string): Promise<Principal> => {
     isAdmin: u.isAdmin,
     isCoach: u.isCoach,
     hasPassword: !!u.passwordHash,
+    profileComplete: profileComplete(u),
     profile: u.profile as Principal['profile'],
     version: u.version,
     contestIds: u.roles.map((r) => r.contestId),
@@ -48,15 +53,13 @@ export async function attachPrincipal(req: AuthRequest) {
     where: { id },
     include: { user: { select: { passwordHash: true } } },
   });
-  if (s?.user.passwordHash && s.expiresAt > new Date()) {
+  if (s && s.expiresAt > new Date()) {
     req.sessionId = id;
     req.principal = await publicUser(s.userId);
   }
 }
 export async function checkCsrf(req: AuthRequest) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return;
-  const origin = req.headers.origin;
-  if (origin && !(await trustedOrigins()).has(origin)) throw new ForbiddenException('请求来源无效');
   if (
     req.sessionId &&
     !same(String(req.headers['x-csrf-token'] ?? ''), hmac(config.encryptionKey, req.sessionId))
@@ -66,7 +69,7 @@ export async function checkCsrf(req: AuthRequest) {
 export function csrf(req: AuthRequest) {
   return req.sessionId ? hmac(config.encryptionKey, req.sessionId) : '';
 }
-async function session(req: AuthRequest, res: Response, id: string) {
+export async function session(req: AuthRequest, res: Response, id: string) {
   const token = opaqueToken();
   await db.session.create({
     data: {
@@ -78,7 +81,7 @@ async function session(req: AuthRequest, res: Response, id: string) {
   });
   res.cookie('cc_session', token, {
     httpOnly: true,
-    secure: config.production,
+    secure: req.secure,
     sameSite: 'lax',
     maxAge: 7 * 86400000,
     path: '/',

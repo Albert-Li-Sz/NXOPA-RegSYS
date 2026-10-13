@@ -15,7 +15,7 @@ export const config = {
   storage: path.resolve(serverRoot, process.env.STORAGE_DIR ?? '../../.runtime/storage'),
   spool: path.resolve(serverRoot, process.env.LATEX_SPOOL ?? '../../.runtime/latex'),
   encryptionKey: process.env.ENCRYPTION_KEY ?? '',
-  allowPrivate: process.env.ALLOW_PRIVATE_INTEGRATIONS === 'true',
+  allowPrivate: (process.env.ALLOW_PRIVATE_INTEGRATIONS ?? 'true') === 'true',
 };
 if (!config.databaseUrl) throw new Error('DATABASE_URL is required');
 if (!/^[a-f0-9]{64}$/i.test(config.encryptionKey))

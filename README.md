@@ -2,8 +2,8 @@
 
 可自托管的中文竞赛报名系统，采用 Vue 3、Element Plus、NestJS、Prisma 7、PostgreSQL、Redis/BullMQ 和隔离的 XeLaTeX 编译容器。支持个人与团队报名、指导老师、审核、线下财务、工单、准考证、Hydro / DOMjudge 联动，以及联合注册 API 和只读 MCP。
 
-- [Docker Compose 安装包与步骤](install/README.md)
-- [V0.1.5 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.1.5)
+- [Docker Compose 安装包与步骤](deploy/README.md)
+- [V0.2.0 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.2.0)
 - [部署与日常维护](docs/DEPLOYMENT.md)
 - [在线配置教程（GitHub Pages）](https://albert-li-sz.github.io/NXOPA-RegSYS/)
 - [带截图的配置教程（PDF）](output/pdf/configuration-guide.pdf)、[LaTeX 源码](docs/CONFIGURATION_GUIDE.tex)、[源码与截图打包](output/pdf/configuration-guide-source.zip)
@@ -17,20 +17,21 @@
 
 ## 启动正式实例
 
-推荐使用 `install` 目录的独立安装入口。宿主机需要 Docker Compose、Bash 和 OpenSSL，Node.js / pnpm 随镜像安装。
+推荐使用根目录的单一一键安装入口 `install.sh`。宿主机需要 Docker Compose、Bash 和 OpenSSL，Node.js / pnpm 随镜像安装。
 
-从 V0.1.5 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
+从 V0.2.0 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
 
 ```bash
 # 安装：交互选择镜像版本、域名或端口，再创建管理员
-bash install/install.sh
+curl -fsSL https://raw.githubusercontent.com/Albert-Li-Sz/NXOPA-RegSYS/main/install.sh -o install.sh
+bash install.sh
 ```
 
-更新使用 `bash install/update.sh`，卸载使用 `bash install/uninstall.sh`。更新前自动加密备份；卸载默认保留数据，永久删除数据卷须输入项目名确认。原有 `init/up/admin/backup/restore` 维护命令继续可用。
+更新使用 `bash install.sh update`，卸载使用 `bash install.sh uninstall`。更新前自动加密备份；卸载默认保留数据，永久删除数据卷须输入项目名确认。原有 `init/up/admin/backup/restore` 维护命令继续可用。
 
-本机试用打开 <http://localhost:8080>；公网部署使用配置的 HTTPS 域名。初始化命令交互输入管理员邮箱和密码；首次创建后使用邮箱或 `administrator` 登录。正式容器固定为 production 模式，初始化不会创建演示账号，也不会覆盖已有账号。数据库迁移在 API 启动前自动执行。已有根目录 Compose 部署仍可沿用原入口和配置；默认安装项目名 `nxopa-regsys` 与旧项目 `contest-center` 使用不同数据卷，迁移入口时按安装说明保留原项目名和密钥。
+本机试用打开 <http://localhost:8080>；公网部署由自己的反向代理配置 HTTP/HTTPS。`PUBLIC_URL` 只用于链接，不限制登录来源，内网联动默认启用。初始化命令交互输入管理员邮箱和密码；首次创建后使用邮箱或 `administrator` 登录。正式容器固定为 production 模式，初始化不会创建演示账号，也不会覆盖已有账号。数据库迁移在 API 启动前自动执行。已有根目录 Compose 部署仍可沿用原入口和配置；默认安装项目名 `nxopa-regsys` 与旧项目 `contest-center` 使用不同数据卷，迁移入口时按安装说明保留原项目名和密钥。
 
-默认安装由内部 Caddy 合并前端和 API，提供 `127.0.0.1:8080` HTTP 入口，用户自己的反向代理负责公网 HTTPS。PostgreSQL、Redis、Caddy 使用官方镜像；Vue 前端、NestJS API、Worker 和 XeLaTeX 分别运行在独立容器，数据库和队列位于私有网络。各服务与数据卷说明见 [安装说明](install/README.md)。
+默认安装由内部 Caddy 合并前端和 API，提供 `127.0.0.1:8080` HTTP 入口，用户自己的反向代理负责公网 HTTPS。PostgreSQL、Redis、Caddy 使用官方镜像；Vue 前端、NestJS API、Worker 和 XeLaTeX 分别运行在独立容器，数据库和队列位于私有网络。各服务与数据卷说明见 [安装说明](deploy/README.md)。
 
 ## 本地开发与演示
 
@@ -42,7 +43,7 @@ pnpm dev
 pnpm seed
 ```
 
-首页 <http://localhost:5173> 为独立介绍页，点击“进入报名系统”时未登录会跳转登录，成功后返回 <http://localhost:5173/contests>；竞赛详情链接同样保留原页面和参数。社团与集训队 Logo 使用提供的原图。账号仅支持邮箱注册与账号密码登录；Hydro / DOMjudge 的实例凭据、比赛绑定和同步设置位于“管理中心 → 评测平台”。SMTP 位于系统管理员的“管理中心 → 邮件设置”，支持保存、检测和向当前管理员发送测试邮件。
+首页 <http://localhost:5173> 为独立介绍页，点击“进入报名系统”时未登录会跳转登录，成功后返回 <http://localhost:5173/contests>；竞赛详情链接同样保留原页面和参数。社团与集训队 Logo 使用提供的原图。账号支持邮箱注册、账号密码和 GitHub 登录；参赛前需完善学号、姓名、班级、学院、性别，管理员可编辑用户标签并筛选。每场竞赛按首次提交时间编号；Hydro / DOMjudge 的实例凭据、比赛绑定和同步设置位于“管理中心 → 评测平台”。SMTP 位于系统管理员的“管理中心 → 邮件设置”，支持保存、检测和向当前管理员发送测试邮件。
 
 API 文档 <http://localhost:3000/api/docs>，Mailpit <http://localhost:58025>。开发数据库与正式 Compose 使用独立卷。
 

@@ -269,6 +269,9 @@ async function memberSave(id: string, index: number) {
       ><router-link :to="`/contests/${r.contestId}`">{{ r.contest.title }}</router-link
       ><span>／</span><span>我的报名</span>
     </div>
+    <div v-if="r.number && r.submittedAt" class="notice">
+      报名编号：#{{ r.number }} · 首次提交：{{ date(r.submittedAt) }}
+    </div>
     <h1 class="detail-title">{{ r.teamName || r.people[0]?.name || '报名资料' }}</h1>
     <p class="subtitle">
       比赛时间：{{ date(r.contest.startsAt) }} ·

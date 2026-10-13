@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
-assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.1.5');
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.2.0');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
@@ -20,22 +20,20 @@ await mkdir(output, { recursive: true });
 try {
   // Explicit allowlist: never package local environment files, credentials or runtime data.
   for (const name of [
-    'install/install.sh',
-    'install/update.sh',
-    'install/uninstall.sh',
-    'install/lib.sh',
-    'install/compose.yaml',
-    'install/compose.images.yaml',
-    'install/compose.amd64.yaml',
-    'install/compose.arm64.yaml',
-    'install/compose.caddy.yaml',
-    'install/compose.gateway.yaml',
-    'install/compose.proxy.amd64.yaml',
-    'install/compose.proxy.arm64.yaml',
-    'install/nginx.conf.example',
-    'install/.env.example',
-    'install/README.md',
-    'install/ACCEPTANCE.md',
+    'install.sh',
+    'deploy/lib.sh',
+    'deploy/compose.yaml',
+    'deploy/compose.images.yaml',
+    'deploy/compose.amd64.yaml',
+    'deploy/compose.arm64.yaml',
+    'deploy/compose.caddy.yaml',
+    'deploy/compose.gateway.yaml',
+    'deploy/compose.proxy.amd64.yaml',
+    'deploy/compose.proxy.arm64.yaml',
+    'deploy/nginx.conf.example',
+    'deploy/.env.example',
+    'deploy/README.md',
+    'deploy/ACCEPTANCE.md',
     'infra/caddy/Caddyfile',
     'infra/caddy-gateway/Caddyfile',
     'scripts/backup.sh',
@@ -46,7 +44,7 @@ try {
     await mkdir(dirname(destination), { recursive: true });
     await cp(join(root, name), destination);
   }
-  const envExample = join(stage, folder, 'install/.env.example');
+  const envExample = join(stage, folder, 'deploy/.env.example');
   const envText = (await readFile(envExample, 'utf8'))
     .replace(/^INSTALL_MODE=.+$/m, 'INSTALL_MODE=images')
     .replace(/^IMAGE_TAG=.+$/m, `IMAGE_TAG=${tag}`);
@@ -140,7 +138,7 @@ try {
     );
     assert.equal(interactive.success, true);
     assert.equal(interactive.targetTag, tag);
-    assert.equal(interactive.initialTag, 'v0.1.4');
+    assert.equal(interactive.initialTag, 'v0.1.5');
     assert.equal(interactive.platform, 'linux');
     assert.equal(interactive.architecture, arch === 'amd64' ? 'x64' : 'arm64');
     assert.ok(interactive.checks.length >= 4);
@@ -164,6 +162,19 @@ try {
       join(output, `installation-proxy-${arch}.json`),
       JSON.stringify(proxy, null, 2),
     );
+  }
+  const featurePath = join(root, 'dist/feature-reports/release-features.json');
+  try {
+    const features = JSON.parse(await readFile(featurePath, 'utf8'));
+    assert.equal(features.success, true);
+    assert.equal(features.sourceDirty, false);
+    assert.equal(features.tag, tag);
+    assert.equal(features.commit, commit);
+    assert.equal(features.platform, 'linux');
+    assert.ok(features.checks.length >= 6);
+    await writeFile(join(output, 'release-features.json'), JSON.stringify(features, null, 2));
+  } catch (error) {
+    if (error.code !== 'ENOENT' || process.env.CI) throw error;
   }
   const names = (await readdir(output)).sort();
   const checksums = await Promise.all(

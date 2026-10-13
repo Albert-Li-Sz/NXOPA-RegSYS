@@ -17,6 +17,7 @@ const headings = [...body.matchAll(/\\section\{([^}]+)\}/g)];
 const ids = [
   'deployment',
   'site',
+  'github',
   'mail',
   'invitations',
   'permissions',
@@ -183,7 +184,7 @@ const chapters = headings.map((h, i) => ({
 assert(images.size > 0, 'The tutorial must include screenshots');
 const nav = chapters
   .map((c, i) => {
-    const groups = { 0: '开始使用', 3: '授权与评测平台', 8: '竞赛管理', 11: '日常维护' };
+    const groups = { 0: '开始使用', 4: '授权与评测平台', 9: '竞赛管理', 12: '日常维护' };
     return (
       (groups[i] ? '<p class="nav-group">' + groups[i] + '</p>' : '') +
       '<a href="#' +

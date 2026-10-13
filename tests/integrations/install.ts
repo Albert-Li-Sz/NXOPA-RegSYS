@@ -17,7 +17,7 @@ await mkdir(path.join(root, '.runtime/reports'), { recursive: true });
 const stage = await mkdtemp(path.join(root, '.runtime/install-check-'));
 const envFile = path.join(stage, '.env');
 const project = `nxopa-install-check-${process.pid}`;
-const script = path.join(root, 'install/install.sh');
+const script = path.join(root, 'install.sh');
 const checks: string[] = [];
 const installMode = process.env.INSTALL_TEST_MODE ?? 'source';
 assert.ok(['source', 'images'].includes(installMode), 'INSTALL_TEST_MODE is source or images');
@@ -313,6 +313,7 @@ try {
   }
   passed('生产浏览器通过 Nginx → Caddy 完成首页进入、登录及刷新，会话保持且无脚本错误');
 
+  await admin.completeProfile();
   const contest = await admin.api('/contests', 'POST', {
     title: '独立安装验收竞赛',
     season: '安装验收',

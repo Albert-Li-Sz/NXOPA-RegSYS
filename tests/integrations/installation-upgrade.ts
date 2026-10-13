@@ -43,6 +43,7 @@ export async function verifyInstallationUpgrade(
   };
   await run(['admin'], { ...credentials, INSTALL_MODE: 'images', IMAGE_TAG: previousTag });
   const admin = await new Client().login(credentials.ADMIN_EMAIL, credentials.ADMIN_PASSWORD);
+  await admin.completeProfile();
   const contest = await admin.api('/contests', 'POST', {
     title: '旧版本升级验收',
     season: '升级验收',
@@ -130,7 +131,7 @@ export async function verifyInstallationUpgrade(
   passed(`真实 ${previousTag} 空库已创建报名、附件、中文准考证和遗留邮件链接`);
 
   await writeFile(envFile, source, { mode: 0o600 });
-  await run(['update'], { IMAGE_TAG: targetTag });
+  await run(['update', '--yes'], { IMAGE_TAG: targetTag });
   assert.equal(
     (
       await run([
@@ -149,6 +150,24 @@ export async function verifyInstallationUpgrade(
   assert.equal(restored.version, registration.version);
   assert.equal(restored.eligible, true);
   assert.equal(restored.ownerId, admin.user.id);
+  if (Number(targetTag.split('.')[1]) >= 2) {
+    assert.equal(restored.number, 1, 'Historical submissions receive chronological numbers');
+    const counter = await run([
+      'compose',
+      'exec',
+      '-T',
+      'postgres',
+      'psql',
+      '-U',
+      'contest',
+      '-d',
+      'contest_center',
+      '-At',
+      '-c',
+      `SELECT "nextRegistrationNumber" FROM "Contest" WHERE id='${contest.id}'`,
+    ]);
+    assert.equal(counter.trim(), '2', 'Counter resumes after the historical last submission');
+  }
   assert.equal(
     await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
     'offline payment proof',

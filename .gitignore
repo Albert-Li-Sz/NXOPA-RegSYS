@@ -11,3 +11,4 @@ coverage/
 *.log
 *.tsbuildinfo
 .DS_Store
+deploy/backups/

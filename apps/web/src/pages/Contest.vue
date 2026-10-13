@@ -35,6 +35,10 @@ async function create() {
     router.push({ path: '/login', query: { next: route.fullPath } });
     return;
   }
+  if (!auth.user.profileComplete) {
+    await router.push({ path: '/account', query: { next: route.fullPath } });
+    return;
+  }
   busy.value = true;
   try {
     const r = await api<RegistrationView>('/registrations', 'POST', { contestId: c.value!.id });
@@ -127,6 +131,17 @@ async function create() {
       >
       <el-tab-pane :label="c.policy.mode === 'TEAM' ? '队伍' : '报名'" name="registrations"
         ><div class="panel">
+          <div
+            v-if="auth.user && (auth.user.isAdmin || auth.user.contestIds.includes(c.id))"
+            class="toolbar"
+          >
+            <el-input
+              v-model="list.filters.value.tag"
+              clearable
+              placeholder="按用户标签筛选报名"
+              aria-label="按用户标签筛选报名"
+            />
+          </div>
           <div class="actions">
             <el-button type="primary" :disabled="c.status !== 'OPEN'" @click="create"
               >创建报名</el-button
@@ -140,6 +155,7 @@ async function create() {
           <div v-for="r in registrations" :key="r.id" class="card">
             <div class="member-heading">
               <h3>
+                <el-tag v-if="r.number" type="info">报名 #{{ r.number }}</el-tag>
                 {{ r.teamName || r.people[0]?.name || '个人报名' }}
                 <el-tag>{{ label(r.status) }}</el-tag>
               </h3>

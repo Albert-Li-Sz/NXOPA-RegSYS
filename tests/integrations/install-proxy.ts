@@ -39,7 +39,7 @@ const checks: string[] = [];
 let success = false;
 async function run(args: string[], overrides: NodeJS.ProcessEnv = {}) {
   return (
-    await exec('bash', [path.join(root, 'install/install.sh'), ...args], {
+    await exec('bash', [path.join(root, 'install.sh'), ...args], {
       cwd: stage,
       env: { ...env, ...overrides },
       timeout: 600000,
@@ -49,7 +49,7 @@ async function run(args: string[], overrides: NodeJS.ProcessEnv = {}) {
 }
 async function uninstall(input: string) {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn('bash', [path.join(root, 'install/uninstall.sh')], {
+    const child = spawn('bash', [path.join(root, 'install.sh'), 'uninstall'], {
       cwd: stage,
       env,
       stdio: ['pipe', 'ignore', 'pipe'],
@@ -124,6 +124,7 @@ try {
   };
   await run(['admin'], credentials);
   const admin = await new Client().login(credentials.ADMIN_USERNAME, credentials.ADMIN_PASSWORD);
+  await admin.completeProfile();
   const contest = await admin.api('/contests', 'POST', {
     title: '代理切换验收',
     season: '安装验收',

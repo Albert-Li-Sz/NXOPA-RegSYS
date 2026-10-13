@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { api, auth, date, label } from '../api';
+import { api, auth, date, label, loadAuth } from '../api';
 import {
   defaultTemplate,
   accountInvitationLabels,
@@ -10,6 +10,7 @@ import {
 import type { Data, ContestView } from '../types';
 import PlatformBindings from '../components/PlatformBindings.vue';
 import MailSettings from '../components/MailSettings.vue';
+import GithubSettings from '../components/GithubSettings.vue';
 import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
 import { useRoute } from 'vue-router';
@@ -19,7 +20,7 @@ const allowedTabs = [
   'contests',
   'jobs',
   'instances',
-  ...(auth.user?.isAdmin ? ['users', 'tokens', 'site', 'mail', 'audit'] : []),
+  ...(auth.user?.isAdmin ? ['users', 'tokens', 'site', 'mail', 'github', 'audit'] : []),
 ];
 const jobsPage = usePagedList('jobs', () => '/admin/jobs'),
   usersPage = usePagedList('users', () => '/admin/users'),
@@ -28,6 +29,26 @@ const jobsPage = usePagedList('jobs', () => '/admin/jobs'),
 const loadError = ref(''),
   detail = ref<Data>(),
   effectivePublicUrl = ref('');
+const tagOptions = ref<string[]>([]),
+  tagDialog = ref(false),
+  taggedUser = ref<Data>({ tags: [] }),
+  tagsBusy = ref(false);
+async function editTags(row: Data) {
+  taggedUser.value = { id: row.id, version: row.version, name: row.name, tags: [...row.tags] };
+  tagDialog.value = true;
+}
+async function saveTags() {
+  tagsBusy.value = true;
+  try {
+    await api(`/admin/users/${taggedUser.value.id}/tags`, 'PUT', taggedUser.value);
+    tagDialog.value = false;
+    await refresh();
+    if (taggedUser.value.id === auth.user?.id) await loadAuth();
+    ElMessage.success('用户标签已保存');
+  } finally {
+    tagsBusy.value = false;
+  }
+}
 const operationNames: Record<string, string> = {
   SITE_URL_RECOVERY: '命令行恢复公网地址',
   SITE_UPDATE: '修改全局设置',
@@ -115,7 +136,12 @@ async function refresh() {
       if (auth.user?.isAdmin) metrics.value = await api('/admin/metrics');
     }
     if (tab.value === 'instances') instances.value = await api('/integrations/instances');
-    if (tab.value === 'users') await Promise.all([usersPage.load(), invitationsPage.load()]);
+    if (tab.value === 'users')
+      await Promise.all([
+        usersPage.load(),
+        invitationsPage.load(),
+        api<string[]>('/admin/user-tags').then((tags) => (tagOptions.value = tags)),
+      ]);
     if (tab.value === 'audit') await logsPage.load();
     if (tab.value === 'tokens') tokens.value = await api('/admin/tokens');
     if (tab.value === 'site') {
@@ -277,6 +303,25 @@ async function webhook() {
 }
 </script>
 <template>
+  <el-dialog v-model="tagDialog" :title="`编辑 ${taggedUser.name || ''} 的标签`" width="520px">
+    <el-select
+      v-model="taggedUser.tags"
+      multiple
+      filterable
+      allow-create
+      default-first-option
+      placeholder="输入标签后回车，最多 20 个"
+      aria-label="用户标签"
+      style="width: 100%"
+      ><el-option v-for="tag in tagOptions" :key="tag" :value="tag" :label="tag"
+    /></el-select>
+    <template #footer
+      ><el-button @click="tagDialog = false">取消</el-button
+      ><el-button type="primary" :loading="tagsBusy" @click="saveTags"
+        >保存标签</el-button
+      ></template
+    >
+  </el-dialog>
   <div class="page-heading">
     <div>
       <h1>管理后台</h1>
@@ -299,10 +344,13 @@ async function webhook() {
         label="API 与 Webhook"
         name="tokens" /><el-tab-pane label="全局设置" name="site" /><el-tab-pane
         label="邮件设置"
-        name="mail" /><el-tab-pane label="审计日志" name="audit"
+        name="mail" /><el-tab-pane label="GitHub 登录" name="github" /><el-tab-pane
+        label="审计日志"
+        name="audit"
     /></template>
   </el-tabs>
   <div class="panel" v-if="tab === 'mail' && auth.user?.isAdmin"><MailSettings /></div>
+  <div class="panel" v-if="tab === 'github' && auth.user?.isAdmin"><GithubSettings /></div>
   <div class="panel" v-if="tab === 'contests'">
     <div class="actions" v-if="auth.user?.isAdmin">
       <router-link to="/admin/contests/new"
@@ -446,6 +494,14 @@ async function webhook() {
           aria-label="搜索用户"
           style="max-width: 280px"
         />
+        <el-select
+          v-model="usersPage.filters.value.tag"
+          clearable
+          filterable
+          placeholder="筛选用户标签"
+          aria-label="筛选用户标签"
+          ><el-option v-for="tag in tagOptions" :key="tag" :value="tag" :label="tag"
+        /></el-select>
       </div>
       <el-alert
         v-if="usersPage.error.value"
@@ -454,10 +510,16 @@ async function webhook() {
         :closable="false"
       /><el-table :data="users"
         ><el-table-column label="姓名" prop="name" /><el-table-column
-          label="邮箱"
-          prop="email"
+          label="用户标签"
+          min-width="170"
+          ><template #default="{ row }"
+            ><el-tag v-for="tag in row.tags" :key="tag" style="margin: 2px">{{
+              tag
+            }}</el-tag></template
+          ></el-table-column
+        ><el-table-column label="邮箱" prop="email" min-width="200" /><el-table-column
+          label="身份"
           min-width="200"
-        /><el-table-column label="身份" min-width="200"
           ><template #default="{ row }"
             ><el-tag v-if="row.isAdmin">系统管理员</el-tag
             ><el-tag v-if="row.isCoach" type="success">指导老师</el-tag
@@ -467,6 +529,7 @@ async function webhook() {
           ></el-table-column
         ><el-table-column label="操作" min-width="340"
           ><template #default="{ row }"
+            ><el-button text type="primary" @click="editTags(row)">编辑标签</el-button
             ><el-button text type="primary" @click="inviteRole('CONTEST_ADMIN', row)"
               >授权竞赛</el-button
             ><el-button
