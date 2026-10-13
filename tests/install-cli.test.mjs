@@ -14,7 +14,15 @@ const fakeDocker = `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
 const a = process.argv.slice(2);
-if(a[0]==='info') process.exit(process.env.FAKE_INFO_FAIL ? 1 : 0);
+if(a[0]==='info') {
+  if(a.includes('--format')) console.log(process.env.FAKE_DAEMON_PLATFORM || 'linux/x86_64');
+  process.exit(process.env.FAKE_INFO_FAIL ? 1 : 0);
+}
+if(a[0]==='volume' && process.env.FAKE_RESIDUAL_VOLUME) {
+  fs.appendFileSync(process.env.FAKE_LOG, JSON.stringify({action:'volume-'+a[1],args:a.slice(2),files:[]})+'\\n');
+  if(a[1]==='ls') console.log(process.env.FAKE_RESIDUAL_VOLUME);
+  process.exit(0);
+}
 if(a[0]==='ps' || a[0]==='volume') {
   if(process.env.FAKE_COLLISION) console.log('existing-volume');
   process.exit(0);
@@ -22,14 +30,16 @@ if(a[0]==='ps' || a[0]==='volume') {
 if(a[0]!=='compose') process.exit(1);
 if(a[1]==='version') { console.log(process.env.FAKE_COMPOSE_VERSION || '2.24.4'); process.exit(0); }
 let i=1, envFile;
-while(['--project-directory','--env-file','-f'].includes(a[i])) {
+const files=[];
+while(['--project-directory','--env-file','-f','--parallel'].includes(a[i])) {
   if(a[i]==='--env-file') envFile=a[i+1];
+  if(a[i]==='-f') files.push(a[i+1]);
   i+=2;
 }
 const action=a[i];
 const text=envFile ? fs.readFileSync(envFile,'utf8') : '';
 const tag=text.match(/^IMAGE_TAG=(.*)$/m)?.[1];
-fs.appendFileSync(process.env.FAKE_LOG,JSON.stringify({action,args:a.slice(i+1),tag,adminPasswordPassed:!!process.env.ADMIN_PASSWORD})+'\\n');
+fs.appendFileSync(process.env.FAKE_LOG,JSON.stringify({action,args:a.slice(i+1),files,tag,adminPasswordPassed:!!process.env.ADMIN_PASSWORD})+'\\n');
 if(action==='pull' && process.env.FAKE_PULL_FAIL) process.exit(8);
 if(action==='up' && process.env.FAKE_UP_FAIL) process.exit(8);
 if(action==='exec' && a.includes('pg_dump')) process.stdout.write('database dump');
@@ -43,7 +53,10 @@ process.exit(0);
 
 test('源码构建分支无需镜像标签，使用 build 并保留项目配置', () =>
   fixture(async ({ run, envFile, calls }) => {
-    const r = await run('install.sh', 'source-cli\n2\n1\n18080\n18443\ny\nn\n');
+    const r = await run(
+      'install.sh',
+      'source-cli\n2\nhttp://localhost:18080\n18081\n13000\ny\nn\n',
+    );
     assert.equal(r.code, 0, r.output);
     assert.match(await readFile(envFile, 'utf8'), /^INSTALL_MODE=source$/m);
     const commands = await calls();
@@ -156,12 +169,14 @@ test('首次安装选择镜像版本、端口、隐藏管理员密码，校验�
   fixture(async ({ run, envFile, calls }) => {
     const r = await run(
       'install.sh',
-      `test-cli\n1\nv0.2.3\n1\n70000\n18080\n18443\ny\ny\ninstaller\ninvalid\nadmin@example.test\nshort\nshort\n${password}\nmismatch\n${password}\n${password}\n`,
+      `test-cli\n1\nv0.2.3\nhttp://localhost:18080\n70000\n18081\n13000\ny\ny\ninstaller\ninvalid\nadmin@example.test\nshort\nshort\n${password}\nmismatch\n${password}\n${password}\n`,
     );
     assert.equal(r.code, 0, r.output);
     const text = await readFile(envFile, 'utf8');
     assert.match(text, /^IMAGE_TAG=v0.2.3$/m);
-    assert.match(text, /^HTTP_PORT=127\.0\.0\.1:18080$/m);
+    assert.match(text, /^WEB_PORT=127\.0\.0\.1:18081$/m);
+    assert.match(text, /^API_PORT=127\.0\.0\.1:13000$/m);
+    assert.match(text, /^REVERSE_PROXY_MODE=external$/m);
     assert.match(text, /^PUBLIC_URL=http:\/\/localhost:18080$/m);
     assert.match(text, /^POSTGRES_PASSWORD=[a-f0-9]{48}$/m);
     assert.match(text, /^ENCRYPTION_KEY=[a-f0-9]{64}$/m);
@@ -171,29 +186,40 @@ test('首次安装选择镜像版本、端口、隐藏管理员密码，校验�
     assert.ok((await calls()).some((c) => c.action === 'exec' && c.adminPasswordPassed));
   }));
 
-test('公网 HTTPS 和已有代理生成正确的入口配置', () =>
-  fixture(async ({ run, envFile }) => {
-    let r = await run(
+test('默认安装由用户配置 HTTPS 代理，只绑定本机上游且不包含 Caddy', () =>
+  fixture(async ({ run, envFile, calls }) => {
+    const r = await run(
       'install.sh',
-      'https-cli\n1\n\n2\nhttps://wrong/path\nreg.example.org\ny\nn\n',
+      'https-cli\n1\n\nhttps://wrong/path\nhttp://reg.example.org\nhttps://reg.example.org\n19081\n13000\ny\nn\n',
     );
     assert.equal(r.code, 0, r.output);
-    let text = await readFile(envFile, 'utf8');
-    assert.match(text, /^SITE_ADDRESS=reg.example.org$/m);
+    const text = await readFile(envFile, 'utf8');
+    assert.match(text, /^REVERSE_PROXY_MODE=external$/m);
     assert.match(text, /^PUBLIC_URL=https:\/\/reg.example.org$/m);
-    assert.match(text, /^HTTP_PORT=80$/m);
-    await rm(envFile);
-    r = await run('install.sh', 'proxy-cli\n1\n\n3\nreg.example.org\n19080\n19443\ny\nn\n');
-    assert.equal(r.code, 0, r.output);
-    text = await readFile(envFile, 'utf8');
-    assert.match(text, /^SITE_ADDRESS=:80$/m);
-    assert.match(text, /^HTTP_PORT=127\.0\.0\.1:19080$/m);
-    assert.match(text, /^PUBLIC_URL=https:\/\/reg.example.org$/m);
+    assert.match(text, /^WEB_PORT=127\.0\.0\.1:19081$/m);
+    assert.match(text, /^API_PORT=127\.0\.0\.1:13000$/m);
+    assert.ok(!/^(SITE_ADDRESS|HTTP_PORT|HTTPS_PORT)=/m.test(text));
+    assert.ok((await calls()).every((c) => !c.files.some((f) => f.endsWith('compose.caddy.yaml'))));
+    assert.match(r.output, /\/api\//);
+  }));
+
+test('旧配置继续启用 Caddy，显式切换 external 后不再加载 Caddy', () =>
+  fixture(async ({ run, init, envFile, calls }) => {
+    const fresh = await init();
+    const legacy =
+      fresh.replace(/^REVERSE_PROXY_MODE=.*\n/m, '') +
+      '\nSITE_ADDRESS=:80\nHTTP_PORT=8080\nHTTPS_PORT=8443\n';
+    await writeFile(envFile, legacy);
+    assert.equal((await run('install.sh', '', {}, ['config'])).code, 0);
+    assert.ok((await calls()).at(-1).files.some((f) => f.endsWith('compose.caddy.yaml')));
+    await writeFile(envFile, legacy + '\nREVERSE_PROXY_MODE=external\n');
+    assert.equal((await run('install.sh', '', {}, ['config'])).code, 0);
+    assert.ok(!(await calls()).at(-1).files.some((f) => f.endsWith('compose.caddy.yaml')));
   }));
 
 test('取消与输入结束不会生成配置或启动服务', () =>
   fixture(async ({ run, envFile, calls }) => {
-    const r = await run('install.sh', 'cancel-cli\n1\n\n1\n\n\nn\n');
+    const r = await run('install.sh', 'cancel-cli\n1\n\nhttps://reg.example.org\n\n\nn\n');
     assert.equal(r.code, 0);
     await assert.rejects(stat(envFile), { code: 'ENOENT' });
     assert.notEqual((await run('install.sh')).code, 0);
@@ -205,6 +231,35 @@ test('没有原配置时拒绝复用已有项目；过旧 Compose 在写入前�
     assert.notEqual((await run('install.sh', '\n', { FAKE_COLLISION: '1' })).code, 0);
     assert.notEqual((await run('install.sh', '', { FAKE_COMPOSE_VERSION: '2.24.3' })).code, 0);
     await assert.rejects(stat(envFile), { code: 'ENOENT' });
+  }));
+
+test('按 Docker 服务端架构选择 PostgreSQL 运行摘要，备份也沿用同一覆盖文件', () =>
+  fixture(async ({ run, init, dir, calls }) => {
+    await init();
+    for (const [reported, file] of [
+      ['linux/x86_64', 'compose.amd64.yaml'],
+      ['linux/aarch64', 'compose.arm64.yaml'],
+    ]) {
+      const r = await run(
+        'install.sh',
+        '',
+        { FAKE_DAEMON_PLATFORM: reported, DOCKER_DEFAULT_PLATFORM: '' },
+        ['backup', `${dir}/backups`],
+      );
+      assert.equal(r.code, 0, r.output);
+      assert.ok((await calls()).at(-1).files.some((f) => f.endsWith(file)));
+    }
+    assert.notEqual(
+      (
+        await run(
+          'install.sh',
+          '',
+          { FAKE_DAEMON_PLATFORM: 'linux/arm', DOCKER_DEFAULT_PLATFORM: '' },
+          ['config'],
+        )
+      ).code,
+      0,
+    );
   }));
 
 test('重复安装保留密钥，选定环境文件不执行代码且不受 shell 覆盖', () =>
@@ -282,4 +337,24 @@ test('卸载前备份失败，中止删除', () =>
     });
     assert.notEqual(r.code, 0);
     assert.ok(!(await calls()).some((c) => c.action === 'down'));
+  }));
+
+test('切换自配代理后，永久卸载也清理当前项目残留的旧证书卷', () =>
+  fixture(async ({ run, init, calls }) => {
+    await init();
+    const r = await run('uninstall.sh', '2\nDELETE nxopa-regsys\nn\n', {
+      FAKE_RESIDUAL_VOLUME: 'nxopa-regsys_caddy_data',
+    });
+    assert.equal(r.code, 0, r.output);
+    const commands = await calls();
+    assert.ok(
+      commands.some(
+        (c) =>
+          c.action === 'volume-ls' &&
+          c.args.includes('label=com.docker.compose.project=nxopa-regsys'),
+      ),
+    );
+    assert.ok(
+      commands.some((c) => c.action === 'volume-rm' && c.args.includes('nxopa-regsys_caddy_data')),
+    );
   }));

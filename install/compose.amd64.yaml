@@ -1,0 +1,5 @@
+# Official PostgreSQL 17.6 runtime manifest; excludes the index's optional attestations.
+services:
+  postgres:
+    image: postgres:17.6-alpine@sha256:747d5ed1fdeeb124b880fbe3d7c6557d2c4064ae41d6b6297d417882effce4be
+    platform: linux/amd64

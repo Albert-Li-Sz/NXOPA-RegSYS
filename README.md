@@ -3,7 +3,7 @@
 可自托管的中文竞赛报名系统，采用 Vue 3、Element Plus、NestJS、Prisma 7、PostgreSQL、Redis/BullMQ 和隔离的 XeLaTeX 编译容器。支持个人与团队报名、指导老师、审核、线下财务、工单、准考证、Hydro / DOMjudge 联动，以及联合注册 API 和只读 MCP。
 
 - [Docker Compose 安装包与步骤](install/README.md)
-- [V0.1.3 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.1.3)
+- [V0.1.4 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.1.4)
 - [部署与日常维护](docs/DEPLOYMENT.md)
 - [在线配置教程（GitHub Pages）](https://albert-li-sz.github.io/NXOPA-RegSYS/)
 - [带截图的配置教程（PDF）](output/pdf/configuration-guide.pdf)、[LaTeX 源码](docs/CONFIGURATION_GUIDE.tex)、[源码与截图打包](output/pdf/configuration-guide-source.zip)
@@ -19,7 +19,7 @@
 
 推荐使用 `install` 目录的独立安装入口。宿主机需要 Docker Compose、Bash 和 OpenSSL，Node.js / pnpm 随镜像安装。
 
-从 V0.1.3 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
+从 V0.1.4 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
 
 ```bash
 # 安装：交互选择镜像版本、域名或端口，再创建管理员
@@ -30,7 +30,7 @@ bash install/install.sh
 
 本机试用打开 <http://localhost:8080>；公网部署使用配置的 HTTPS 域名。初始化命令交互输入管理员邮箱和密码；首次创建后使用邮箱或 `administrator` 登录。正式容器固定为 production 模式，初始化不会创建演示账号，也不会覆盖已有账号。数据库迁移在 API 启动前自动执行。已有根目录 Compose 部署仍可沿用原入口和配置；默认安装项目名 `nxopa-regsys` 与旧项目 `contest-center` 使用不同数据卷，迁移入口时按安装说明保留原项目名和密钥。
 
-PostgreSQL、Redis 和 Caddy 各自直接使用官方镜像；Vue 前端、NestJS API、Worker 和 XeLaTeX 分别运行在独立容器。只有 Caddy 公开端口，通过内网转发前端与 API；数据库和队列位于独立私有网络。各服务与数据卷说明见 [安装说明](install/README.md)。
+默认安装不包含 Caddy，由用户自己的反向代理分别连接前端与 API 的本机上游端口。PostgreSQL、Redis 使用官方镜像；Vue 前端、NestJS API、Worker 和 XeLaTeX 分别运行在独立容器，数据库和队列位于私有网络。各服务与数据卷说明见 [安装说明](install/README.md)。
 
 ## 本地开发与演示
 

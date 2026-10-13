@@ -14,7 +14,7 @@
 <text x="960" y="187" class="label" text-anchor="start">只读 MCP 适配器</text>
 <text x="960" y="218" class="body" text-anchor="start">授权查询 API；后期机器人复用接口</text>
 <rect x="64" y="288" width="800" height="94" rx="12" fill="#fff" stroke="#dce5f1"/>
-<text x="88" y="324" class="label" text-anchor="start">Caddy HTTPS 入口</text>
+<text x="88" y="324" class="label" text-anchor="start">自有 HTTPS 代理</text>
 <text x="88" y="354" class="body" text-anchor="start">Vue 3 官网与管理后台 · API 同域代理</text>
 <rect x="936" y="288" width="500" height="94" rx="12" fill="#fff" stroke="#dce5f1"/>
 <text x="960" y="324" class="label" text-anchor="start">第三方身份服务</text>

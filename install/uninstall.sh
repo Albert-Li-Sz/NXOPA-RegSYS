@@ -39,6 +39,12 @@ if confirm '卸载前生成加密备份（服务须处于运行状态）' y; the
 fi
 if [[ "$choice" == 2 ]]; then
   compose down --volumes --remove-orphans
+  # An external-proxy migration no longer declares the old certificate volumes.
+  # Explicit permanent deletion covers all volumes owned by this Compose project.
+  remaining_volumes="$(docker volume ls -q --filter "label=com.docker.compose.project=$project")"
+  while IFS= read -r volume; do
+    if [[ -n "$volume" ]]; then docker volume rm "$volume"; fi
+  done <<< "$remaining_volumes"
 else
   compose down --remove-orphans
 fi

@@ -25,10 +25,13 @@ for (const key of [
   'PUBLIC_URL',
   'POSTGRES_PASSWORD',
   'ENCRYPTION_KEY',
+  'WEB_PORT',
+  'API_PORT',
+  'REVERSE_PROXY_MODE',
 ])
   delete env[key];
 const initialTag =
-  process.env.INTERACTIVE_INSTALL_FROM ?? process.env.INSTALL_UPGRADE_FROM ?? 'v0.1.2';
+  process.env.INTERACTIVE_INSTALL_FROM ?? process.env.INSTALL_UPGRADE_FROM ?? 'v0.1.3';
 const targetTag = process.env.INTERACTIVE_INSTALL_TO ?? process.env.IMAGE_TAG ?? defaultTag;
 const checks: string[] = [];
 let success = false;
@@ -86,14 +89,29 @@ function passed(message: string) {
   console.log(`[交互安装验收] ${message}`);
 }
 
+async function startProxy() {
+  await run('install.sh', '', [
+    'compose',
+    '-f',
+    path.join(root, 'tests/fixtures/install-proxy.yaml'),
+    'up',
+    '-d',
+    '--no-deps',
+    '--wait',
+    'acceptance-proxy',
+  ]);
+}
+
 try {
   const httpPort = await unusedPort(),
-    httpsPort = await unusedPort();
+    webPort = await unusedPort(),
+    apiPort = await unusedPort();
+  env.TEST_PROXY_PORT = String(httpPort);
   const password = randomBytes(24).toString('base64url');
   console.log(`[交互安装验收] 从空数据卷交互安装 ${initialTag}……`);
   const output = await run(
     'install.sh',
-    `${project}\n1\n${initialTag}\n1\n${httpPort}\n${httpsPort}\ny\ny\ninteractive_admin\ninteractive@example.test\n${password}\n${password}\n`,
+    `${project}\n1\n${initialTag}\nhttp://localhost:${httpPort}\n${webPort}\n${apiPort}\ny\ny\ninteractive_admin\ninteractive@example.test\n${password}\n${password}\n`,
   );
   assert.ok(!output.includes(password));
   await writeFile(path.join(stage, 'install.log'), output, { mode: 0o600 });
@@ -102,6 +120,10 @@ try {
   assert.match(originalConfig, /^ENCRYPTION_KEY=[a-f0-9]{64}$/m);
   assert.equal((await stat(envFile)).mode & 0o777, 0o600);
   assert.ok(!originalConfig.includes(password));
+  assert.match(originalConfig, /^REVERSE_PROXY_MODE=external$/m);
+  const services = await run('install.sh', '', ['compose', 'config', '--services']);
+  assert.ok(!services.split('\n').includes('caddy'));
+  await startProxy();
   process.env.TEST_URL = `http://localhost:${httpPort}`;
   const { Client, base } = await import('./client.js');
   assert.equal((await fetch(`${base}/api/v1/health`)).status, 200);
@@ -121,8 +143,8 @@ try {
     ).trim();
   assert.equal(await version(), initialTag.slice(1));
   const originalVolumes = await volumes();
-  assert.equal(originalVolumes.length, 6);
-  passed('空卷交互安装、随机私密配置、真实服务健康和隐藏密码创建管理员并登录');
+  assert.equal(originalVolumes.length, 4);
+  passed('默认无 Caddy 的空卷交互安装、隐藏密码创建管理员，经自配 Nginx 实际登录');
 
   const contest = await admin.api('/contests', 'POST', {
     title: '交互安装脚本真实验收',
@@ -144,6 +166,7 @@ try {
 
   console.log(`[交互安装验收] 交互升级至 ${targetTag}……`);
   const updateOutput = await run('update.sh', `${targetTag}\n${backupDir}\ny\n`);
+  await startProxy();
   await writeFile(path.join(stage, 'update.log'), updateOutput, { mode: 0o600 });
   const updatedConfig = await readFile(envFile, 'utf8');
   assert.ok(
@@ -170,18 +193,19 @@ try {
   assert.equal(down.trim(), '');
   assert.ok((await readFile(envFile, 'utf8')) === updatedConfig);
   await run('install.sh', 'y\nn\n');
+  await startProxy();
   assert.equal((await admin.api(`/registrations/${registration.id}`)).eligible, true);
   assert.equal(
     await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
     'offline payment proof',
   );
-  passed('默认卸载移除容器并保留六个卷；再次交互安装恢复原管理员会话、报名和附件');
+  passed('默认卸载移除容器并保留四个卷；再次交互安装恢复原管理员会话、报名和附件');
 
   await run('uninstall.sh', `2\nDELETE ${project}\nn\n`);
   assert.equal((await volumes()).length, 0);
   assert.ok((await readFile(envFile, 'utf8')) === updatedConfig);
   assert.ok((await readdir(backupDir)).some((name) => name.endsWith('.ccbak')));
-  passed('明确输入项目名后永久卸载当前项目六个数据卷，原配置和加密备份保留');
+  passed('明确输入项目名后永久卸载当前项目四个数据卷，原配置和加密备份保留');
   success = true;
 } finally {
   try {

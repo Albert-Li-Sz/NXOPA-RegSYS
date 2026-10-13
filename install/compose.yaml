@@ -89,6 +89,8 @@ services:
 
   api:
     <<: *app
+    ports:
+      - '${API_PORT:-127.0.0.1:3000}:3000'
     depends_on:
       initialize:
         condition: service_completed_successfully
@@ -167,6 +169,8 @@ services:
       target: web
     networks:
       - edge
+    ports:
+      - '${WEB_PORT:-127.0.0.1:8081}:8080'
     read_only: true
     init: true
     cap_drop:
@@ -186,45 +190,14 @@ services:
     mem_limit: 256m
     logging: *logging
 
-  caddy:
-    image: caddy:2.10.2-alpine
-    environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
-    ports:
-      - '${HTTP_PORT:-8080}:80'
-      - '${HTTPS_PORT:-8443}:443'
-    volumes:
-      - ../infra/caddy:/etc/caddy:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - edge
-      - app
-    depends_on:
-      api:
-        condition: service_healthy
-      web:
-        condition: service_healthy
-    healthcheck:
-      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:2019/config/']
-      interval: 10s
-      timeout: 5s
-      retries: 20
-    restart: unless-stopped
-    mem_limit: 256m
-    logging: *logging
-
 volumes:
   postgres_data:
   redis_data:
   files:
   latex_jobs:
-  caddy_data:
-  caddy_config:
 
 networks:
   edge:
-    internal: true
   app:
   data:
     internal: true

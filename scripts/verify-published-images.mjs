@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { verifyManifestGraph } from './verify-registry.mjs';
 
-const tag = process.argv[2] ?? 'v0.1.3';
+const tag = process.argv[2] ?? 'v0.1.4';
 assert.match(tag, /^v\d+\.\d+\.\d+$/);
 const prefix = process.env.IMAGE_PREFIX ?? 'ghcr.io/albert-li-sz/nxopa-regsys';
 assert.ok(prefix.startsWith('ghcr.io/'));
@@ -33,18 +34,21 @@ for (const service of ['api', 'worker', 'web', 'latex']) {
     if (kind === 'manifests') assert.equal(response.headers.get('docker-content-digest'), digest);
     return { digest, data: JSON.parse(body) };
   };
-  const index = await get('manifests', tag);
+  const index = await verifyManifestGraph(tag, (kind, reference, method) =>
+    fetch(`https://ghcr.io/v2/${repository}/${kind}/${reference}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, Accept: accept },
+      signal: AbortSignal.timeout(30000),
+    }),
+  );
   const platforms = index.data.manifests.filter(
     (m) => m.platform?.os === 'linux' && ['amd64', 'arm64'].includes(m.platform.architecture),
   );
   assert.deepEqual(platforms.map((m) => m.platform.architecture).sort(), ['amd64', 'arm64']);
-  for (const platform of platforms) {
-    const manifest = await get('manifests', platform.digest);
-    assert.equal(manifest.digest, platform.digest);
-    const config = await get('blobs', manifest.data.config.digest);
-    assert.equal(config.digest, manifest.data.config.digest);
-    assert.equal(config.data.config.Labels['org.opencontainers.image.revision'], commit);
-    assert.equal(config.data.config.Labels['org.opencontainers.image.version'], tag);
+  for (const record of index.records.filter((r) => r.platform?.os === 'linux')) {
+    assert.equal(record.config.architecture, record.platform.architecture);
+    assert.equal(record.config.config.Labels['org.opencontainers.image.revision'], commit);
+    assert.equal(record.config.config.Labels['org.opencontainers.image.version'], tag);
   }
   const alias = await get('manifests', tag.replace(/\.\d+$/, ''));
   assert.equal(alias.digest, index.digest);
@@ -57,6 +61,8 @@ for (const service of ['api', 'worker', 'web', 'latex']) {
     commit,
     platforms: ['linux/amd64', 'linux/arm64'],
     anonymousPull: true,
+    allConfigsAvailable: true,
+    availableLayers: index.availableLayers,
   });
   console.log(`公开镜像核验通过：${image}:${tag}，amd64 / arm64，源提交一致。`);
 }

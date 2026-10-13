@@ -61,7 +61,7 @@ interactive_admin() {
 }
 
 interactive_install() {
-  local choice deployment project tag public_url site_address http_port https_port port tls_port domain
+  local choice project tag public_url web_port api_port api_bind web_bind
   local existing=false admin_default=y
   printf '南晓开放原子社在线报名系统 · 交互安装\n'
   use_saved_environment
@@ -97,39 +97,28 @@ interactive_install() {
     done
     tag="$(env_value IMAGE_TAG "$install_dir/.env.example")"
     if [[ "$install_mode" == images ]]; then ask_tag tag "$tag"; fi
-    printf '\n1) 本机试用（localhost HTTP，可配合 SSH 转发）\n2) 公网域名，由 Caddy 自动提供 HTTPS\n3) 已有 HTTPS 反向代理，系统监听本机端口\n'
+    printf '\n默认不安装 Caddy。请自行配置反向代理：/api/ 转发 API，其余请求转发前端。\n'
     while true; do
-      ask deployment '访问方式' '1'
-      case "$deployment" in 1|2|3) break ;; *) printf '请选择 1、2 或 3。\n' >&2 ;; esac
-    done
-    site_address=:80
-    case "$deployment" in
-      1)
-        ask_port port '本机 HTTP 端口' '8080'
-        ask_port tls_port '备用 HTTPS 端口（须与 HTTP 端口不同）' '8443'
-        [[ "$port" != "$tls_port" ]] || fail 'HTTP 与 HTTPS 端口不能相同。'
-        public_url="http://localhost:$port"
-        http_port="127.0.0.1:$port"; https_port="127.0.0.1:$tls_port"
-        ;;
-      2|3)
-        while true; do
-          ask domain '公网域名，例如 reg.example.org（不含协议或路径）'
-          if [[ "$domain" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ && "$domain" == *.* && "$domain" != *..* ]]; then break; fi
-          printf '请填写有效域名，例如 reg.example.org。\n' >&2
-        done
-        public_url="https://$domain"
-        if [[ "$deployment" == 2 ]]; then
-          site_address="$domain"; http_port=80; https_port=443
-          printf '请确认域名已解析到服务器，TCP 80 / 443 已放通且未被占用。\n'
+      ask public_url '浏览器访问地址（HTTPS 域名，或本机 HTTP 地址）' 'http://localhost:8080'
+      if [[ "$public_url" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$ ||
+            "$public_url" =~ ^http://(localhost|127\.0\.0\.1)(:[0-9]{1,5})?$ ]]; then
+        local url_port="${public_url##*:}"
+        if [[ "$url_port" =~ ^[0-9]+$ ]] && (( 10#$url_port < 1 || 10#$url_port > 65535 )); then
+          printf '地址中的端口须为 1 至 65535。\n' >&2
         else
-          ask_port port '反向代理的本机 HTTP 上游端口' '8080'
-          ask_port tls_port '备用 HTTPS 端口（须与 HTTP 端口不同）' '8443'
-          [[ "$port" != "$tls_port" ]] || fail 'HTTP 与 HTTPS 端口不能相同。'
-          http_port="127.0.0.1:$port"; https_port="127.0.0.1:$tls_port"
-          printf '请将 https://%s 的整个站点代理到 http://127.0.0.1:%s，保留 Host、Origin 和 /api 路径。\n' "$domain" "$port"
+          break
         fi
-        ;;
-    esac
+      else
+        printf '请填写根路径 HTTPS 地址，或 http://localhost:端口；不含路径、账号、查询或片段。\n' >&2
+      fi
+    done
+    ask_port web_port '前端的本机上游端口' '8081'
+    ask_port api_port 'API 的本机上游端口' '3000'
+    [[ "$web_port" != "$api_port" ]] || fail '前端与 API 端口不能相同。'
+    if [[ "$public_url" == "http://localhost:$web_port" || "$public_url" == "http://127.0.0.1:$web_port" ||
+          "$public_url" == "http://localhost:$api_port" || "$public_url" == "http://127.0.0.1:$api_port" ]]; then
+      fail '本机反向代理的访问端口须与两个上游端口不同。'
+    fi
     printf '\n项目：%s\n安装方式：%s\n访问地址：%s\n' "$project" "$install_mode" "$public_url"
     if [[ "$install_mode" == images ]]; then printf '镜像版本：%s\n' "$tag"; fi
     if ! confirm '生成配置并开始安装' y; then printf '已取消。\n'; return; fi
@@ -138,13 +127,18 @@ interactive_install() {
     set_env_value INSTALL_MODE "$install_mode"
     set_env_value IMAGE_TAG "$tag"
     set_env_value PUBLIC_URL "$public_url"
-    set_env_value SITE_ADDRESS "$site_address"
-    set_env_value HTTP_PORT "$http_port"
-    set_env_value HTTPS_PORT "$https_port"
+    set_env_value REVERSE_PROXY_MODE external
+    set_env_value WEB_PORT "127.0.0.1:$web_port"
+    set_env_value API_PORT "127.0.0.1:$api_port"
     require_config
   fi
   start_services
-  printf '\n服务健康检查通过。访问地址：%s\n' "$(env_value PUBLIC_URL)"
+  if [[ "$proxy_mode" == external ]]; then
+    api_bind="$(env_value API_PORT)"; web_bind="$(env_value WEB_PORT)"
+    printf '\n请配置自有反向代理：/api/ → http://%s（保留 /api/ 路径）；其余请求 → http://%s。\n示例：%s/nginx.conf.example；仅健康检查通过不表示反向代理已就绪。\n' \
+      "${api_bind:-127.0.0.1:3000}" "${web_bind:-127.0.0.1:8081}" "$install_dir"
+  fi
+  printf '\n服务健康检查通过。配置的访问地址：%s\n' "$(env_value PUBLIC_URL)"
   if confirm '现在创建首次系统管理员（已有管理员时请选择 n）' "$admin_default"; then interactive_admin; fi
   if [[ "$existing" == false ]]; then printf '首次登录后，请在管理中心配置邮件服务，再开放公开注册。\n'; fi
   printf '安装完成。日志：bash %s/install.sh logs\n' "$install_dir"
@@ -195,9 +189,12 @@ case "$action" in
   restore)
     input="${1:?请提供加密备份文件路径}"
     override=""
+    proxy_override=""
     if [[ "$install_mode" == images ]]; then override="$install_dir/compose.images.yaml"; fi
+    if [[ "$proxy_mode" == caddy ]]; then proxy_override="$install_dir/compose.caddy.yaml"; fi
     CONTEST_COMPOSE_FILE="$install_dir/compose.yaml" CONTEST_ENV_FILE="$install_env" \
-      CONTEST_COMPOSE_OVERRIDE="$override" \
+      CONTEST_COMPOSE_OVERRIDE="$override" CONTEST_COMPOSE_PROXY="$proxy_override" \
+      CONTEST_COMPOSE_PLATFORM="$platform_override" \
       bash "$repo_root/scripts/restore.sh" "$(absolute_path "$input")"
     ;;
   restore-url)
