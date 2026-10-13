@@ -3,8 +3,15 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Principal } from '@contest-center/contracts';
-import { db, audit, enqueue } from './db.js';
-import { getRegistration, owns, ownerIds, manages, requireManager } from './security.js';
+import { db, audit, enqueue, lock } from './db.js';
+import {
+  getRegistration,
+  getSupportTicket,
+  owns,
+  ownerIds,
+  manages,
+  requireManager,
+} from './security.js';
 import { putBlob, readBlob, type StorageRef } from './storage.js';
 import { publicLink } from './site-settings.js';
 const purposeSchema = z.enum([
@@ -51,14 +58,12 @@ export class FileService {
     if (purpose === 'PRIVATE' && contestId && !registrationId && !ticketId)
       requireManager(u, contestId, 'FILES');
     if (ticketId) {
-      const ticket = await db.supportTicket.findUniqueOrThrow({ where: { id: ticketId } });
-      if (ticket.registrationId) await getRegistration(u, ticket.registrationId);
-      else if (
-        !owns(u, ticket.ownerId) &&
-        !u.isAdmin &&
-        !manages(u, ticket.contestId ?? '', 'SUPPORT')
+      const ticket = await getSupportTicket(u, ticketId);
+      if (
+        (contestId && contestId !== ticket.contestId) ||
+        (registrationId && registrationId !== ticket.registrationId)
       )
-        throw new ForbiddenException();
+        throw new BadRequestException('工单与文件的竞赛或报名不一致');
       contestId = ticket.contestId ?? undefined;
     }
     let mime = '';
@@ -136,14 +141,9 @@ export class FileService {
       }));
     if (!publicRead) {
       if (!u) throw new ForbiddenException('请先登录');
-      if (file.registrationId) await getRegistration(u, file.registrationId);
-      else if (file.ticketId) {
-        const ticket = await db.supportTicket.findUniqueOrThrow({ where: { id: file.ticketId } });
-        if (!owns(u, ticket.ownerId) && !u.isAdmin && !manages(u, ticket.contestId ?? '')) {
-          if (!ticket.registrationId) throw new ForbiddenException();
-          await getRegistration(u, ticket.registrationId);
-        }
-      } else if (file.contestId && !manages(u, file.contestId, 'FILES') && !owns(u, file.ownerId)) {
+      if (file.ticketId) await getSupportTicket(u, file.ticketId);
+      else if (file.registrationId) await getRegistration(u, file.registrationId);
+      else if (file.contestId && !manages(u, file.contestId, 'FILES') && !owns(u, file.ownerId)) {
         const assignments = await db.teamFile.findMany({ where: { attachmentId: id } });
         let allowed = false;
         for (const assignment of assignments) {
@@ -239,19 +239,20 @@ export class FileService {
     return { count: registrations.length };
   }
   async remove(u: Principal, id: string) {
-    const file = await db.attachment.findUniqueOrThrow({ where: { id } });
-    if (!owns(u, file.ownerId) && !u.isAdmin) {
-      if (!file.contestId) throw new ForbiddenException('仅可删除本人上传的文件');
-      requireManager(u, file.contestId, 'FILES');
-    }
-    if (file.deletedAt) return { ok: true };
-    const linked = await Promise.all([
-      db.paymentVoucher.count({ where: { attachmentId: id } }),
-      db.invoiceRequest.count({ where: { attachmentId: id } }),
-      db.refund.count({ where: { attachmentId: id } }),
-    ]);
-    if (linked.some(Boolean)) throw new BadRequestException('文件已用于财务记录，需保留凭证');
-    await db.$transaction(async (tx) => {
+    return db.$transaction(async (tx) => {
+      await lock(tx, `file:${id}`);
+      const file = await tx.attachment.findUniqueOrThrow({ where: { id } });
+      if (!owns(u, file.ownerId) && !u.isAdmin) {
+        if (!file.contestId) throw new ForbiddenException('仅可删除本人上传的文件');
+        requireManager(u, file.contestId, 'FILES');
+      }
+      if (file.deletedAt) return { ok: true };
+      const linked = [
+        await tx.paymentVoucher.count({ where: { attachmentId: id } }),
+        await tx.invoiceRequest.count({ where: { attachmentId: id } }),
+        await tx.refund.count({ where: { attachmentId: id } }),
+      ];
+      if (linked.some(Boolean)) throw new BadRequestException('文件已用于财务记录，需保留凭证');
       await tx.attachment.update({ where: { id }, data: { deletedAt: new Date() } });
       await tx.user.updateMany({
         where: { avatarAttachmentId: id },
@@ -261,8 +262,8 @@ export class FileService {
         storageRef: file as unknown as StorageRef,
       });
       await audit(tx, u.id, 'FILE_DELETE', id);
+      return { ok: true };
     });
-    return { ok: true };
   }
 }
 export async function bindFile(
@@ -271,6 +272,7 @@ export async function bindFile(
   id: string,
   registrationId: string,
 ) {
+  await lock(tx, `file:${id}`);
   const file = await tx.attachment.findUnique({ where: { id } });
   if (
     !file ||

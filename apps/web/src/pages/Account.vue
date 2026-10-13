@@ -72,6 +72,8 @@ onMounted(async () => {
         await router.replace(invitationReturn.value);
         return;
       }
+    } catch (error) {
+      notice.value = error instanceof Error ? error.message : '邮箱验证失败，请重新申请验证邮件';
     } finally {
       busy.value = false;
     }
@@ -120,7 +122,8 @@ async function submit() {
     auth.user = data.user;
     auth.csrf = data.csrf;
     router.push(
-      data.user.profileComplete ||
+      invitationReturn.value ||
+        data.user.profileComplete ||
         (mode.value !== 'register' && (data.user.isAdmin || data.user.isCoach))
         ? nextPath()
         : { path: '/account', query: { next: nextPath() } },

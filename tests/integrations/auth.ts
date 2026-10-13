@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { mailpitBase } from './mailpit.js';
 import { writeFile } from 'node:fs/promises';
 import { Client, until } from './client.js';
 import { redis } from '../../apps/server/src/auth.js';
@@ -25,15 +26,11 @@ try {
     return until(
       async () => {
         const s = (await (
-          await fetch(
-            `http://localhost:58025/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`,
-          )
+          await fetch(`${mailpitBase}/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`)
         ).json()) as any;
         const id = s.messages?.[0]?.ID;
         if (!id) return '';
-        const m = (await (
-          await fetch(`http://localhost:58025/api/v1/message/${id}`)
-        ).json()) as any;
+        const m = (await (await fetch(`${mailpitBase}/api/v1/message/${id}`)).json()) as any;
         return String(m.Text ?? '').match(/token=([A-Za-z0-9_-]+)/)?.[1] ?? '';
       },
       (v) => !!v,
@@ -55,9 +52,9 @@ try {
   await new Client().login(email, 'ResetFixture2026!');
   report.push('password recovery and revocation of previous sessions');
   const admin = await new Client().login('admin');
+  assert.equal((await admin.raw('/api/v1/auth/providers')).status, 200);
+  assert.equal((await admin.raw('/api/v1/auth/identities')).status, 404);
   for (const path of [
-    '/api/v1/auth/providers',
-    '/api/v1/auth/identities',
     '/api/v1/auth/oauth/11111111-1111-4111-8111-111111111111',
     '/api/v1/auth/oauth/11111111-1111-4111-8111-111111111111/callback',
     '/api/v1/admin/oauth',
@@ -66,7 +63,7 @@ try {
   }
   assert.equal((await admin.raw('/api/v1/admin/oauth', 'POST', {})).status, 404);
   report.push(
-    'Retired third-party login, binding, callback and administrator configuration routes return 404',
+    'GitHub provider discovery remains available; retired generic OAuth routes return 404',
   );
   console.log(`Authentication acceptance: ${report.length} checks passed`);
 } finally {

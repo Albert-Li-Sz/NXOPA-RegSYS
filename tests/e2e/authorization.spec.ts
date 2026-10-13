@@ -46,6 +46,7 @@ test.afterAll(async () => {
   await db.invitation.deleteMany({ where: { id: { in: invitationIds } } });
   await db.contest.deleteMany({ where: { id: { in: contestIds } } });
   await db.emailToken.deleteMany({ where: { userId: { in: userIds } } });
+  await db.adminGrant.deleteMany({ where: { userId: { in: userIds } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
   await db.$disconnect();
   await redis.quit();
@@ -60,7 +61,7 @@ async function administrator(page: Page) {
   await page.goto('/login');
   await loginCurrent(page, 'admin');
   await page.goto('/admin');
-  await page.getByRole('tab', { name: '用户权限', exact: true }).click();
+  await page.getByRole('tab', { name: '用户与邀请', exact: true }).click();
   await expect(page.getByRole('button', { name: '生成邀请链接', exact: true })).toBeVisible();
 }
 function userRow(page: Page, email: string) {
@@ -141,7 +142,7 @@ test('administrator generates contest URL, recipient logs in and confirms, revoc
     await recipient.getByRole('button', { name: '确认接受', exact: true }).click();
     await expect(recipient).toHaveURL(/\/admin$/);
     await expect(recipient.getByRole('row').filter({ hasText: c.title })).toBeVisible();
-    await expect(recipient.getByRole('tab', { name: '用户权限', exact: true })).toHaveCount(0);
+    await expect(recipient.getByRole('tab', { name: '用户与邀请', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '刷新', exact: true }).click();
     await userRow(page, users.manager.email)
       .getByRole('button', { name: `撤销 ${c.title}`, exact: true })
@@ -183,6 +184,7 @@ test('mobile account invitation retains public signup and returns from email ver
     await recipient.locator('#email').fill(email);
     await recipient.locator('#username').fill(`url_${stamp}_signup`);
     await recipient.locator('#name').fill('链接注册验收');
+    await recipient.locator('#register-identifier').fill(`E2E-${stamp}`);
     await recipient.locator('#password').fill('PublicInvitation2026!');
     await recipient.getByRole('button', { name: '注册账号', exact: true }).click();
     await expect(
@@ -192,7 +194,12 @@ test('mobile account invitation retains public signup and returns from email ver
     userIds.push(user.id);
     await expect(recipient.getByRole('button', { name: '确认接受', exact: true })).toBeDisabled();
     await recipient.getByRole('link', { name: '前往验证邮箱', exact: true }).click();
-    await recipient.getByRole('button', { name: '重新发送验证邮件', exact: true }).click();
+    await Promise.all([
+      recipient.waitForResponse(
+        (response) => response.url().endsWith('/api/v1/auth/resend') && response.ok(),
+      ),
+      recipient.getByRole('button', { name: '重新发送验证邮件', exact: true }).click(),
+    ]);
     const verifyUrl = await verificationUrl(email, new URL(invitation.url).pathname);
     expect(verifyUrl.searchParams.get('next')).toBe(new URL(invitation.url).pathname);
     await recipient.goto(verifyUrl.href);

@@ -121,7 +121,14 @@ test('unofficial individual application requires review and basic organization f
 test('invoice form captures Chinese purchaser information and responsive administration has no overflow', async ({
   page,
 }) => {
-  const context = JSON.parse(await readFile('.runtime/guide-invoice-context.json', 'utf8'));
+  const context = JSON.parse(await readFile('.runtime/enhancement-context.json', 'utf8'));
+  for (const invoice of (
+    await admin.api(`/registrations/${context.registrationId}/finance/invoices?page=1&pageSize=20`)
+  ).items.filter((row: any) => row.status === 'REQUESTED'))
+    await admin.api(`/finance/invoices/${invoice.id}/review`, 'POST', {
+      decision: 'REJECTED',
+      reason: '重建浏览器开票测试余额',
+    });
   const history = await admin.api(
     `/registrations/${context.registrationId}/finance/invoices?page=1&pageSize=20`,
   );

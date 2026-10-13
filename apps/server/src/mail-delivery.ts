@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { Principal } from '@contest-center/contracts';
 import { db, enqueue, audit } from './db.js';
-import { getRegistration, manages, owns } from './security.js';
+import { getRegistration, getSupportTicket, manages, owns } from './security.js';
 import { rateLimit } from './auth.js';
 const authMail = (payload: any) =>
   String(payload.category ?? '').startsWith('AUTH_') ||
@@ -22,12 +22,8 @@ export class MailDeliveryService {
     }
     const ticket = await db.supportTicket.findUnique({ where: { id } });
     if (ticket) {
-      if (owns(u, ticket.ownerId) || u.isAdmin || manages(u, ticket.contestId ?? '', 'SUPPORT'))
-        return u.isAdmin || manages(u, ticket.contestId ?? '', 'SUPPORT');
-      if (ticket.registrationId) {
-        await getRegistration(u, ticket.registrationId);
-        return false;
-      }
+      await getSupportTicket(u, ticket.id);
+      return u.isAdmin || manages(u, ticket.contestId ?? '', 'SUPPORT');
     }
     const identity = await db.identityRequest.findUnique({ where: { id } });
     if (identity && (owns(u, identity.userId) || u.isAdmin)) return u.isAdmin;

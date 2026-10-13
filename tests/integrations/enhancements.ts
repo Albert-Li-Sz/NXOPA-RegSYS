@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { mailpitBase } from './mailpit.js';
 import { writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -20,14 +21,10 @@ async function mailText(email: string, includes: string) {
   return until(
     async () => {
       const search = (await (
-        await fetch(
-          `http://localhost:58025/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`,
-        )
+        await fetch(`${mailpitBase}/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`)
       ).json()) as any;
       for (const row of search.messages ?? []) {
-        const msg = (await (
-          await fetch(`http://localhost:58025/api/v1/message/${row.ID}`)
-        ).json()) as any;
+        const msg = (await (await fetch(`${mailpitBase}/api/v1/message/${row.ID}`)).json()) as any;
         if (String(msg.Text).includes(includes)) return String(msg.Text);
       }
       return '';
@@ -82,7 +79,7 @@ try {
         body: '{}',
       })
     ).status,
-    403,
+    400,
   );
   const invite = await admin.api('/admin/invitations', 'POST', {
     kind: 'ACCOUNT',
@@ -112,7 +109,7 @@ try {
       .publicUrl,
     publicUrl,
   );
-  pass('公网地址数据库生效、校验、版本冲突、邮件链接与可信管理入口');
+  pass('公网地址数据库生效、校验、版本冲突、邮件链接与反向代理来源兼容');
 
   const contest = await admin.api('/contests', 'POST', {
     title: `增强验收 ${run}`,

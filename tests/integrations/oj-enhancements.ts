@@ -48,6 +48,7 @@ try {
       'docker',
       [
         'compose',
+        ...(process.env.DOMJUDGE_TEST_PROJECT ? ['-p', process.env.DOMJUDGE_TEST_PROJECT] : []),
         '-f',
         'infra/fixtures/domjudge/compose.yaml',
         'exec',
@@ -210,6 +211,14 @@ try {
         'docker',
         [
           'compose',
+          ...((process.env.HYDRO_TEST_PROJECT ??
+          process.env.DOMJUDGE_TEST_PROJECT?.replace(/-domjudge$/, '-hydro'))
+            ? [
+                '-p',
+                process.env.HYDRO_TEST_PROJECT ??
+                  process.env.DOMJUDGE_TEST_PROJECT!.replace(/-domjudge$/, '-hydro'),
+              ]
+            : []),
           '-f',
           'infra/fixtures/hydro/compose.yaml',
           'exec',

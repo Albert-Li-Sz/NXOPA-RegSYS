@@ -4,7 +4,7 @@
 
 - [Docker Compose 安装包与步骤](deploy/README.md)
 - [存储、邮件、个人中心与三种管理员授权](docs/PLATFORM_GUIDE.md)
-- [V0.3.5 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.3.5)
+- [V0.3.6 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.3.6)
 - [部署与日常维护](docs/DEPLOYMENT.md)
 - [在线配置教程（GitHub Pages）](https://albert-li-sz.github.io/NXOPA-RegSYS/)
 - [带截图的配置教程（PDF）](output/pdf/configuration-guide.pdf)、[LaTeX 源码](docs/CONFIGURATION_GUIDE.tex)、[源码与截图打包](output/pdf/configuration-guide-source.zip)
@@ -20,7 +20,7 @@
 
 推荐使用根目录的单一一键安装入口 `install.sh`。宿主机需要 Docker Compose、Bash 和 OpenSSL，Node.js / pnpm 随镜像安装。
 
-从 V0.3.5 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
+从 V0.3.6 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
 
 ```bash
 # 安装：交互选择镜像版本、域名或端口，再创建管理员
@@ -125,3 +125,5 @@ tests                    单元、真实数据库、浏览器和外部接口验�
 账号可公开使用邮箱注册，也可接受管理员发出的账号邀请。管理员在 **管理后台 → 用户权限** 生成指定账号 / 邮箱的授权链接，接收者登录、验证邮箱并点击确认后，才能成为系统管理员、指定竞赛管理员或指导老师。撤销权限立即生效，旧链接不能恢复授权。首次管理员仍由初始化命令创建。[邀请操作与验收](docs/AUTHORIZATION_INVITATIONS.md)。
 
 邀请权限验收：`pnpm test:invitations`；界面验收：`pnpm exec playwright test tests/e2e/authorization.spec.ts`。两项使用隔离开发实例及虚构数据，需要 API、PostgreSQL、Redis、Worker、Mailpit 和官网运行。
+
+完整回归使用临时数据库、邮件收件箱及隔离编译容器，运行 `pnpm test:full`。如需同时验收本地真实 Hydro / DOMjudge，使用 `FULL_REGRESSION_OJ=1 pnpm test:full`；对应 OJ 端口 58888 / 58901 需空闲。验收完成后删除临时测试容器与数据，测试报告保存在 `.runtime/reports`。

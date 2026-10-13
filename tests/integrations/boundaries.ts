@@ -4,7 +4,7 @@ import path from 'node:path';
 import { randomUUID, createHmac } from 'node:crypto';
 import { createServer } from 'node:http';
 import { execFileSync } from 'node:child_process';
-import { Client, until } from './client.js';
+import { Client, until, base } from './client.js';
 import { db, json } from '../../apps/server/src/db.js';
 import { redis } from '../../apps/server/src/auth.js';
 import { config } from '../../apps/server/src/config.js';
@@ -43,7 +43,7 @@ try {
   );
   const authorization = { Authorization: `Bearer ${token.token}` };
   const envelope = (await (
-    await fetch(`http://localhost:3000/api/integration/v1/registrations?contestId=${r.contestId}`, {
+    await fetch(`${base}/api/integration/v1/registrations?contestId=${r.contestId}`, {
       headers: authorization,
     })
   ).json()) as any[];
@@ -68,31 +68,25 @@ try {
   assert.ok(mapping, 'Run test:oj for the selected OJ_TYPE before boundary acceptance');
   {
     const result = mapping.details;
-    const callback = await fetch(
-      `http://localhost:3000/api/integration/v1/registrations/${r.id}/result`,
-      {
-        method: 'POST',
-        headers: { ...authorization, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bindingId: mapping.bindingId,
-          registrationVersion: r.version,
-          result,
-        }),
-      },
-    );
+    const callback = await fetch(`${base}/api/integration/v1/registrations/${r.id}/result`, {
+      method: 'POST',
+      headers: { ...authorization, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bindingId: mapping.bindingId,
+        registrationVersion: r.version,
+        result,
+      }),
+    });
     assert.equal(callback.status, 201, await callback.text());
-    const denied = await fetch(
-      `http://localhost:3000/api/integration/v1/registrations/${r.id}/result`,
-      {
-        method: 'POST',
-        headers: { ...authorization, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bindingId: mapping.bindingId,
-          registrationVersion: r.version,
-          result: { ...(result as any), remoteUserId: 'invented' },
-        }),
-      },
-    );
+    const denied = await fetch(`${base}/api/integration/v1/registrations/${r.id}/result`, {
+      method: 'POST',
+      headers: { ...authorization, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bindingId: mapping.bindingId,
+        registrationVersion: r.version,
+        result: { ...(result as any), remoteUserId: 'invented' },
+      }),
+    });
     assert.equal(denied.status, 400);
     reports.push('Federation callback verifies remote IDs and rejects invented results');
   }
@@ -101,8 +95,7 @@ try {
   assert.ok(!stored.some((v) => JSON.stringify(v.result).includes(token.token)));
   await admin.api(`/admin/tokens/${token.id}`, 'DELETE');
   assert.equal(
-    (await fetch('http://localhost:3000/api/integration/v1/contests', { headers: authorization }))
-      .status,
+    (await fetch(`${base}/api/integration/v1/contests`, { headers: authorization })).status,
     401,
   );
   reports.push('Token revocation and encrypted idempotency replay records');
@@ -177,7 +170,11 @@ try {
   const remainingFiles = await readdir(folder, { encoding: 'utf8' }).catch((): string[] => []);
   assert.ok(!remainingFiles.includes('shell-marker'));
   const inspect = JSON.parse(
-    execFileSync('docker', ['inspect', 'contest-center-dev-latex-1'], { encoding: 'utf8' }),
+    execFileSync(
+      'docker',
+      ['inspect', process.env.TEST_LATEX_CONTAINER ?? 'contest-center-dev-latex-1'],
+      { encoding: 'utf8' },
+    ),
   )[0];
   assert.equal(inspect.HostConfig.NetworkMode, 'none');
   assert.equal(inspect.HostConfig.ReadonlyRootfs, true);
@@ -223,7 +220,7 @@ try {
   const upload = new FormData();
   upload.append(
     'file',
-    new Blob([await readFile('.runtime/reports/individual.png')], { type: 'image/png' }),
+    new Blob([await readFile('tests/fixtures/portrait.png')], { type: 'image/png' }),
     'photo.png',
   );
   const attachment = await alice.api(`/files?registrationId=${photo.id}`, 'POST', upload);

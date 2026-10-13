@@ -74,6 +74,21 @@ export async function getRegistration(u: Principal, id: string, edit = false) {
   if (!(edit ? canEdit(u, r) : canRead(u, r))) throw new ForbiddenException('没有此报名的访问权限');
   return r;
 }
+export async function getSupportTicket(u: Principal, id: string) {
+  const ticket = await db.supportTicket.findUniqueOrThrow({ where: { id } });
+  if (owns(u, ticket.ownerId) || u.isAdmin || manages(u, ticket.contestId ?? '', 'SUPPORT'))
+    return ticket;
+  if (ticket.registrationId) {
+    const registration = await getRegistration(u, ticket.registrationId);
+    if (
+      owns(u, registration.ownerId) ||
+      registration.people.some((p) => p.active && p.userId && owns(u, p.userId)) ||
+      registration.coaches.some((c) => owns(u, c.userId))
+    )
+      return ticket;
+  }
+  throw new ForbiddenException('没有此工单的访问权限');
+}
 export function checkVersion(current: number, expected: unknown) {
   if (expected !== current) throw new ConflictException('资料已被更新，请刷新后重试');
 }

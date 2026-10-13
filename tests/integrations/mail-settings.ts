@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { Client, until } from './client.js';
-import { verificationUrl } from './mailpit.js';
+import { verificationUrl, mailpitBase } from './mailpit.js';
 import { db, json, enqueue } from '../../apps/server/src/db.js';
 import { redis } from '../../apps/server/src/auth.js';
 import { decrypt } from '../../apps/server/src/security.js';
@@ -223,14 +223,14 @@ try {
     ...current,
     enabled: true,
     host: 'localhost',
-    port: 51025,
+    port: Number(process.env.SMTP_PORT ?? 51025),
     authEnabled: false,
     password: '',
   });
   assert.equal(current.passwordConfigured, false);
   const cleared = await db.setting.findUniqueOrThrow({ where: { key: 'mail' } });
   assert.equal((cleared.value as any).encryptedPassword, '');
-  await delivered(current.version, 'http://localhost:58025');
+  await delivered(current.version, mailpitBase);
   const email = `mail-settings-${run}@example.test`,
     client = new Client();
   const session = await client.api('/auth/register', 'POST', {

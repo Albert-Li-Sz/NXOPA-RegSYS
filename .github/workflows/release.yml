@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v0.3.5
+        description: 已存在的版本标签，例如 v0.3.6
         required: true
-        default: v0.3.5
+        default: v0.3.6
         type: string
 
 permissions:
@@ -51,6 +51,7 @@ jobs:
       - name: 类型检查、业务规则和教程构建
         run: |
           pnpm typecheck
+          pnpm format:check
           pnpm test
           pnpm test:install-cli
           pnpm test:install-images
@@ -59,18 +60,8 @@ jobs:
           pnpm test:release-features
           docker build -t nxopa-minio-test:current infra/minio
           pnpm test:platform-features
+          pnpm test:full
           pnpm docs:build
-      - name: 邮箱链接、报名资格、财务与工单权限回归
-        shell: bash
-        run: |
-          pnpm setup
-          docker compose -f infra/compose/dependencies.yaml up -d --wait
-          pnpm db:migrate
-          pnpm seed
-          pnpm --filter @contest-center/server dev > .runtime/api-regression.log 2>&1 &
-          api_pid=$!
-          trap 'kill "$api_pid"; docker compose -f infra/compose/dependencies.yaml down -v' EXIT
-          pnpm test:bugs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -78,6 +69,7 @@ jobs:
           path: |
             .runtime/reports/release-features.json
             .runtime/reports/platform-features.json
+            .runtime/reports/full-regression.json
             .runtime/reports/ui-audit
           retention-days: 30
 

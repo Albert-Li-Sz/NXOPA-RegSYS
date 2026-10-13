@@ -2,7 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { readFile, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
-import { Client as HttpClient } from '../integrations/client.js';
+import { Client as HttpClient, base } from '../integrations/client.js';
 const context = JSON.parse(await readFile('.runtime/acceptance-context.json', 'utf8'));
 const admin = await new HttpClient().login('admin');
 const token = await admin.api('/admin/tokens', 'POST', {
@@ -18,7 +18,7 @@ const transport = new StdioClientTransport({
   env: {
     ...(process.env as Record<string, string>),
     CONTEST_CENTER_TOKEN: token.token,
-    CONTEST_CENTER_URL: 'http://localhost:3000',
+    CONTEST_CENTER_URL: base,
   },
   stderr: 'pipe',
 });
@@ -70,7 +70,7 @@ try {
         env: {
           ...(process.env as Record<string, string>),
           CONTEST_CENTER_TOKEN: scopedToken.token,
-          CONTEST_CENTER_URL: 'http://localhost:3000',
+          CONTEST_CENTER_URL: base,
         },
         stderr: 'pipe',
       }),

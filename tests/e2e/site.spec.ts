@@ -77,7 +77,8 @@ test('desktop home, filters and account center', async ({ page }) => {
   await expect(seededCards).toHaveCount(1);
   await page.getByText('全部竞赛', { exact: true }).click();
   await page.goto('/account');
-  await expect(page.getByRole('heading', { name: '个人资料' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '个人信息' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '总览', exact: true })).toBeVisible();
   await expect(page.locator('#profile-name')).toHaveValue('林同学');
   await expect(page.getByText('第三方账号', { exact: true })).toHaveCount(0);
   expect(errors).toEqual([]);
@@ -124,7 +125,7 @@ test('admin and contest configuration pages, financial and support views', async
   await page.goto('/admin');
   await expect(page.getByRole('heading', { name: '管理后台' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '认证服务', exact: true })).toHaveCount(0);
-  for (const name of ['用户权限', '评测平台', '邮件设置', 'API 与 Webhook', '全局设置', '任务']) {
+  for (const name of ['用户与邀请', '评测平台', '邮件设置', 'API 与 Webhook', '全局设置', '任务']) {
     await page.getByRole('tab', { name, exact: true }).click();
     await expect(page.locator('.panel')).toBeVisible();
   }

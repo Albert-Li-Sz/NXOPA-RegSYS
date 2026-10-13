@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { inflateRawSync } from 'node:zlib';
-import { Client, until } from './client.js';
+import { Client, until, base } from './client.js';
 import { redis } from '../../apps/server/src/auth.js';
 import { config } from '../../apps/server/src/config.js';
 import { policySchema } from '../../packages/contracts/src/index.js';
@@ -95,7 +95,7 @@ try {
     orderBy: { updatedAt: 'desc' },
   });
   assert.ok(job);
-  const denied = await fetch(`http://localhost:3000/api/integration/v1/jobs/${job.id}`, {
+  const denied = await fetch(`${base}/api/integration/v1/jobs/${job.id}`, {
     headers: { Authorization: `Bearer ${token.token}` },
   });
   assert.equal(denied.status, 403);

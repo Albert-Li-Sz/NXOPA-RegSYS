@@ -60,7 +60,7 @@ try {
       },
     });
     userIds.push(user.id);
-    return new Client().login(user.username);
+    return (await new Client().login(user.username)).completeProfile();
   }
   const receiver = await actor('receiver'),
     wrong = await actor('wrong'),
@@ -438,6 +438,7 @@ try {
     await db.registration.deleteMany({ where: { id: { in: registrationIds } } });
     await db.contest.deleteMany({ where: { id: { in: contestIds } } });
     await db.emailToken.deleteMany({ where: { userId: { in: userIds } } });
+    await db.adminGrant.deleteMany({ where: { userId: { in: userIds } } });
     await db.user.deleteMany({ where: { id: { in: userIds } } });
   }
   await mkdir('.runtime/reports', { recursive: true });

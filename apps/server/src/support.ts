@@ -3,7 +3,14 @@ import { z } from 'zod';
 import type { Principal } from '@contest-center/contracts';
 import { db, json, lock, audit, event } from './db.js';
 import { paginated, dateFilter, type ListQuery } from './pagination.js';
-import { getRegistration, manages, checkVersion, owns, ownerIds } from './security.js';
+import {
+  getRegistration,
+  getSupportTicket,
+  manages,
+  checkVersion,
+  owns,
+  ownerIds,
+} from './security.js';
 import { activeGrantWhere } from './authorization.js';
 const message = z.object({
   text: z.string().trim().min(1).max(10000),
@@ -16,7 +23,7 @@ export class SupportService {
       : {
           OR: [
             { ownerId: { in: ownerIds(u) } },
-            { contestId: { in: u.contestIds } },
+            { contestId: { in: u.contestIds.filter((id) => manages(u, id, 'SUPPORT')) } },
             {
               registrationId: {
                 in: (
@@ -60,12 +67,7 @@ export class SupportService {
     );
   }
   async access(u: Principal, id: string) {
-    const t = await db.supportTicket.findUniqueOrThrow({ where: { id } });
-    if (!owns(u, t.ownerId) && !(t.contestId && manages(u, t.contestId)) && !u.isAdmin) {
-      if (!t.registrationId) throw new ForbiddenException();
-      await getRegistration(u, t.registrationId);
-    }
-    return t;
+    return getSupportTicket(u, id);
   }
   async detail(u: Principal, id: string) {
     const t = await this.access(u, id);
@@ -111,8 +113,11 @@ export class SupportService {
           emailNotifications: b.emailNotifications,
         },
       });
-      for (const id of b.attachments) {
+      for (const id of [...new Set(b.attachments)].sort()) {
+        await lock(tx, `file:${id}`);
         const f = await tx.attachment.findUniqueOrThrow({ where: { id } });
+        if (f.deletedAt || f.public || (f.ticketId && f.ticketId !== t.id))
+          throw new BadRequestException('附件已删除、公开或已绑定其他工单');
         if (f.ownerId !== u.id || (f.registrationId && f.registrationId !== b.registrationId))
           throw new ForbiddenException('附件不属于此工单');
         await tx.attachment.update({ where: { id }, data: { ticketId: t.id } });
@@ -185,8 +190,10 @@ export class SupportService {
       }
       if (b.status && !manager && !['OPEN', 'CLOSED'].includes(b.status))
         throw new ForbiddenException();
-      for (const fileId of b.attachments) {
+      for (const fileId of [...new Set(b.attachments)].sort()) {
+        await lock(tx, `file:${fileId}`);
         const f = await tx.attachment.findUniqueOrThrow({ where: { id: fileId } });
+        if (f.deletedAt || f.public) throw new BadRequestException('附件已删除或不能用于私有工单');
         if (
           f.ownerId !== u.id ||
           (f.ticketId && f.ticketId !== id) ||

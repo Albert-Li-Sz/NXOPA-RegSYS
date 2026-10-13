@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { verifyManifestGraph } from './verify-registry.mjs';
 
-const tag = process.argv[2] ?? 'v0.3.5';
+const tag = process.argv[2] ?? 'v0.3.6';
 assert.match(tag, /^v\d+\.\d+\.\d+$/);
 const prefix = process.env.IMAGE_PREFIX ?? 'ghcr.io/albert-li-sz/nxopa-regsys';
 assert.ok(prefix.startsWith('ghcr.io/'));

@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -36,6 +36,9 @@
     "test:install-cli": "node --test tests/install-cli.test.mjs",
     "test:install-images": "node --test tests/install-images.test.mjs",
     "test:install-proxy": "tsx tests/integrations/install-proxy.ts",
+    "test:full": "tsx tests/integrations/full-regression.ts",
+    "test:file-race": "tsx tests/integrations/file-race.ts",
+    "test:permissions": "tsx tests/integrations/permission-regressions.ts",
     "test:platform-features": "tsx tests/integrations/platform-features.ts",
     "test:release-features": "tsx tests/integrations/release-features.ts",
     "test:install-bootstrap": "node --test tests/install-bootstrap.test.mjs",

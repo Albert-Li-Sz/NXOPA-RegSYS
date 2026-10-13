@@ -147,6 +147,14 @@ try {
         'docker',
         [
           'compose',
+          ...((process.env.HYDRO_TEST_PROJECT ??
+          process.env.DOMJUDGE_TEST_PROJECT?.replace(/-domjudge$/, '-hydro'))
+            ? [
+                '-p',
+                process.env.HYDRO_TEST_PROJECT ??
+                  process.env.DOMJUDGE_TEST_PROJECT!.replace(/-domjudge$/, '-hydro'),
+              ]
+            : []),
           '-f',
           'infra/fixtures/hydro/compose.yaml',
           'exec',

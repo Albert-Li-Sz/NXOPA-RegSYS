@@ -88,6 +88,7 @@ export class PeopleService {
       throw new BadRequestException('入学年份无效');
     if (b.kind === 'STUDENT' && b.profile.enrollment_year === undefined)
       throw new BadRequestException('请填写入学年份');
+    if (b.kind === 'STUDENT') b.profile.enrollment_year = Number(b.profile.enrollment_year);
     const proposed = identitySnapshot(b.kind, b.name, b.profile);
     identityKey(proposed);
     return db.$transaction(async (tx) => {
@@ -312,6 +313,14 @@ export class PeopleService {
   }
   async students(u: Principal, query: ListQuery & { year?: string } = {}) {
     const contests = this.accessibleContests(u);
+    const year = query.year
+      ? z.coerce
+          .number()
+          .int()
+          .min(1950)
+          .max(new Date().getFullYear() + 1)
+          .parse(query.year)
+      : undefined;
     const registrations = contests
       ? await db.registration.findMany({
           where: { contestId: { in: contests } },
@@ -343,7 +352,18 @@ export class PeopleService {
       kind: 'STUDENT',
       deactivatedAt: null,
       ...(scoped ? { id: { in: scoped } } : {}),
-      ...(query.year ? { profile: { path: ['enrollment_year'], equals: Number(query.year) } } : {}),
+      ...(year
+        ? {
+            AND: [
+              {
+                OR: [
+                  { profile: { path: ['enrollment_year'], equals: year } },
+                  { profile: { path: ['enrollment_year'], equals: String(year) } },
+                ],
+              },
+            ],
+          }
+        : {}),
       ...(query.search
         ? {
             OR: ['name', 'email'].map((key) => ({

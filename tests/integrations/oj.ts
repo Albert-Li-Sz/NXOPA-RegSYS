@@ -29,6 +29,7 @@ try {
       'docker',
       [
         'compose',
+        ...(process.env.DOMJUDGE_TEST_PROJECT ? ['-p', process.env.DOMJUDGE_TEST_PROJECT] : []),
         '-f',
         'infra/fixtures/domjudge/compose.yaml',
         'exec',

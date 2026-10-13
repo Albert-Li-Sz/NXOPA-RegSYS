@@ -142,6 +142,17 @@ test('manual team, optional teacher, review first, receipt and partial/full conf
       await owner.page.locator(`#member-${index}-school`).fill('示例大学');
       await owner.page.locator(`#member-${index}-student_id`).fill(`E2E-${stamp}-${index}`);
       await owner.page.locator(`#member-${index}-phone`).fill('00000000000');
+      await owner.page.locator(`#member-${index}-class_name`).fill('验收一班');
+      await owner.page.locator(`#member-${index}-college`).fill('验收学院');
+      await owner.page
+        .locator('.el-form-item')
+        .filter({ has: owner.page.locator(`#member-${index}-gender`) })
+        .locator('.el-select')
+        .click();
+      await owner.page.getByRole('option', { name: '不便透露', exact: true }).click();
+      await expect(owner.page.getByRole('option', { name: '不便透露', exact: true })).toHaveCount(
+        0,
+      );
     }
     await owner.page.getByRole('button', { name: '提交报名', exact: true }).click();
     await expect(owner.page.getByText('已提交', { exact: true })).toBeVisible();

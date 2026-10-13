@@ -40,7 +40,7 @@ test('public landing, login redirect and original contest return on desktop and 
   await page.locator('.hero-actions').getByRole('link', { name: '进入报名系统' }).click();
   await expect(page).toHaveURL(/\/contests$/);
   const mobile = await browser.newContext({
-    baseURL: 'http://localhost:5173',
+    baseURL: process.env.WEB_URL ?? 'http://localhost:5173',
     viewport: { width: 390, height: 844 },
   });
   const mobilePage = await mobile.newPage();
@@ -71,7 +71,7 @@ test('administrator saves SMTP in Chinese, tests delivery, and sees saved values
     ...prior,
     enabled: true,
     host: 'localhost',
-    port: 51025,
+    port: Number(process.env.SMTP_PORT ?? 51025),
     security: 'NONE',
     authEnabled: false,
     fromAddress: 'noreply@example.test',
@@ -110,12 +110,28 @@ test('contest administrators cannot open system mail configuration; sync action 
   await expect(page.locator('#mail-host')).toHaveCount(0);
   await page.getByRole('tab', { name: '评测平台', exact: true }).click();
   await expect(page.getByRole('heading', { name: '比赛绑定与报名同步' })).toBeVisible();
-  const registration = await db.registration.findFirst({ where: { mappings: { some: {} } } });
-  expect(registration).not.toBeNull();
+  const registration = await db.registration.findFirstOrThrow({ where: { status: 'SUBMITTED' } });
+  const admin = await new Client().login('admin');
+  const instance = await admin.api('/integrations/instances', 'POST', {
+    name: '中文同步按钮回归',
+    type: 'HYDRO',
+    baseUrl: 'http://127.0.0.1:9',
+    credentials: { token: 'ui-fixture-no-remote-call-32-characters' },
+    allowedContestIds: [registration.contestId],
+  });
+  const binding = await admin.api('/integrations/bindings', 'POST', {
+    contestId: registration.contestId,
+    instanceId: instance.id,
+    remoteContestId: 'ui-label-fixture',
+    domainId: 'system',
+    automatic: false,
+  });
   // Use a separate authenticated administrator session for the mapped registration.
   await page.context().clearCookies();
-  await page.goto(`/registrations/${registration!.id}?tab=accounts`);
+  await page.goto(`/registrations/${registration.id}?tab=accounts`);
   await signIn(page, 'admin');
   await expect(page.getByRole('button', { name: /^同步比赛账号/ }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /Local|acceptance/ })).toHaveCount(0);
+  await db.platformBinding.delete({ where: { id: binding.id } });
+  await db.platformInstance.delete({ where: { id: instance.id } });
 });

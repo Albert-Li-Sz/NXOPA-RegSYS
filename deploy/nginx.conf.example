@@ -12,7 +12,8 @@ server {
     ssl_certificate /etc/nginx/certs/reg.example.org/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/reg.example.org/privkey.pem;
 
-    client_max_body_size 30m;
+    # Allow a 50 MiB file plus multipart form headers.
+    client_max_body_size 60m;
     proxy_http_version 1.1;
     proxy_set_header Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;

@@ -20,7 +20,7 @@ export const studentProfileSchema = z.object({
 });
 export const teacherProfileSchema = z.object({
   employee_id: z.string().trim().min(1, '请填写工号').max(100),
-  employed_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '请填写入职日期'),
+  employed_at: z.iso.date('请填写有效入职日期'),
   college: z.string().trim().min(1, '请填写院系').max(100),
   gender: z.enum(['男', '女', '其他', '不便透露']),
 });

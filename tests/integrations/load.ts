@@ -5,7 +5,7 @@ import { performance } from 'node:perf_hooks';
 import { db, json } from '../../apps/server/src/db.js';
 import { redis } from '../../apps/server/src/auth.js';
 import { config } from '../../apps/server/src/config.js';
-import { Client } from './client.js';
+import { Client, base } from './client.js';
 import { policySchema, defaultFields } from '../../packages/contracts/src/index.js';
 if (config.production) throw new Error('Load data is restricted to development');
 let contestId: string | undefined;
@@ -109,7 +109,7 @@ try {
           slot = i % 3;
         const start = performance.now();
         try {
-          const response = await fetch(`http://localhost:3000${endpoints[slot]}`, {
+          const response = await fetch(`${base}${endpoints[slot]}`, {
             headers: { Cookie: admin.cookie },
           });
           await response.arrayBuffer();

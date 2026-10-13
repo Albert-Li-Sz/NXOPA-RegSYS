@@ -563,11 +563,13 @@ async function webhook() {
             ><el-button
               v-if="isSystemAdmin() && row.id !== auth.user?.id"
               text
-              :type="row.isAdmin ? 'danger' : 'primary'"
+              :type="row.isSystemAdmin ? 'danger' : 'primary'"
               @click="
-                row.isAdmin ? revokeRole(row, 'SYSTEM_ADMIN') : inviteRole('SYSTEM_ADMIN', row)
+                row.isSystemAdmin
+                  ? revokeRole(row, 'SYSTEM_ADMIN')
+                  : inviteRole('SYSTEM_ADMIN', row)
               "
-              >{{ row.isAdmin ? '取消系统管理员' : '邀请系统管理员' }}</el-button
+              >{{ row.isSystemAdmin ? '取消系统管理员' : '邀请系统管理员' }}</el-button
             ><el-button
               text
               :type="row.isCoach ? 'danger' : 'primary'"
@@ -575,7 +577,7 @@ async function webhook() {
               >{{ row.isCoach ? '撤销指导老师' : '邀请指导老师' }}</el-button
             ><el-button
               v-for="role in row.roles"
-              :key="role.id"
+              :key="role.contestId"
               text
               type="danger"
               @click="revokeRole(row, 'CONTEST_ADMIN', role.contestId)"

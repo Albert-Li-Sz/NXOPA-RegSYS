@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { createHash } from 'node:crypto';
 
 const exec = promisify(execFile);
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -103,7 +104,12 @@ export async function verifyGatewayTransport() {
     const host = 'reg.example.org';
     const origin = `https://${host}`;
     const body = JSON.stringify({ name: '报名验收', amount: 42 });
-    async function throughTls(uri: string, method: string) {
+    async function throughTls(
+      uri: string,
+      method: string,
+      content: string | Buffer = body,
+      contentType = 'application/json',
+    ) {
       return new Promise<{ payload: any; cookies: string[] }>((resolve, reject) => {
         const req = request(
           {
@@ -117,7 +123,10 @@ export async function verifyGatewayTransport() {
               Host: host,
               Origin: origin,
               Cookie: 'session=transport-fixture',
-              'Content-Type': 'application/json',
+              'Content-Type': contentType,
+              ...(method === 'POST'
+                ? { 'Content-Length': String(Buffer.byteLength(content)) }
+                : {}),
               'X-Forwarded-Proto': 'http',
             },
           },
@@ -140,9 +149,24 @@ export async function verifyGatewayTransport() {
         );
         req.setTimeout(10000, () => req.destroy(new Error('TLS proxy request timed out')));
         req.on('error', reject);
-        req.end(method === 'POST' ? body : undefined);
+        req.end(method === 'POST' ? content : undefined);
       });
     }
+    const upload = Buffer.concat([
+      Buffer.from(
+        '--gateway-boundary\r\nContent-Disposition: form-data; name="file"; filename="maximum.txt"\r\nContent-Type: text/plain\r\n\r\n',
+      ),
+      Buffer.alloc(50 * 1024 * 1024, 65),
+      Buffer.from('\r\n--gateway-boundary--\r\n'),
+    ]);
+    const { payload: uploaded } = await throughTls(
+      '/api/v1/upload-size',
+      'POST',
+      upload,
+      'multipart/form-data; boundary=gateway-boundary',
+    );
+    assert.equal(uploaded.bodyBytes, upload.length);
+    assert.equal(uploaded.bodySha256, createHash('sha256').update(upload).digest('hex'));
     for (const [uri, method, service] of [
       ['/api/v1/echo?name=%E6%8A%A5%E5%90%8D&path=%2Fapi%2F', 'POST', 'api'],
       ['/contests?next=%2Flogin', 'GET', 'web'],
@@ -167,7 +191,7 @@ export async function verifyGatewayTransport() {
       (await fetch(`http://127.0.0.1:${gatewayPort}/api/v1/echo`).then((r) => r.json())).service,
       'api',
     );
-    return '真实 HTTPS Nginx → HTTP Caddy 两层代理保留 API 路径、查询、正文、Host / Origin、Cookie 及 HTTPS 协议；本机 HTTP 入口可用';
+    return '真实 HTTPS Nginx → HTTP Caddy 两层代理保留 API 路径、查询、正文、Host / Origin、Cookie 及 HTTPS 协议；50 MB 附件及表单边界完整传输，本机 HTTP 入口可用';
   } finally {
     await compose(['down', '--volumes', '--remove-orphans']);
     await rm(stage, { recursive: true, force: true });

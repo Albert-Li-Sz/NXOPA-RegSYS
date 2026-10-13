@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
-assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.3.5');
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.3.6');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
@@ -191,6 +191,34 @@ try {
     assert.equal(report.commit, commit);
     assert.ok(report.checks.length >= 10);
     await writeFile(join(output, 'platform-features.json'), JSON.stringify(report, null, 2));
+  } catch (error) {
+    if (error.code !== 'ENOENT' || process.env.CI) throw error;
+  }
+  try {
+    const report = JSON.parse(
+      await readFile(join(root, 'dist/feature-reports/full-regression.json'), 'utf8'),
+    );
+    assert.equal(report.success, true);
+    assert.equal(report.commit, commit);
+    for (const suite of [
+      'test:integration',
+      'test:auth',
+      'test:invitations',
+      'test:mail',
+      'test:enhancements',
+      'test:admissions',
+      'test:bugs',
+      'test:permissions',
+      'test:file-race',
+      'test:load',
+      'test:mcp',
+      'test:e2e',
+    ])
+      assert.ok(
+        report.results.some((result) => result.suite === suite && result.success),
+        `${suite} must pass before packaging`,
+      );
+    await writeFile(join(output, 'full-regression.json'), JSON.stringify(report, null, 2));
   } catch (error) {
     if (error.code !== 'ENOENT' || process.env.CI) throw error;
   }

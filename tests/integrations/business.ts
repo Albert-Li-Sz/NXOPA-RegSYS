@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { Client, until } from './client.js';
+import { Client, until, base } from './client.js';
 import {
   policySchema,
   defaultFields,
@@ -212,7 +212,14 @@ try {
         name,
         email: '',
         captain: false,
-        answers: { school: '示例大学', student_id: `${run}-${i}`, phone: '00000000000' },
+        answers: {
+          school: '示例大学',
+          student_id: `${run}-${i}`,
+          phone: '00000000000',
+          class_name: '验收一班',
+          college: '验收学院',
+          gender: '不便透露',
+        },
       })),
     ],
   });
@@ -344,7 +351,7 @@ try {
     fields: ['PERSON.name'],
     expiresAt: new Date(Date.now() + 3600000).toISOString(),
   });
-  const read = await fetch(`http://localhost:3000/api/automation/v1/registrations/${r.id}`, {
+  const read = await fetch(`${base}/api/automation/v1/registrations/${r.id}`, {
     headers: { Authorization: `Bearer ${token.token}` },
   });
   const filtered = (await read.json()) as any;
@@ -353,7 +360,7 @@ try {
   assert.deepEqual(filtered.people[0].answers, {});
   assert.equal(
     (
-      await fetch(`http://localhost:3000/api/automation/v1/registrations/${team.id}`, {
+      await fetch(`${base}/api/automation/v1/registrations/${team.id}`, {
         headers: { Authorization: `Bearer ${token.token}` },
       })
     ).status,
