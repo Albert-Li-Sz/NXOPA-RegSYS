@@ -22,6 +22,18 @@ const purposeSchema = z.enum([
   'CONTEST_PRIVATE',
   'AVATAR',
 ]);
+function uploadFilename(name: string) {
+  // Ordinary multipart filename parameters arrive as Latin-1, even when browsers send UTF-8.
+  if ([...name].every((character) => character.charCodeAt(0) <= 255)) {
+    try {
+      name = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.from(name, 'latin1'));
+    } catch {}
+  }
+  return path
+    .basename(name.replaceAll('\\', '/'))
+    .replace(/[\r\n\u0000]/g, '')
+    .slice(0, 200);
+}
 export class FileService {
   async upload(
     u: Principal,
@@ -98,10 +110,7 @@ export class FileService {
         contestId,
         purpose,
         public: ['CONTEST_PUBLIC', 'AVATAR'].includes(purpose),
-        name: path
-          .basename(file.originalname.replaceAll('\\', '/'))
-          .replace(/[\r\n\u0000]/g, '')
-          .slice(0, 200),
+        name: uploadFilename(file.originalname),
         mime,
         size: file.size,
       },

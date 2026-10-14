@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
-assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.3.6');
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.4.0');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
@@ -203,8 +203,13 @@ try {
     for (const suite of [
       'test:integration',
       'test:auth',
+      'test:accounts',
+      'test:feishu',
       'test:invitations',
       'test:mail',
+      'test:mail-failover',
+      'test:template-bugs',
+      'test:overview',
       'test:enhancements',
       'test:admissions',
       'test:bugs',

@@ -67,7 +67,12 @@ async function file(e: Event, key: string) {
           :disabled="disabled"
           placeholder="请选择"
           style="width: 100%"
-          ><el-option v-for="o in f.options" :key="o" :label="o" :value="o"
+          filterable
+          ><el-option
+            v-for="o in f.key === 'gender' ? ['男', '女'] : f.options"
+            :key="o"
+            :label="o"
+            :value="o"
         /></el-select>
         <el-switch
           v-else-if="f.type === 'boolean'"

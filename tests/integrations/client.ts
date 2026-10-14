@@ -4,6 +4,18 @@ export class Client {
   cookie = '';
   csrf = '';
   user: any;
+  async register(body: Record<string, unknown>) {
+    const { registrationProof } = await import('./registration-proof.js');
+    const proof = await registrationProof(
+      this,
+      String(body.email),
+      body.next as string | undefined,
+    );
+    const result = await this.api('/auth/register', 'POST', { ...body, ...proof });
+    this.user = result.user;
+    this.csrf = result.csrf;
+    return result;
+  }
   async raw(path: string, method = 'GET', body?: unknown, key?: string) {
     const response = await fetch(`${base}${path}`, {
       method,
@@ -17,7 +29,25 @@ export class Client {
       redirect: 'manual',
     });
     const cookies = response.headers.getSetCookie();
-    if (cookies.length) this.cookie = cookies.map((c) => c.split(';')[0]).join('; ');
+    if (cookies.length) {
+      const jar = new Map(
+        this.cookie
+          .split('; ')
+          .filter(Boolean)
+          .map((value) => {
+            const split = value.indexOf('=');
+            return [value.slice(0, split), value.slice(split + 1)];
+          }),
+      );
+      for (const cookie of cookies) {
+        const value = cookie.split(';')[0]!,
+          split = value.indexOf('='),
+          name = value.slice(0, split);
+        if (/max-age=0|expires=thu, 01 jan 1970/i.test(cookie)) jar.delete(name);
+        else jar.set(name, value.slice(split + 1));
+      }
+      this.cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
+    }
     return response;
   }
   async api(path: string, method = 'GET', body?: unknown, key?: string) {
@@ -53,7 +83,7 @@ export class Client {
         student_id: `TEST-${this.user.id}`,
         class_name: '验收一班',
         college: '验收学院',
-        gender: '不便透露',
+        gender: '男',
         school: '验收大学',
         phone: '00000000000',
       },

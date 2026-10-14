@@ -105,7 +105,7 @@ async function createLink() {
         clearable
         placeholder="搜索竞赛、队名或姓名"
         style="max-width: 360px"
-      /><el-select v-model="list.filters.value.review" clearable placeholder="审核状态"
+      /><el-select v-model="list.filters.value.review" clearable placeholder="审核状态" filterable
         ><el-option
           v-for="state in ['PENDING', 'APPROVED', 'CORRECTION', 'REJECTED']"
           :key="state"

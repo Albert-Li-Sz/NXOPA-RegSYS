@@ -4,14 +4,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { defaultSite } from '@contest-center/contracts';
 import { api, auth, loadAuth } from './api';
-import PersonalShell from './components/PersonalShell.vue';
 import { adminLevelLabels } from '@contest-center/contracts';
+import { adminCenters, centerTabs } from './admin-centers';
 const router = useRouter();
 const route = useRoute();
-const personal = computed(
-  () =>
-    !!auth.user &&
-    (route.path.startsWith('/me/') || route.path === '/registrations' || route.path === '/account'),
+const visibleCenters = computed(() =>
+  adminCenters.filter((center) => centerTabs(center.key, auth.user).length),
 );
 const isLanding = computed(() => route.path === '/');
 const displayName = computed(() => {
@@ -40,7 +38,10 @@ async function logout() {
 <template>
   <div class="site-shell" :class="{ 'landing-shell': isLanding }">
     <header class="site-header">
-      <div class="header-inner">
+      <div
+        class="header-inner"
+        :class="{ 'admin-header': visibleCenters.length > 0 && !isLanding }"
+      >
         <router-link to="/" class="brand" :aria-label="site.name">
           <img class="brand-logo" src="/brand/openatom-club.jpg" width="42" height="42" alt="" />
           <span class="brand-copy"
@@ -50,14 +51,20 @@ async function logout() {
         </router-link>
         <template v-if="!isLanding">
           <nav aria-label="主导航">
-            <router-link to="/">首页</router-link><router-link to="/contests">竞赛</router-link
+            <router-link to="/overview">活动总览</router-link
+            ><router-link to="/contests">活动及竞赛中心</router-link
             ><router-link to="/registrations">我的报名</router-link
+            ><router-link to="/me/admissions">我的准考证</router-link
+            ><router-link to="/me/files">我的附件</router-link
             ><router-link v-if="auth.user?.isCoach" to="/coach">指导老师</router-link
             ><router-link to="/support">工单</router-link
             ><router-link
-              v-if="auth.user && (auth.user.isAdmin || auth.user.contestIds.length)"
-              to="/admin"
-              >管理中心</router-link
+              v-for="center in visibleCenters"
+              :key="center.key"
+              :to="center.to"
+              :class="{ selected: route.meta.adminCenter === center.key }"
+              :active-class="'admin-link-active'"
+              >{{ center.label }}</router-link
             >
           </nav>
           <div class="header-account" v-if="auth.user">
@@ -65,14 +72,14 @@ async function logout() {
               adminLevelLabels[auth.user.adminLevel]
             }}</span
             ><span class="role-pill" v-else-if="auth.user.isCoach">指导老师</span
-            ><el-dropdown
+            ><el-dropdown trigger="click"
               ><button class="user-menu">
                 <span class="avatar">{{ displayName.slice(0, 1) }}</span
                 ><span class="user-name" :title="displayName">{{ displayName }}</span
                 ><el-icon><ArrowDown /></el-icon></button
               ><template #dropdown
                 ><el-dropdown-menu
-                  ><el-dropdown-item @click="router.push('/me/profile')">个人中心</el-dropdown-item
+                  ><el-dropdown-item @click="router.push('/me/profile')">个人信息</el-dropdown-item
                   ><el-dropdown-item @click="logout">退出登录</el-dropdown-item></el-dropdown-menu
                 ></template
               ></el-dropdown
@@ -85,8 +92,7 @@ async function logout() {
       </div>
     </header>
     <main class="page">
-      <PersonalShell v-if="personal"><router-view :key="$route.fullPath" /></PersonalShell
-      ><router-view v-else :key="$route.fullPath" />
+      <router-view :key="$route.fullPath" />
     </main>
     <footer class="site-footer">
       <div class="footer-brand">

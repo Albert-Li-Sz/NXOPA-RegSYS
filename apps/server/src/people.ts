@@ -2,10 +2,14 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { z } from 'zod';
 import { verify } from 'argon2';
 import { randomUUID } from 'node:crypto';
-import { profileComplete, type Principal } from '@contest-center/contracts';
+import { profileComplete, userTagsSchema, type Principal } from '@contest-center/contracts';
 import { db, lock, audit, event, json } from './db.js';
-import { requireAdmin, manages, ownerIds, sha } from './security.js';
-import { activeGrantWhere, ensurePermanentAdministrator } from './authorization.js';
+import { requireAdmin, requireSystemAdmin, manages, sha, checkVersion } from './security.js';
+import {
+  activeGrantWhere,
+  ensurePermanentAdministrator,
+  effectiveAuthorization,
+} from './authorization.js';
 import { paginated, type ListQuery } from './pagination.js';
 const identityKeys = [
   'student_id',
@@ -214,15 +218,31 @@ export class PeopleService {
       if (!current.passwordHash || !(await verify(current.passwordHash, b.password)))
         throw new ForbiddenException('密码错误');
     } else await confirmCode();
+    return this.deactivate(u.id, u.id);
+  }
+  async deleteUser(u: Principal, id: string, body: unknown) {
+    requireSystemAdmin(u);
+    const b = z
+      .object({ version: z.number().int().positive(), confirmation: z.literal('删除账号') })
+      .parse(body);
+    if (id === u.id) throw new BadRequestException('请通过个人信息页面注销自己的账号');
+    return this.deactivate(u.id, z.string().uuid().parse(id), b.version);
+  }
+  private async deactivate(actorId: string, id: string, version?: number) {
     return db.$transaction(async (tx) => {
       await lock(tx, 'role-authorizations');
-      await lock(tx, `auth:${u.id}`);
+      await lock(tx, `auth:${id}`);
+      if (actorId !== id && !(await effectiveAuthorization(actorId, tx)).isSystemAdmin)
+        throw new ForbiddenException('系统管理员授权已经失效');
+      const current = await tx.user.findUniqueOrThrow({ where: { id } });
+      if (version !== undefined) checkVersion(current.version, version);
+      if (current.deactivatedAt) throw new BadRequestException('此账号已经删除');
       if (
         await tx.adminGrant.count({
-          where: { userId: u.id, level: 'SYSTEM', ...activeGrantWhere() },
+          where: { userId: id, level: 'SYSTEM', ...activeGrantWhere() },
         })
       )
-        await ensurePermanentAdministrator(tx, undefined, u.id);
+        await ensurePermanentAdministrator(tx, undefined, id);
       let personId = current.personId;
       if (!personId && profileComplete(current)) {
         const data = identitySnapshot(
@@ -245,28 +265,28 @@ export class PeopleService {
           });
         if (
           !(await tx.user.count({
-            where: { personId: person.id, deactivatedAt: null, id: { not: u.id } },
+            where: { personId: person.id, deactivatedAt: null, id: { not: id } },
           }))
         )
           personId = person.id;
       }
-      await tx.session.deleteMany({ where: { userId: u.id } });
-      await tx.externalIdentity.deleteMany({ where: { userId: u.id } });
+      await tx.session.deleteMany({ where: { userId: id } });
+      await tx.externalIdentity.deleteMany({ where: { userId: id } });
       await tx.emailToken.updateMany({
-        where: { userId: u.id, usedAt: null },
+        where: { userId: id, usedAt: null },
         data: { usedAt: new Date() },
       });
       await tx.adminGrant.updateMany({
-        where: { userId: u.id, revokedAt: null },
+        where: { userId: id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
-      await tx.roleAssignment.deleteMany({ where: { userId: u.id } });
+      await tx.roleAssignment.deleteMany({ where: { userId: id } });
       await tx.invitation.updateMany({
-        where: { OR: [{ inviterId: u.id }, { targetUserId: u.id }], acceptedBy: null },
+        where: { OR: [{ inviterId: id }, { targetUserId: id }], acceptedBy: null },
         data: { revoked: true },
       });
       await tx.identityRequest.updateMany({
-        where: { userId: u.id, status: 'PENDING' },
+        where: { userId: id, status: 'PENDING' },
         data: { status: 'CANCELLED' },
       });
       await tx.outboxEvent.updateMany({
@@ -286,13 +306,13 @@ export class PeopleService {
         data: { state: 'CANCELLED' },
       });
       await tx.user.update({
-        where: { id: u.id },
+        where: { id },
         data: {
           personId,
           deactivatedAt: new Date(),
           previousEmailHash: sha(current.email),
-          email: `deleted-${u.id}@account.invalid`,
-          username: `deleted_${u.id}`,
+          email: `deleted-${id}@account.invalid`,
+          username: `deleted_${id}`,
           passwordHash: null,
           verified: false,
           isAdmin: false,
@@ -301,17 +321,20 @@ export class PeopleService {
           version: { increment: 1 },
         },
       });
-      await audit(tx, u.id, 'ACCOUNT_CLOSE', u.id, { personId, recordsRetained: true });
+      await audit(tx, actorId, actorId === id ? 'ACCOUNT_CLOSE' : 'ACCOUNT_DELETE', id, {
+        personId,
+        recordsRetained: true,
+      });
       return { ok: true };
     });
   }
   private accessibleContests(u: Principal) {
     if (u.isAdmin) return undefined;
     const ids = u.contestIds.filter((id) => manages(u, id, 'STUDENTS'));
-    if (!ids.length) throw new ForbiddenException('没有学生视图权限');
+    if (!ids.length) throw new ForbiddenException('没有学生或教师视图权限');
     return ids;
   }
-  async students(u: Principal, query: ListQuery & { year?: string } = {}) {
+  async students(u: Principal, query: ListQuery & { year?: string } = {}, kind = 'STUDENT') {
     const contests = this.accessibleContests(u);
     const year = query.year
       ? z.coerce
@@ -324,7 +347,7 @@ export class PeopleService {
     const registrations = contests
       ? await db.registration.findMany({
           where: { contestId: { in: contests } },
-          include: { people: true },
+          include: { people: true, coaches: true },
         })
       : undefined;
     let scoped = registrations
@@ -333,6 +356,7 @@ export class PeopleService {
             registrations.flatMap((r) => [
               r.ownerId,
               ...r.people.flatMap((p) => (p.userId ? [p.userId] : [])),
+              ...r.coaches.map((c) => c.userId),
             ]),
           ),
         ]
@@ -349,10 +373,10 @@ export class PeopleService {
       scoped = [...new Set([...scoped, ...associated.map((p) => p.id)])];
     }
     const where = {
-      kind: 'STUDENT',
+      kind,
       deactivatedAt: null,
       ...(scoped ? { id: { in: scoped } } : {}),
-      ...(year
+      ...(year && kind === 'STUDENT'
         ? {
             AND: [
               {
@@ -387,6 +411,8 @@ export class PeopleService {
             createdAt: true,
             identityStatus: true,
             tags: true,
+            bannedAt: true,
+            banReason: true,
           },
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         }),
@@ -407,9 +433,13 @@ export class PeopleService {
       where: {
         submittedAt: { not: null },
         ...(contests ? { contestId: { in: contests } } : {}),
-        OR: [{ ownerId: { in: ids } }, { people: { some: { userId: { in: ids } } } }],
+        OR: [
+          { ownerId: { in: ids } },
+          { people: { some: { userId: { in: ids } } } },
+          { coaches: { some: { userId: { in: ids } } } },
+        ],
       },
-      include: { people: true },
+      include: { people: true, coaches: true },
     });
     const items = rows.map((row) => {
       const associated = allUsers
@@ -418,7 +448,8 @@ export class PeopleService {
       const entries = history.filter(
         (r) =>
           associated.includes(r.ownerId) ||
-          r.people.some((p) => p.userId && associated.includes(p.userId)),
+          r.people.some((p) => p.userId && associated.includes(p.userId)) ||
+          r.coaches.some((c) => associated.includes(c.userId)),
       );
       return {
         ...row,
@@ -428,7 +459,7 @@ export class PeopleService {
     });
     return Array.isArray(result) ? items : { ...result, items };
   }
-  async studentDetail(u: Principal, id: string) {
+  async studentDetail(u: Principal, id: string, kind?: string) {
     const contests = this.accessibleContests(u);
     const target = await db.user.findUniqueOrThrow({
       where: { id },
@@ -442,9 +473,16 @@ export class PeopleService {
         createdAt: true,
         identityStatus: true,
         tags: true,
+        username: true,
+        version: true,
+        verified: true,
+        bannedAt: true,
+        banReason: true,
+        deactivatedAt: true,
       },
     });
-    if (target.kind !== 'STUDENT') throw new BadRequestException('此账号不是学生');
+    if (target.deactivatedAt || (kind && target.kind !== kind))
+      throw new BadRequestException('此账号不在当前视图中');
     const ids = target.personId
       ? (
           await db.user.findMany({ where: { personId: target.personId }, select: { id: true } })
@@ -453,12 +491,189 @@ export class PeopleService {
     const registrations = await db.registration.findMany({
       where: {
         ...(contests ? { contestId: { in: contests } } : {}),
-        OR: [{ ownerId: { in: ids } }, { people: { some: { userId: { in: ids } } } }],
+        OR: [
+          { ownerId: { in: ids } },
+          { people: { some: { userId: { in: ids } } } },
+          { coaches: { some: { userId: { in: ids } } } },
+        ],
       },
       include: { contest: { select: { id: true, title: true, startsAt: true } }, people: true },
       orderBy: { createdAt: 'desc' },
     });
     if (contests && !registrations.length) throw new ForbiddenException('该学生不在授权竞赛范围');
-    return { ...target, registrations };
+    const globalGrants = await db.adminGrant.count({
+      where: { userId: id, level: { in: ['SYSTEM', 'SENIOR'] }, ...activeGrantWhere() },
+    });
+    return {
+      ...target,
+      registrations,
+      canEdit: u.isAdmin && (!globalGrants || !!u.isSystemAdmin),
+      canDelete: !!u.isSystemAdmin && id !== u.id,
+    };
+  }
+  async userDetail(u: Principal, id: string) {
+    requireAdmin(u);
+    return this.studentDetail(u, z.string().uuid().parse(id));
+  }
+  async editUser(u: Principal, id: string, body: unknown) {
+    requireAdmin(u);
+    const b = z
+      .object({
+        version: z.number().int().positive(),
+        name: z.string().trim().min(1).max(100),
+        email: z.email(),
+        username: z.string().regex(/^[a-zA-Z0-9_]{3,32}$/),
+        profile: z.record(z.string(), z.json()),
+        tags: userTagsSchema,
+      })
+      .parse(body);
+    await db.$transaction(async (tx) => {
+      await lock(tx, 'role-authorizations');
+      await lock(tx, `auth:${id}`);
+      const actor = await effectiveAuthorization(u.id, tx),
+        globalGrants = await tx.adminGrant.count({
+          where: { userId: id, level: { in: ['SYSTEM', 'SENIOR'] }, ...activeGrantWhere() },
+        });
+      if (!actor.isAdmin || (globalGrants && !actor.isSystemAdmin))
+        throw new ForbiddenException('没有修改此账号的权限');
+      const target = await tx.user.findUniqueOrThrow({
+        where: { id: z.string().uuid().parse(id) },
+      });
+      if (target.deactivatedAt) throw new BadRequestException('此账号已经删除');
+      checkVersion(target.version, b.version);
+      if (b.profile.gender !== undefined)
+        z.enum(['男', '女'], '请选择男或女').parse(b.profile.gender);
+      if (b.profile.enrollment_year !== undefined)
+        b.profile.enrollment_year = z.coerce
+          .number()
+          .int()
+          .min(1950)
+          .max(new Date().getFullYear() + 1)
+          .parse(b.profile.enrollment_year);
+      if (b.profile.employed_at) {
+        const date = z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .parse(b.profile.employed_at);
+        if (
+          !Number.isFinite(Date.parse(date)) ||
+          new Date(date).toISOString().slice(0, 10) !== date
+        )
+          throw new BadRequestException('入职日期无效');
+      }
+      const snapshot = identitySnapshot(target.kind, b.name, b.profile);
+      if (target.personId) {
+        if (!profileComplete({ kind: target.kind, name: b.name, profile: b.profile }))
+          throw new BadRequestException('请保留完整的实名资料');
+        const identity = identityKey(snapshot);
+        await lock(tx, `person:${identity.key}`);
+        const conflict = await tx.personRecord.findUnique({ where: { identityKey: identity.key } });
+        if (conflict && conflict.id !== target.personId)
+          throw new BadRequestException('此学号 / 工号已关联其他身份');
+        await tx.personRecord.update({
+          where: { id: target.personId },
+          data: {
+            identityKey: identity.key,
+            identifier: identity.identifier,
+            institution: identity.institution,
+            data: json(snapshot),
+          },
+        });
+      }
+      const email = b.email.toLowerCase();
+      await tx.user.update({
+        where: { id },
+        data: {
+          name: b.name,
+          username: b.username,
+          email,
+          profile: json(b.profile),
+          tags: b.tags,
+          ...(email !== target.email ? { verified: false } : {}),
+          identityStatus:
+            target.identityStatus === 'VERIFIED'
+              ? 'VERIFIED'
+              : profileComplete({ kind: target.kind, name: b.name, profile: b.profile })
+                ? 'RECORDED'
+                : 'UNSUBMITTED',
+          version: { increment: 1 },
+        },
+      });
+      await tx.identityRequest.updateMany({
+        where: { userId: id, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      });
+      if (email !== target.email) {
+        await tx.emailToken.updateMany({
+          where: { userId: id, usedAt: null },
+          data: { usedAt: new Date() },
+        });
+        await tx.session.deleteMany({ where: { userId: id } });
+      }
+      await audit(tx, u.id, 'USER_PROFILE_UPDATE', id, {
+        before: identitySnapshot(
+          target.kind,
+          target.name,
+          target.profile as Record<string, unknown>,
+        ),
+        after: snapshot,
+        emailChanged: email !== target.email,
+      });
+    });
+    return this.userDetail(u, id);
+  }
+  async banUser(u: Principal, id: string, body: unknown) {
+    requireAdmin(u);
+    const b = z
+      .object({
+        version: z.number().int().positive(),
+        banned: z.boolean(),
+        reason: z.string().trim().max(2000).default(''),
+      })
+      .parse(body);
+    if (id === u.id) throw new BadRequestException('不能封禁自己的账号');
+    await db.$transaction(async (tx) => {
+      await lock(tx, 'role-authorizations');
+      await lock(tx, `auth:${id}`);
+      const actor = await effectiveAuthorization(u.id, tx),
+        globalGrants = await tx.adminGrant.count({
+          where: { userId: id, level: { in: ['SYSTEM', 'SENIOR'] }, ...activeGrantWhere() },
+        });
+      if (!actor.isAdmin || (globalGrants && !actor.isSystemAdmin))
+        throw new ForbiddenException('没有封禁此账号的权限');
+      const target = await tx.user.findUniqueOrThrow({
+        where: { id: z.string().uuid().parse(id) },
+      });
+      checkVersion(target.version, b.version);
+      if (target.deactivatedAt) throw new BadRequestException('此账号已经删除');
+      if (
+        b.banned &&
+        (await tx.adminGrant.count({
+          where: { userId: id, level: 'SYSTEM', ...activeGrantWhere() },
+        }))
+      )
+        await ensurePermanentAdministrator(tx, undefined, id);
+      await tx.user.update({
+        where: { id },
+        data: {
+          bannedAt: b.banned ? new Date() : null,
+          banReason: b.banned ? b.reason : '',
+          version: { increment: 1 },
+        },
+      });
+      if (b.banned) {
+        await tx.session.deleteMany({ where: { userId: id } });
+        await tx.emailToken.updateMany({
+          where: { userId: id, usedAt: null },
+          data: { usedAt: new Date() },
+        });
+        await tx.invitation.updateMany({
+          where: { OR: [{ inviterId: id }, { targetUserId: id }], acceptedBy: null },
+          data: { revoked: true },
+        });
+      }
+      await audit(tx, u.id, b.banned ? 'ACCOUNT_BAN' : 'ACCOUNT_UNBAN', id, { reason: b.reason });
+    });
+    return this.userDetail(u, id);
   }
 }

@@ -38,6 +38,8 @@ import { AdminService } from './admin.js';
 import { InvitationService } from './invitations.js';
 import { MailService } from './mail.js';
 import { GithubService } from './github.js';
+import { FeishuService } from './feishu.js';
+import { OverviewService } from './overview.js';
 import { AuthorizationService } from './authorization.js';
 import { PeopleService } from './people.js';
 import { StorageService } from './storage.js';
@@ -63,6 +65,8 @@ export class ApiController {
     @Inject(InvitationService) private invitations: InvitationService,
     @Inject(MailService) private mail: MailService,
     @Inject(GithubService) private github: GithubService,
+    @Inject(FeishuService) private feishu: FeishuService,
+    @Inject(OverviewService) private overview: OverviewService,
     @Inject(AuthorizationService) private authorizations: AuthorizationService,
     @Inject(PeopleService) private people: PeopleService,
     @Inject(StorageService) private storage: StorageService,
@@ -107,7 +111,37 @@ export class ApiController {
     return this.people.students(user(r), q);
   }
   @Get('admin/students/:id') studentDetail(@Req() r: AuthRequest, @Param('id') id: string) {
-    return this.people.studentDetail(user(r), id);
+    return this.people.studentDetail(user(r), id, 'STUDENT');
+  }
+  @Get('admin/teachers') teachers(@Req() r: AuthRequest, @Query() q: Record<string, string>) {
+    return this.people.students(user(r), q, 'TEACHER');
+  }
+  @Get('admin/teachers/:id') teacherDetail(@Req() r: AuthRequest, @Param('id') id: string) {
+    return this.people.studentDetail(user(r), id, 'TEACHER');
+  }
+  @Get('admin/users/:id') userDetail(@Req() r: AuthRequest, @Param('id') id: string) {
+    return this.people.userDetail(user(r), id);
+  }
+  @Put('admin/users/:id') editUser(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.people.editUser(user(r), id, b);
+  }
+  @Put('admin/users/:id/ban') banUser(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.people.banUser(user(r), id, b);
+  }
+  @Delete('admin/users/:id') deleteUser(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.people.deleteUser(user(r), id, b);
   }
   @Get('admin/identities') identities(@Req() r: AuthRequest, @Query() q: Record<string, string>) {
     return this.people.requests(user(r), q);
@@ -147,6 +181,19 @@ export class ApiController {
   }
   @Get('admin/mail/templates') templatesList(@Req() r: AuthRequest) {
     return this.mailTemplates.list(user(r));
+  }
+  @Post('admin/mail/templates/:key/test') templateTest(
+    @Req() r: AuthRequest,
+    @Param('key') key: string,
+    @Body() b: unknown,
+  ) {
+    return this.mailTemplates.test(user(r), key, b);
+  }
+  @Get('admin/mail/templates/tests/:id') templateTestStatus(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return this.mailTemplates.testStatus(user(r), id);
   }
   @Put('admin/mail/templates/:key') templateSave(
     @Req() r: AuthRequest,
@@ -204,8 +251,29 @@ export class ApiController {
     );
     res.type(file.mime).send(file.buffer);
   }
-  @Get('auth/providers') providers(@Req() r: AuthRequest) {
-    return this.github.providers(r);
+  @Get('auth/providers') async providers(@Req() r: AuthRequest) {
+    return { ...(await this.github.providers(r)), feishu: await this.feishu.provider(r) };
+  }
+  @Get('overview') overviewStats(@Req() r: AuthRequest, @Query('contestId') id?: string) {
+    return this.overview.stats(user(r), id);
+  }
+  @Get('auth/feishu') feishuStart(@Req() r: AuthRequest, @Res() res: Response) {
+    return this.feishu.start(r, res);
+  }
+  @Get('auth/feishu/callback') feishuCallback(@Req() r: AuthRequest, @Res() res: Response) {
+    return this.feishu.callback(r, res);
+  }
+  @Get('auth/feishu/signup') feishuSignup(@Req() r: AuthRequest) {
+    return this.feishu.signupView(r);
+  }
+  @Delete('auth/feishu') feishuUnlink(@Req() r: AuthRequest) {
+    return this.feishu.unlink(r);
+  }
+  @Get('admin/feishu') feishuSettings(@Req() r: AuthRequest) {
+    return this.feishu.view(user(r), r);
+  }
+  @Put('admin/feishu') feishuSave(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.feishu.save(user(r), r, b);
   }
   @Get('auth/github') githubStart(@Req() r: AuthRequest, @Res() res: Response) {
     return this.github.start(r, res);
@@ -256,6 +324,9 @@ export class ApiController {
   ) {
     return this.auth.register(b, r, res);
   }
+  @Post('auth/register/code') registrationCode(@Body() b: unknown, @Req() r: AuthRequest) {
+    return this.auth.registrationCode(b, r);
+  }
   @Post('auth/login') login(
     @Body() b: unknown,
     @Req() r: AuthRequest,
@@ -266,8 +337,8 @@ export class ApiController {
   @Post('auth/logout') logout(@Req() r: AuthRequest, @Res({ passthrough: true }) res: Response) {
     return this.auth.logout(r, res);
   }
-  @Get('auth/sessions') sessions(@Req() r: AuthRequest) {
-    return this.auth.sessions(r);
+  @Get('auth/sessions') sessions(@Req() r: AuthRequest, @Query() query: Record<string, string>) {
+    return this.auth.sessions(r, query);
   }
   @Delete('auth/sessions/:id') revoke(@Req() r: AuthRequest, @Param('id') id: string) {
     return this.auth.revoke(r, id);

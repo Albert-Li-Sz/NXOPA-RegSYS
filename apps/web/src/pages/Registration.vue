@@ -620,7 +620,11 @@ async function memberSave(id: string, index: number) {
           :closable="false"
         />
         <div class="toolbar">
-          <el-select v-model="voucherPage.filters.value.status" clearable placeholder="筛选状态"
+          <el-select
+            v-model="voucherPage.filters.value.status"
+            clearable
+            placeholder="筛选状态"
+            filterable
             ><el-option
               v-for="state in ['PENDING', 'CONFIRMED', 'REJECTED']"
               :key="state"
@@ -677,7 +681,11 @@ async function memberSave(id: string, index: number) {
           :closable="false"
         />
         <div class="toolbar">
-          <el-select v-model="ledgerPage.filters.value.status" clearable placeholder="筛选状态"
+          <el-select
+            v-model="ledgerPage.filters.value.status"
+            clearable
+            placeholder="筛选状态"
+            filterable
             ><el-option
               v-for="state in ['PAYMENT', 'REFUND', 'REVERSAL', 'RECEIVABLE']"
               :key="state"
@@ -738,7 +746,11 @@ async function memberSave(id: string, index: number) {
           :closable="false"
         />
         <div class="toolbar">
-          <el-select v-model="refundPage.filters.value.status" clearable placeholder="筛选状态"
+          <el-select
+            v-model="refundPage.filters.value.status"
+            clearable
+            placeholder="筛选状态"
+            filterable
             ><el-option
               v-for="state in ['REQUESTED', 'APPROVED', 'REJECTED', 'COMPLETED']"
               :key="state"
@@ -810,7 +822,11 @@ async function memberSave(id: string, index: number) {
           :closable="false"
         />
         <div class="toolbar">
-          <el-select v-model="invoicePage.filters.value.status" clearable placeholder="筛选状态"
+          <el-select
+            v-model="invoicePage.filters.value.status"
+            clearable
+            placeholder="筛选状态"
+            filterable
             ><el-option
               v-for="state in ['REQUESTED', 'ISSUED', 'REJECTED', 'VOID']"
               :key="state"

@@ -61,6 +61,7 @@ async function save() {
       v-model="list.filters.value.status"
       clearable
       placeholder="映射状态"
+      filterable
       ><el-option value="PENDING" label="待确认" /><el-option
         value="CONFIRMED"
         label="已确认" /></el-select

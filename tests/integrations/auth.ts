@@ -11,9 +11,9 @@ if (process.env.NODE_ENV === 'production')
 try {
   await redis.del('rate:login:::ffff:127.0.0.1', 'rate:login:127.0.0.1');
   const client = new Client(),
-    email = `mail-${run}@example.test`,
     password = 'MailFixture2026!';
-  let session = await client.api('/auth/register', 'POST', {
+  let email = `mail-${run}@example.test`;
+  let session = await client.register({
     email,
     username: `mail_${run}`,
     name: '邮箱验收用户',
@@ -21,7 +21,16 @@ try {
   });
   client.user = session.user;
   client.csrf = session.csrf;
-  assert.equal(session.user.verified, false);
+  assert.equal(session.user.verified, true);
+  report.push('Mailbox code delivered and consumed before the account is created');
+  email = `changed-${email}`;
+  await client.api('/auth/profile', 'PUT', {
+    version: session.user.version,
+    name: session.user.name,
+    profile: session.user.profile,
+    email,
+  });
+  assert.equal((await client.api('/auth/me')).user.verified, false);
   async function mailToken() {
     return until(
       async () => {

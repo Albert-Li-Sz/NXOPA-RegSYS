@@ -139,6 +139,7 @@ onMounted(() => {
               v-model="binding.instanceId"
               :disabled="!!binding.id"
               placeholder="选择 Hydro 或 DOMjudge 实例"
+              filterable
               ><el-option
                 v-for="i in available"
                 :key="i.id"

@@ -22,7 +22,9 @@ async function freePort() {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   return address.port;
 }
-const [pg, redis, api, web, smtp, mail] = await Promise.all(Array.from({ length: 6 }, freePort));
+const [pg, redis, api, web, smtp, mail, feishu] = await Promise.all(
+  Array.from({ length: 7 }, freePort),
+);
 const secret = randomBytes(24).toString('hex');
 const env = {
   ...process.env,
@@ -45,6 +47,9 @@ const env = {
   SMTP_USER: '',
   SMTP_PASSWORD: '',
   MAILPIT_URL: `http://127.0.0.1:${mail}`,
+  FEISHU_FIXTURE_PORT: String(feishu),
+  FEISHU_ACCOUNTS_BASE_URL: `http://127.0.0.1:${feishu}`,
+  FEISHU_API_BASE_URL: `http://127.0.0.1:${feishu}`,
   TEST_LATEX_CONTAINER: `${project}-latex-1`,
 };
 await mkdir(env.STORAGE_DIR, { recursive: true });
@@ -194,9 +199,11 @@ try {
   );
   await Promise.all([wait(`${env.TEST_URL}/api/v1/health`), wait(env.WEB_URL)]);
   setup = true;
+  saveLogs.push(start(['exec', 'node', 'tests/fixtures/feishu-oauth.mjs'], 'feishu-fixture'));
+  await wait(`${env.FEISHU_API_BASE_URL}/fixture`);
   const suites = (
     process.env.FULL_REGRESSION_SUITES ??
-    'test:integration,test:auth,test:invitations,test:mail,test:enhancements,test:admissions,test:bugs,test:permissions,test:file-race,test:load,test:mcp,test:e2e'
+    'test:integration,test:auth,test:accounts,test:feishu,test:invitations,test:mail,test:mail-failover,test:template-bugs,test:overview,test:enhancements,test:admissions,test:bugs,test:permissions,test:file-race,test:load,test:mcp,test:e2e'
   )
     .split(',')
     .filter(Boolean);

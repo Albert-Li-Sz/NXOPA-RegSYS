@@ -35,6 +35,8 @@ export class AdminService {
             isAdmin: true,
             isCoach: true,
             verified: true,
+            bannedAt: true,
+            banReason: true,
             version: true,
             grants: { where: activeGrantWhere() },
             kind: true,

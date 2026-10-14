@@ -74,7 +74,7 @@ async function submit() {
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <div class="form-grid">
       <el-form-item label="票种" required
-        ><el-select v-model="model.invoiceType"
+        ><el-select v-model="model.invoiceType" filterable
           ><el-option
             v-for="v in policy.invoiceTypes"
             :key="v"
@@ -82,7 +82,7 @@ async function submit() {
             :label="v === 'NORMAL' ? '普通发票' : '专用发票'" /></el-select
       ></el-form-item>
       <el-form-item label="抬头类型" required
-        ><el-select v-model="model.titleType"
+        ><el-select v-model="model.titleType" filterable
           ><el-option value="PERSON" label="个人" /><el-option
             value="ENTERPRISE"
             label="企业" /><el-option value="ORGANIZATION" label="非企业单位" /></el-select

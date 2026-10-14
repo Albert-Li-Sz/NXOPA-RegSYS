@@ -29,7 +29,7 @@ async function check(name: string, fn: () => Promise<void>) {
 
 async function newcomer(kind: string) {
   const client = new Client();
-  const session = await client.api('/auth/register', 'POST', {
+  const session = await client.register({
     email: `${kind}-${run}@example.test`,
     username: `bug_${kind}_${run}`,
     name: 'BUG 回归用户',
@@ -89,6 +89,7 @@ try {
 
   await check('old-verification-link', async () => {
     const client = await newcomer('verify');
+    await changeEmail(client, 'verify-first');
     const old = await mailToken(client.user.id, 'verify');
     await changeEmail(client, 'verify');
     const response = await client.raw('/api/v1/auth/verify', 'POST', { token: old });

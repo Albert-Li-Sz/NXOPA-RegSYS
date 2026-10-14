@@ -36,7 +36,7 @@ async function review(row: Data, decision: string) {
   <div class="card">
     <h3>实名资料审核</h3>
     <div class="toolbar">
-      <el-select v-model="list.filters.value.status" clearable placeholder="全部状态"
+      <el-select v-model="list.filters.value.status" clearable placeholder="全部状态" filterable
         ><el-option
           v-for="state in ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']"
           :key="state"

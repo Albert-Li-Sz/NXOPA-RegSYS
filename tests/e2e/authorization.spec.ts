@@ -4,7 +4,8 @@ import { db } from '../../apps/server/src/db.js';
 import { redis } from '../../apps/server/src/auth.js';
 import { config } from '../../apps/server/src/config.js';
 import { Client } from '../integrations/client.js';
-import { verificationUrl } from '../integrations/mailpit.js';
+import { until } from '../integrations/client.js';
+import { mailpitBase } from '../integrations/mailpit.js';
 import { policySchema } from '../../packages/contracts/src/index.js';
 
 const stamp = Date.now().toString(36),
@@ -60,8 +61,7 @@ async function loginCurrent(page: Page, username: string) {
 async function administrator(page: Page) {
   await page.goto('/login');
   await loginCurrent(page, 'admin');
-  await page.goto('/admin');
-  await page.getByRole('tab', { name: '用户与邀请', exact: true }).click();
+  await page.goto('/admin/users?tab=users');
   await expect(page.getByRole('button', { name: '生成邀请链接', exact: true })).toBeVisible();
 }
 function userRow(page: Page, email: string) {
@@ -140,7 +140,7 @@ test('administrator generates contest URL, recipient logs in and confirms, revoc
       animations: 'disabled',
     });
     await recipient.getByRole('button', { name: '确认接受', exact: true }).click();
-    await expect(recipient).toHaveURL(/\/admin$/);
+    await expect(recipient).toHaveURL(/\/admin\/contests$/);
     await expect(recipient.getByRole('row').filter({ hasText: c.title })).toBeVisible();
     await expect(recipient.getByRole('tab', { name: '用户与邀请', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '刷新', exact: true }).click();
@@ -182,6 +182,27 @@ test('mobile account invitation retains public signup and returns from email ver
     await recipient.goto(invitation.url);
     await recipient.getByRole('button', { name: '创建账号', exact: true }).click();
     await recipient.locator('#email').fill(email);
+    await expect(recipient.getByRole('button', { name: '注册账号', exact: true })).toBeDisabled();
+    await recipient.getByRole('button', { name: '发送验证码', exact: true }).click();
+    const code = await until(
+      async () => {
+        const search = (await (
+          await fetch(`${mailpitBase}/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`)
+        ).json()) as any;
+        for (const item of search.messages ?? []) {
+          const message = (await (
+            await fetch(`${mailpitBase}/api/v1/message/${item.ID}`)
+          ).json()) as any;
+          const match = String(message.Text).match(/验证码[：:\s]+(\d{6})/);
+          if (match) return match[1] as string;
+        }
+        return '';
+      },
+      Boolean,
+      30000,
+    );
+    expect(await db.user.count({ where: { email } })).toBe(0);
+    await recipient.locator('#register-code').fill(code);
     await recipient.locator('#username').fill(`url_${stamp}_signup`);
     await recipient.locator('#name').fill('链接注册验收');
     await recipient.locator('#register-identifier').fill(`E2E-${stamp}`);
@@ -192,17 +213,7 @@ test('mobile account invitation retains public signup and returns from email ver
     ).toBeVisible();
     const user = await db.user.findUniqueOrThrow({ where: { email } });
     userIds.push(user.id);
-    await expect(recipient.getByRole('button', { name: '确认接受', exact: true })).toBeDisabled();
-    await recipient.getByRole('link', { name: '前往验证邮箱', exact: true }).click();
-    await Promise.all([
-      recipient.waitForResponse(
-        (response) => response.url().endsWith('/api/v1/auth/resend') && response.ok(),
-      ),
-      recipient.getByRole('button', { name: '重新发送验证邮件', exact: true }).click(),
-    ]);
-    const verifyUrl = await verificationUrl(email, new URL(invitation.url).pathname);
-    expect(verifyUrl.searchParams.get('next')).toBe(new URL(invitation.url).pathname);
-    await recipient.goto(verifyUrl.href);
+    expect(user.verified).toBe(true);
     await expect(recipient).toHaveURL(invitation.url);
     await expect(recipient.getByRole('button', { name: '确认接受', exact: true })).toBeEnabled();
     expect(

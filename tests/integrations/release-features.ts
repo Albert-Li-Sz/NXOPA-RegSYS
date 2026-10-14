@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import { policySchema } from '../../packages/contracts/src/index.js';
 import { checkUserInterfaces } from './ui-regressions.js';
+import { registrationProof } from './registration-proof.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url)),
   exec = promisify(execFile);
@@ -43,7 +44,9 @@ const pgPort = await port(),
   redisPort = await port(),
   apiPort = await port(),
   webPort = await port(),
-  mockPort = await port();
+  mockPort = await port(),
+  smtpPort = await port(),
+  mailPort = await port();
 const apiBase = `http://127.0.0.1:${apiPort}`,
   webBase = `http://127.0.0.1:${webPort}`,
   mockBase = `http://127.0.0.1:${mockPort}`;
@@ -63,6 +66,12 @@ const env = {
   GITHUB_API_BASE_URL: mockBase,
   GITHUB_CLIENT_ID: 'mock-client',
   GITHUB_CLIENT_SECRET: secret,
+  SMTP_HOST: '127.0.0.1',
+  SMTP_PORT: String(smtpPort),
+  SMTP_SECURITY: 'NONE',
+  SMTP_FROM: 'release@example.test',
+  SMTP_USER: '',
+  SMTP_PASSWORD: '',
 };
 const fixture = path.join(stage, 'compose.json');
 const arch = (await exec('docker', ['info', '--format', '{{.Architecture}}'])).stdout.trim();
@@ -87,6 +96,10 @@ await writeFile(
         image: 'redis:7.4.5-alpine',
         ports: [`127.0.0.1:${redisPort}:6379`],
         healthcheck: { test: ['CMD', 'redis-cli', 'ping'], interval: '2s', retries: 30 },
+      },
+      mail: {
+        image: 'axllent/mailpit:v1.27.8',
+        ports: [`127.0.0.1:${smtpPort}:1025`, `127.0.0.1:${mailPort}:8025`],
       },
     },
   }),
@@ -256,6 +269,7 @@ try {
     timeout: 60000,
   });
   const apiTail = started(['--filter', '@contest-center/server', 'start'], env);
+  started(['--filter', '@contest-center/server', 'worker'], env);
   try {
     await wait(`${apiBase}/api/v1/health`);
   } catch {
@@ -293,6 +307,12 @@ try {
   async function student(index: number) {
     const actor = new Actor();
     const r = await actor.api('/auth/register', 'POST', {
+      ...(await registrationProof(
+        actor,
+        `student-${index}@example.test`,
+        undefined,
+        `http://127.0.0.1:${mailPort}`,
+      )),
       email: `student-${index}@example.test`,
       username: `student_${index}`,
       name: `验收同学${index}`,
@@ -430,6 +450,29 @@ try {
   passed(
     '真实 GitHub 接口模拟完成 PKCE、已验证私有邮箱、无密码会话；篡改及重放 state 被拒绝，新用户仍需完善资料',
   );
+  const githubDetail = await admin.api(`/admin/users/${github.user.id}`);
+  const githubBan = await admin.api(`/admin/users/${github.user.id}/ban`, 'PUT', {
+    version: githubDetail.version,
+    banned: true,
+    reason: 'GitHub 封禁回归',
+  });
+  assert.equal((await github.api('/auth/me')).user, null);
+  const bannedGithub = new Actor(),
+    bannedFlow = await oauth(bannedGithub);
+  assert.match(
+    (await bannedGithub.raw(bannedFlow.path)).headers.get('location')!,
+    /github_error=failed/,
+  );
+  assert.equal((await bannedGithub.api('/auth/me')).user, null);
+  await admin.api(`/admin/users/${github.user.id}/ban`, 'PUT', {
+    version: githubBan.version,
+    banned: false,
+  });
+  const restoredGithub = new Actor(),
+    restoredFlow = await oauth(restoredGithub);
+  await restoredGithub.raw(restoredFlow.path);
+  assert.equal((await restoredGithub.api('/auth/me')).user.id, github.user.id);
+  passed('封禁账号的 GitHub 会话立即失效，重新授权不能绕过封禁，解除后恢复登录');
 
   subject++;
   verified = false;

@@ -143,6 +143,7 @@ async function send() {
                 clearable
                 placeholder="回复后的状态"
                 style="width: 170px"
+                filterable
                 ><el-option
                   v-for="s in manager
                     ? ['OPEN', 'IN_PROGRESS', 'WAITING_USER', 'RESOLVED', 'CLOSED']
@@ -172,7 +173,11 @@ async function send() {
             v-model="list.filters.value.search"
             placeholder="搜索工单"
             clearable
-          /><el-select v-model="list.filters.value.status" clearable placeholder="处理状态"
+          /><el-select
+            v-model="list.filters.value.status"
+            clearable
+            placeholder="处理状态"
+            filterable
             ><el-option
               v-for="state in ['OPEN', 'IN_PROGRESS', 'WAITING_USER', 'RESOLVED', 'CLOSED']"
               :key="state"
@@ -230,6 +235,7 @@ async function send() {
             clearable
             placeholder="留空表示系统工单"
             style="width: 100%"
+            filterable
             ><el-option
               v-for="c in contests"
               :key="c.id"
@@ -238,7 +244,7 @@ async function send() {
         ><el-form-item label="标题" for="ticket-title"
           ><el-input id="ticket-title" v-model="form.title" /></el-form-item
         ><el-form-item label="分类"
-          ><el-select v-model="form.category"
+          ><el-select v-model="form.category" filterable
             ><el-option
               v-for="s in ['报名咨询', '财务问题', '准考证', '平台联动', '其他']"
               :key="s"

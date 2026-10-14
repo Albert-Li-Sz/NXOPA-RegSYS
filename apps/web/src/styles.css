@@ -87,15 +87,43 @@ button {
   display: flex;
   gap: 27px;
   margin: auto;
+  min-width: 0;
 }
 .header-inner nav a {
   color: #606266;
   font-size: 16px;
   font-weight: 550;
   padding: 27px 0;
+  white-space: nowrap;
 }
-.header-inner nav .router-link-active {
+.header-inner nav > a:first-child {
+  margin-left: auto;
+}
+.header-inner nav > a:last-child {
+  margin-right: auto;
+}
+.header-inner nav .router-link-active,
+.header-inner nav .selected {
   color: var(--el-color-primary);
+}
+.header-inner.admin-header {
+  flex-wrap: wrap;
+  padding-top: 14px;
+  gap: 10px 20px;
+}
+.admin-header .header-account {
+  margin-left: auto;
+}
+.header-inner.admin-header nav {
+  order: 3;
+  width: 100%;
+  overflow-x: auto;
+  margin: 0;
+  gap: 24px;
+}
+.header-inner.admin-header nav a {
+  padding: 14px 0;
+  font-size: 14px;
 }
 .header-account {
   display: flex;
@@ -274,6 +302,28 @@ button {
 .actions .el-button + .el-button {
   margin-left: 0;
 }
+.button-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.button-group .el-button + .el-button,
+.toolbar .el-button + .el-button {
+  margin-left: 0;
+}
+.actions > a,
+.toolbar > a {
+  display: inline-flex;
+  align-items: center;
+}
+.actions > *,
+.button-group > * {
+  vertical-align: middle;
+}
+.smtp-fallback .page-heading {
+  margin-bottom: 16px;
+}
 .pre-line {
   white-space: pre-line;
   line-height: 1.9;
@@ -370,6 +420,7 @@ button {
 }
 .el-button {
   border-radius: 5px;
+  vertical-align: middle;
 }
 .member-heading {
   display: flex;

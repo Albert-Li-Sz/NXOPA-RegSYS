@@ -4,7 +4,7 @@
 
 - [Docker Compose 安装包与步骤](deploy/README.md)
 - [存储、邮件、个人中心与三种管理员授权](docs/PLATFORM_GUIDE.md)
-- [V0.3.6 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.3.6)
+- [V0.4.0 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.4.0)
 - [部署与日常维护](docs/DEPLOYMENT.md)
 - [在线配置教程（GitHub Pages）](https://albert-li-sz.github.io/NXOPA-RegSYS/)
 - [带截图的配置教程（PDF）](output/pdf/configuration-guide.pdf)、[LaTeX 源码](docs/CONFIGURATION_GUIDE.tex)、[源码与截图打包](output/pdf/configuration-guide-source.zip)
@@ -20,7 +20,7 @@
 
 推荐使用根目录的单一一键安装入口 `install.sh`。宿主机需要 Docker Compose、Bash 和 OpenSSL，Node.js / pnpm 随镜像安装。
 
-从 V0.3.6 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
+从 V0.4.0 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
 
 ```bash
 # 安装：交互选择镜像版本、域名或端口，再创建管理员
@@ -44,7 +44,7 @@ pnpm dev
 pnpm seed
 ```
 
-首页 <http://localhost:5173> 为独立介绍页，点击“进入报名系统”时未登录会跳转登录，成功后返回 <http://localhost:5173/contests>；竞赛详情链接同样保留原页面和参数。社团与集训队 Logo 使用提供的原图。账号支持邮箱注册、账号密码和 GitHub 登录；参赛前需完善学号、姓名、班级、学院、性别，管理员可编辑用户标签并筛选。每场竞赛按首次提交时间编号；Hydro / DOMjudge 的实例凭据、比赛绑定和同步设置位于“管理中心 → 评测平台”。SMTP 位于系统管理员的“管理中心 → 邮件设置”，支持保存、检测和向当前管理员发送测试邮件。
+首页 <http://localhost:5173> 为独立介绍页，点击“进入报名系统”时未登录会跳转登录，成功后返回 <http://localhost:5173/contests>；竞赛详情链接同样保留原页面和参数。社团与集训队 Logo 使用提供的原图。账号支持先验证邮箱再注册、账号密码、GitHub 和飞书登录；参赛前需完善学号、姓名、班级、学院、性别，管理员可编辑用户标签并筛选。每场竞赛按首次提交时间编号；Hydro / DOMjudge 的实例凭据、比赛绑定和同步设置位于“外接平台中心 → 评测平台”。SMTP 位于系统管理员的“管理中心 → 邮件设置”，支持保存、检测和向当前管理员发送测试邮件。
 
 API 文档 <http://localhost:3000/api/docs>，Mailpit <http://localhost:58025>。开发数据库与正式 Compose 使用独立卷。
 
@@ -122,7 +122,7 @@ tests                    单元、真实数据库、浏览器和外部接口验�
 
 每份报名产生一张准考证，团队成员共用；上传凭证后必须由管理员核实实际到账。老师解除关联后即时失去访问和代办权限。本站与评测平台使用独立密码。首版使用线下收款、线下退款记录和上传发票；在线支付、电子发票服务、多租户和机器人写操作保留扩展接口。
 
-账号可公开使用邮箱注册，也可接受管理员发出的账号邀请。管理员在 **管理后台 → 用户权限** 生成指定账号 / 邮箱的授权链接，接收者登录、验证邮箱并点击确认后，才能成为系统管理员、指定竞赛管理员或指导老师。撤销权限立即生效，旧链接不能恢复授权。首次管理员仍由初始化命令创建。[邀请操作与验收](docs/AUTHORIZATION_INVITATIONS.md)。
+账号可公开使用邮箱注册，也可接受管理员发出的账号邀请。管理员在 **用户中心 → 用户与邀请** 生成指定账号 / 邮箱的授权链接，接收者登录、验证邮箱并点击确认后，才能成为系统管理员、指定竞赛管理员或指导老师。撤销权限立即生效，旧链接不能恢复授权。首次管理员仍由初始化命令创建。[邀请操作与验收](docs/AUTHORIZATION_INVITATIONS.md)。
 
 邀请权限验收：`pnpm test:invitations`；界面验收：`pnpm exec playwright test tests/e2e/authorization.spec.ts`。两项使用隔离开发实例及虚构数据，需要 API、PostgreSQL、Redis、Worker、Mailpit 和官网运行。
 

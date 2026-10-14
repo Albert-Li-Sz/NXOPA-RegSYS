@@ -11,6 +11,9 @@ const route = useRoute(),
   router = useRouter(),
   mode = ref(route.query.mode === 'register' ? 'register' : 'login'),
   busy = ref(false),
+  codeBusy = ref(false),
+  registrationToken = ref(''),
+  codeSentAt = ref(0),
   notice = ref('');
 const form = reactive({
   account: '',
@@ -27,6 +30,10 @@ const form = reactive({
 const profile = reactive<Data>({});
 const sessions = ref<Data[]>([]);
 const github = ref({ enabled: false, linked: false });
+const feishu = ref({ enabled: false, linked: false });
+const feishuClaim = computed(() =>
+  typeof route.query.feishu_claim === 'string' ? route.query.feishu_claim : undefined,
+);
 const profileFields = defaultFields.map((field) => ({
   ...field,
   required: ['student_id', 'class_name', 'college', 'gender'].includes(field.key),
@@ -58,8 +65,56 @@ const invitationReturn = computed(() => {
   const result = invitationReturnPathSchema.safeParse(route.query.next);
   return result.success ? result.data : undefined;
 });
+watch(
+  () => form.email,
+  () => {
+    registrationToken.value = '';
+    form.code = '';
+    codeSentAt.value = 0;
+  },
+);
+async function sendRegistrationCode() {
+  codeBusy.value = true;
+  try {
+    const result = await api('/auth/register/code', 'POST', {
+      email: form.email,
+      next: invitationReturn.value,
+    });
+    registrationToken.value = result.token;
+    codeSentAt.value = Date.now();
+    ElMessage.success('注册验证码已发送，10 分钟内有效');
+  } finally {
+    codeBusy.value = false;
+  }
+}
 onMounted(async () => {
-  github.value = (await api('/auth/providers')).github;
+  const providers = await api('/auth/providers');
+  github.value = providers.github;
+  feishu.value = providers.feishu;
+  if (feishuClaim.value && !auth.user) {
+    try {
+      const signup = await api(
+        `/auth/feishu/signup?claim=${encodeURIComponent(feishuClaim.value)}`,
+      );
+      form.name = signup.name;
+      form.email = signup.email;
+      notice.value =
+        '飞书身份已确认。请完成邮箱验证和注册资料后创建账号；已有账号可登录后在个人信息中绑定飞书。';
+    } catch (error) {
+      notice.value = error instanceof Error ? error.message : '飞书验证已过期';
+    }
+  }
+  if (route.query.feishu_error) {
+    notice.value =
+      (
+        {
+          state: '飞书授权已过期，请重新登录',
+          cancelled: '已取消飞书授权',
+          bound: '此飞书账号已绑定其他用户',
+          failed: '飞书登录失败，请重试或使用邮箱登录',
+        } as Record<string, string>
+      )[String(route.query.feishu_error)] || '飞书登录失败';
+  }
   if (route.query.github_error)
     notice.value = githubErrors[String(route.query.github_error)] ?? githubErrors.failed!;
   if (action.value === 'verify') {
@@ -113,6 +168,8 @@ async function submit() {
       mode.value === 'register'
         ? {
             ...form,
+            token: registrationToken.value,
+            feishuClaim: feishuClaim.value,
             employedAt: form.kind === 'TEACHER' ? form.employedAt : undefined,
             enrollmentYear: form.kind === 'STUDENT' ? form.enrollmentYear : undefined,
             next: invitationReturn.value,
@@ -195,7 +252,7 @@ async function revokeSession(id: string) {
       <p class="subtitle" style="margin-bottom: 25px">
         {{
           mode === 'register'
-            ? '注册后完善个人资料并验证邮箱，即可报名'
+            ? '先验证邮箱，再创建账号；注册后完善个人资料即可报名'
             : '登录南晓开放原子社在线报名系统'
         }}
       </p>
@@ -214,6 +271,23 @@ async function revokeSession(id: string) {
           ><el-input id="email" v-model="form.email" type="email" autocomplete="email"
         /></el-form-item>
         <template v-if="mode === 'register'"
+          ><el-form-item label="邮箱验证码" for="register-code" required>
+            <div class="registration-code">
+              <el-input
+                id="register-code"
+                v-model="form.code"
+                maxlength="6"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                placeholder="邮件中的六位验证码"
+              />
+              <el-button
+                :loading="codeBusy"
+                :disabled="!form.email || busy"
+                @click="sendRegistrationCode"
+                >{{ codeSentAt ? '重新发送验证码' : '发送验证码' }}</el-button
+              >
+            </div> </el-form-item
           ><el-form-item label="用户名" for="username"
             ><el-input
               id="username"
@@ -267,6 +341,7 @@ async function revokeSession(id: string) {
           type="primary"
           native-type="submit"
           :loading="busy"
+          :disabled="mode === 'register' && (!registrationToken || !/^\d{6}$/.test(form.code))"
           style="width: 100%; height: 42px"
           >{{
             mode === 'register'
@@ -284,6 +359,12 @@ async function revokeSession(id: string) {
         :href="`/api/v1/auth/github?next=${encodeURIComponent(nextPath())}`"
         class="github-login"
         ><el-button style="width: 100%; margin-top: 14px">使用 GitHub 登录</el-button></a
+      >
+      <a
+        v-if="feishu.enabled && ['login', 'register'].includes(mode)"
+        :href="`/api/v1/auth/feishu?next=${encodeURIComponent(nextPath())}`"
+        class="social-login"
+        ><el-button style="width: 100%; margin-top: 14px">使用飞书登录</el-button></a
       >
       <div class="auth-links">
         <el-button text @click="mode = mode === 'register' ? 'login' : 'register'">{{
@@ -329,6 +410,15 @@ async function revokeSession(id: string) {
   display: flex;
   justify-content: space-between;
   margin-top: 12px;
+}
+.registration-code {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+.registration-code .el-input {
+  min-width: 0;
+  flex: 1;
 }
 @media (max-width: 760px) {
   .auth-layout {

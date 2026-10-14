@@ -89,8 +89,33 @@ export function describeApi(document: OpenAPIObject) {
       username: text,
       password: text,
       name: text,
+      token: text,
+      code: z.string().regex(/^\d{6}$/),
+      feishuClaim: text.optional(),
+      kind: z.enum(['STUDENT', 'TEACHER']).optional(),
+      identifier: text.optional(),
+      enrollmentYear: z.number().int().optional(),
+      employedAt: z.iso.date().optional(),
       next: invitationReturnPathSchema.optional(),
     }),
+    'post /api/v1/auth/register/code': object({
+      email: z.email(),
+      next: invitationReturnPathSchema.optional(),
+    }),
+    'put /api/v1/admin/users/{id}': object({
+      version,
+      name: text,
+      email: z.email(),
+      username: text,
+      profile: z.record(text, z.unknown()),
+      tags: z.array(text),
+    }),
+    'put /api/v1/admin/users/{id}/ban': object({
+      version,
+      banned: z.boolean(),
+      reason: text.optional(),
+    }),
+    'delete /api/v1/admin/users/{id}': object({ version, confirmation: z.literal('删除账号') }),
     'post /api/v1/auth/login': object({ account: text, password: text }),
     'post /api/v1/auth/forgot': object({ email: z.email() }),
     'post /api/v1/auth/verify': object({ token: text }),
@@ -253,7 +278,15 @@ export function describeApi(document: OpenAPIObject) {
       publicUrl: z.url().optional(),
     }),
     'put /api/v1/admin/mail': 'MailSettingsInput',
-    'post /api/v1/admin/mail/probe': object({ version }),
+    'post /api/v1/admin/mail/probe': object({ version, providerId: text.optional() }),
+    'post /api/v1/admin/mail/templates/{key}/test': object({ version }),
+    'put /api/v1/admin/feishu': object({
+      version,
+      enabled: z.boolean(),
+      appId: text,
+      appSecret: text.optional(),
+      callbackUrl: text.optional(),
+    }),
     'post /api/v1/admin/mail/test': object({ version }),
     'post /api/integration/v1/registrations/{id}/provision': object({ bindingId: id }),
     'post /api/integration/v1/registrations/{id}/result': object({
@@ -284,6 +317,7 @@ export function describeApi(document: OpenAPIObject) {
       const external = url.startsWith('/api/automation') || url.startsWith('/api/integration');
       const publicPath =
         /\/auth\/(me|login|register|forgot|reset|verify)/.test(url) ||
+        (url.startsWith('/api/v1/auth/feishu') && method === 'get') ||
         (['/api/v1/health', '/api/v1/site', '/api/v1/contests', '/api/v1/contests/{id}'].includes(
           url,
         ) &&
@@ -322,6 +356,8 @@ export function describeApi(document: OpenAPIObject) {
         ([
           '/api/v1/admin/jobs',
           '/api/v1/admin/users',
+          '/api/v1/admin/students',
+          '/api/v1/admin/teachers',
           '/api/v1/admin/invitations',
           '/api/v1/admin/audit',
           '/api/v1/registrations',
@@ -360,6 +396,43 @@ export function describeApi(document: OpenAPIObject) {
         };
       }
       const body = bodies[`${method} ${url}`];
+      if (url === '/api/v1/auth/sessions' && method === 'get') {
+        op.parameters = [
+          { name: 'page', in: 'query', required: false, schema: { type: 'integer', minimum: 1 } },
+          {
+            name: 'pageSize',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', enum: [20], default: 20 },
+          },
+        ];
+        op.description =
+          '仅返回当前账号尚未过期的会话，每页固定 20 条。显式传入 page 或 pageSize 返回分页结果；旧调用返回最多 20 条的数组。';
+        op.responses['200'] = {
+          description: '当前账号的登录会话',
+          content: {
+            'application/json': {
+              schema: {
+                oneOf: [
+                  {
+                    allOf: [
+                      { $ref: '#/components/schemas/PageResult' },
+                      {
+                        type: 'object',
+                        properties: {
+                          pageSize: { type: 'integer', enum: [20] },
+                          items: { type: 'array', maxItems: 20, items: {} },
+                        },
+                      },
+                    ],
+                  },
+                  { type: 'array', maxItems: 20, items: {} },
+                ],
+              },
+            },
+          },
+        };
+      }
       if (url === '/api/v1/admin/mail' && ['get', 'put'].includes(method)) {
         op.description =
           'System administrators only. Passwords are encrypted, never returned and preserved when left blank. Database settings override environment defaults for subsequent worker jobs.';

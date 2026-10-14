@@ -11,27 +11,27 @@ import type { Data, ContestView } from '../types';
 import PlatformBindings from '../components/PlatformBindings.vue';
 import MailSettings from '../components/MailSettings.vue';
 import GithubSettings from '../components/GithubSettings.vue';
+import FeishuSettings from '../components/FeishuSettings.vue';
 import StorageSettings from '../components/StorageSettings.vue';
 import MailTemplates from '../components/MailTemplates.vue';
 import StudentsView from '../components/StudentsView.vue';
+import UserDetail from '../components/UserDetail.vue';
 import IdentityReviews from '../components/IdentityReviews.vue';
 import AdminGrants from '../components/AdminGrants.vue';
 import { isSystemAdmin, canManage } from '../permissions';
 import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
 import { useRoute } from 'vue-router';
+import { useRouter } from 'vue-router';
+import { adminCenters, centerTabs } from '../admin-centers';
 const route = useRoute();
-const requestedTab = typeof route.query.tab === 'string' ? route.query.tab : 'contests';
-const allowedTabs = [
-  'contests',
-  'jobs',
-  'instances',
-  ...(auth.user?.isAdmin ? ['users', 'grants', 'identities', 'audit'] : []),
-  ...(auth.user?.isAdmin || auth.user?.contestIds.some((id) => canManage(id, 'STUDENTS'))
-    ? ['students']
-    : []),
-  ...(isSystemAdmin() ? ['tokens', 'site', 'mail', 'github', 'storage', 'mail-templates'] : []),
-];
+const router = useRouter();
+const center = adminCenters.find((item) => item.key === route.meta.adminCenter)!;
+const tabs = centerTabs(center.key, auth.user);
+const allowedTabs = tabs.map((item) => item.name);
+const requestedTab = typeof route.query.tab === 'string' ? route.query.tab : allowedTabs[0]!;
+const userDetailId = ref('');
+const peopleView = ref<InstanceType<typeof StudentsView>>();
 const jobsPage = usePagedList('jobs', () => '/admin/jobs'),
   usersPage = usePagedList('users', () => '/admin/users'),
   logsPage = usePagedList('audit', () => '/admin/audit'),
@@ -60,6 +60,11 @@ async function saveTags() {
   }
 }
 const operationNames: Record<string, string> = {
+  ACCOUNT_REGISTER: '完成邮箱验证并注册',
+  USER_PROFILE_UPDATE: '修改用户资料',
+  ACCOUNT_BAN: '封禁账号',
+  ACCOUNT_UNBAN: '解除账号封禁',
+  ACCOUNT_DELETE: '删除账号',
   SITE_URL_RECOVERY: '命令行恢复公网地址',
   SITE_UPDATE: '修改全局设置',
   MAIL_SETTINGS_UPDATE: '修改邮件设置',
@@ -95,7 +100,7 @@ const operationNames: Record<string, string> = {
   ADMISSION_RELEASE: '发放准考证',
   TEMPLATE_SAVE: '保存准考证模板',
 };
-const tab = ref(allowedTabs.includes(requestedTab) ? requestedTab : 'contests'),
+const tab = ref(allowedTabs.includes(requestedTab) ? requestedTab : allowedTabs[0]!),
   contests = ref<ContestView[]>([]),
   jobs = jobsPage.items,
   users = usersPage.items,
@@ -166,7 +171,7 @@ async function refresh() {
     loadError.value = e instanceof Error ? e.message : '管理数据加载失败';
   }
 }
-watch(tab, refresh);
+watch(tab, (value) => router.replace({ path: route.path, query: { ...route.query, tab: value } }));
 const managedContests = () =>
   contests.value.filter((c) => auth.user?.isAdmin || auth.user?.contestIds.includes(c.id));
 onMounted(refresh);
@@ -336,44 +341,31 @@ async function webhook() {
   </el-dialog>
   <div class="page-heading">
     <div>
-      <h1>管理后台</h1>
-      <p class="subtitle">
-        {{ auth.user?.isAdmin ? '全局配置、竞赛管理与系统任务' : '管理获授权的竞赛与任务' }}
-      </p>
+      <h1>{{ center.label }}</h1>
+      <p class="subtitle">{{ center.description }}</p>
     </div>
-    <el-button @click="refresh">刷新</el-button>
+    <el-button @click="['students', 'teachers'].includes(tab) ? peopleView?.refresh() : refresh()"
+      >刷新</el-button
+    >
   </div>
   <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false"
     ><el-button text @click="refresh">重新加载</el-button></el-alert
   >
   <el-tabs v-model="tab">
-    <el-tab-pane label="竞赛" name="contests" /><el-tab-pane label="任务" name="jobs" /><el-tab-pane
-      label="评测平台"
-      name="instances"
-    />
-    <el-tab-pane v-if="allowedTabs.includes('students')" label="学生视图" name="students" />
-    <template v-if="auth.user?.isAdmin"
-      ><el-tab-pane label="用户与邀请" name="users" /><el-tab-pane
-        label="管理员授权"
-        name="grants" /><el-tab-pane label="实名审核" name="identities" /><el-tab-pane
-        label="审计日志"
-        name="audit"
-    /></template>
-    <template v-if="isSystemAdmin()"
-      ><el-tab-pane label="API 与 Webhook" name="tokens" /><el-tab-pane
-        label="全局设置"
-        name="site" /><el-tab-pane label="邮件设置" name="mail" /><el-tab-pane
-        label="邮件模板"
-        name="mail-templates" /><el-tab-pane label="文件存储" name="storage" /><el-tab-pane
-        label="GitHub 登录"
-        name="github"
-    /></template>
+    <el-tab-pane v-for="item in tabs" :key="item.name" :label="item.label" :name="item.name" />
   </el-tabs>
   <div class="panel" v-if="tab === 'mail' && isSystemAdmin()"><MailSettings /></div>
   <div class="panel" v-if="tab === 'github' && isSystemAdmin()"><GithubSettings /></div>
+  <div class="panel" v-if="tab === 'feishu' && isSystemAdmin()"><FeishuSettings /></div>
   <StorageSettings v-if="tab === 'storage' && isSystemAdmin()" />
   <MailTemplates v-if="tab === 'mail-templates' && isSystemAdmin()" />
-  <StudentsView v-if="tab === 'students' && allowedTabs.includes('students')" />
+  <StudentsView v-if="tab === 'students' && allowedTabs.includes('students')" ref="peopleView" />
+  <StudentsView
+    v-if="tab === 'teachers' && allowedTabs.includes('teachers')"
+    ref="peopleView"
+    kind="TEACHER"
+  />
+  <UserDetail :id="userDetailId" @close="userDetailId = ''" @changed="refresh" />
   <IdentityReviews v-if="tab === 'identities' && auth.user?.isAdmin" />
   <AdminGrants v-if="tab === 'grants' && auth.user?.isAdmin" />
   <div class="panel" v-if="tab === 'contests'">
@@ -442,6 +434,7 @@ async function webhook() {
           clearable
           placeholder="筛选状态／操作"
           style="max-width: 240px"
+          filterable
           ><el-option
             v-for="state in ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED']"
             :key="state"
@@ -543,8 +536,14 @@ async function webhook() {
             }}</el-tag></template
           ></el-table-column
         ><el-table-column label="邮箱" prop="email" min-width="200" /><el-table-column
-          label="身份"
-          min-width="200"
+          label="账号状态"
+          width="100"
+          ><template #default="{ row }"
+            ><el-tag :type="row.bannedAt ? 'danger' : 'success'">{{
+              row.bannedAt ? '已封禁' : '正常'
+            }}</el-tag></template
+          ></el-table-column
+        ><el-table-column label="身份" min-width="200"
           ><template #default="{ row }"
             ><el-tag type="info">{{ row.kind === 'TEACHER' ? '教师' : '学生' }}</el-tag
             ><el-tag v-if="row.isAdmin">{{
@@ -557,6 +556,7 @@ async function webhook() {
           ></el-table-column
         ><el-table-column label="操作" min-width="340"
           ><template #default="{ row }"
+            ><el-button text type="primary" @click="userDetailId = row.id">查看详情</el-button
             ><el-button text type="primary" @click="editTags(row)">编辑标签</el-button
             ><el-button text type="primary" @click="inviteRole('CONTEST_ADMIN', row)"
               >授权竞赛</el-button
@@ -608,6 +608,7 @@ async function webhook() {
           clearable
           placeholder="筛选状态／操作"
           style="max-width: 240px"
+          filterable
           ><el-option
             v-for="state in ['PENDING', 'ACCEPTED', 'EXPIRED', 'REVOKED']"
             :key="state"
@@ -815,6 +816,7 @@ async function webhook() {
           clearable
           placeholder="筛选状态／操作"
           style="max-width: 240px"
+          filterable
           ><el-option
             v-for="state in Object.keys(operationNames)"
             :key="state"
@@ -873,7 +875,7 @@ async function webhook() {
         ><el-input id="platform-name" v-model="instance.name"
       /></el-form-item>
       <el-form-item label="类型"
-        ><el-select v-model="instance.type" @change="instance.credentials = {}"
+        ><el-select v-model="instance.type" @change="instance.credentials = {}" filterable
           ><el-option value="HYDRO" label="Hydro 5.0.7" /><el-option
             value="DOMJUDGE"
             label="DOMjudge 9.0.1" /></el-select
@@ -944,7 +946,11 @@ async function webhook() {
     </template>
     <el-form v-else label-position="top" @submit.prevent="generateAuthorization">
       <el-form-item label="邀请类型" for="authorization-kind"
-        ><el-select id="authorization-kind" v-model="authorization.kind" style="width: 100%"
+        ><el-select
+          id="authorization-kind"
+          v-model="authorization.kind"
+          style="width: 100%"
+          filterable
           ><el-option
             v-for="(value, kind) in Object.fromEntries(
               Object.entries(accountInvitationLabels).filter(
@@ -1025,14 +1031,14 @@ async function webhook() {
     ><el-form label-position="top"
       ><el-form-item label="名称"><el-input v-model="token.name" /></el-form-item
       ><el-form-item label="授权竞赛"
-        ><el-select v-model="token.contestIds" multiple style="width: 100%"
+        ><el-select v-model="token.contestIds" multiple style="width: 100%" filterable
           ><el-option
             v-for="c in contests"
             :key="c.id"
             :value="c.id"
             :label="c.title" /></el-select></el-form-item
       ><el-form-item label="权限"
-        ><el-select v-model="token.scopes" multiple style="width: 100%"
+        ><el-select v-model="token.scopes" multiple style="width: 100%" filterable
           ><el-option
             v-for="s in [
               'contests:read',
@@ -1075,14 +1081,14 @@ async function webhook() {
       ><el-form-item label="键名"><el-input v-model="field.key" /></el-form-item
       ><el-form-item label="字段名称"><el-input v-model="field.label" /></el-form-item
       ><el-form-item label="作用域"
-        ><el-select v-model="field.scope"
+        ><el-select v-model="field.scope" filterable
           ><el-option
             v-for="k in ['PERSON', 'TEAM', 'COACH', 'REGISTRATION']"
             :key="k"
             :value="k"
             :label="label(k)" /></el-select></el-form-item
       ><el-form-item label="类型"
-        ><el-select v-model="field.type"
+        ><el-select v-model="field.type" filterable
           ><el-option
             v-for="k in [
               'text',

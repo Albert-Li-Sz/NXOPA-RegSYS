@@ -44,7 +44,7 @@ const seasons = computed(() => [...new Set(props.contests.map((c) => c.season))]
       placeholder="搜索竞赛名称"
       clearable
       aria-label="搜索竞赛"
-    /><el-select v-model="season" placeholder="全部赛季" clearable style="width: 145px"
+    /><el-select v-model="season" placeholder="全部赛季" clearable style="width: 145px" filterable
       ><el-option v-for="s in seasons" :label="`${s} 赛季`" :value="s" :key="s"
     /></el-select>
   </div>

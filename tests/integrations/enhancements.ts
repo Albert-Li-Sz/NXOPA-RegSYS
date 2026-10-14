@@ -88,19 +88,28 @@ try {
   assert.ok(invite.url.startsWith(`${publicUrl}/invite/`));
   const email = `enhancement-${run}@example.test`,
     newcomer = new Client();
-  const session = await newcomer.api('/auth/register', 'POST', {
+  const session = await newcomer.register({
     email,
     username: `enhance_${run}`,
     name: '公网配置验收',
     password: 'Enhancement2026!',
   });
   newcomer.csrf = session.csrf;
-  const verifyMail = await mailText(email, '/account/verify?');
+  const changedEmail = `changed-${email}`;
+  await newcomer.api('/auth/profile', 'PUT', {
+    version: session.user.version,
+    name: session.user.name,
+    profile: session.user.profile,
+    email: changedEmail,
+  });
+  const verifyMail = await mailText(changedEmail, '/account/verify?');
   assert.ok(verifyMail.includes(`${publicUrl}/account/verify?`));
   const token = verifyMail.match(/token=([A-Za-z0-9_-]+)/)![1];
   await newcomer.api('/auth/verify', 'POST', { token });
-  await newcomer.api('/auth/forgot', 'POST', { email });
-  assert.ok((await mailText(email, '/account/reset?')).includes(`${publicUrl}/account/reset?`));
+  await newcomer.api('/auth/forgot', 'POST', { email: changedEmail });
+  assert.ok(
+    (await mailText(changedEmail, '/account/reset?')).includes(`${publicUrl}/account/reset?`),
+  );
   const priorVersion = (await admin.api('/site')).version;
   execFileSync('pnpm', ['restore:public-url', publicUrl], { stdio: ['ignore', 'pipe', 'pipe'] });
   assert.equal((await admin.api('/site')).version, priorVersion + 1);

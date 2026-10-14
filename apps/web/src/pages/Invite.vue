@@ -122,6 +122,7 @@ async function accept() {
           v-model="registrationId"
           placeholder="选择您的报名"
           style="width: 100%; margin: 20px 0"
+          filterable
         >
           <el-option
             v-for="r in rows"

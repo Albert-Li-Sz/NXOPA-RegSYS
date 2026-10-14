@@ -31,8 +31,7 @@ async function login(page: Page, name: string) {
   await page.locator('#password').fill('DemoContest2026!');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page).toHaveURL(/\/contests$/);
-  await page.goto('/admin');
-  await page.getByRole('tab', { name: '评测平台', exact: true }).click();
+  await page.goto('/admin/platforms');
 }
 test('system administrator configures both platforms and preserves saved credentials', async ({
   page,

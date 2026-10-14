@@ -92,7 +92,25 @@ Hydro / DOMjudge 的联动是报名资格生效后创建独立比赛账号，与
 | DELETE `/api/v1/invitations/:id`         | 系统管理员撤销未确认账号 / 授权邀请；已确认邀请返回 409，需撤销实际角色。成员 / 老师关联邀请沿用原有管理范围                                                                                                                       |
 | POST `/api/v1/admin/roles`               | 正向授权兼容入口现在返回邀请 URL；`isAdmin: false` / `isCoach: false` / `contestId` + `grant: false` 立即撤销权限与相应未确认链接。一次只指定一种身份                                                                              |
 
-`POST /auth/register` 与 `POST /auth/resend` 可传受限的 `next: /invite/:token`，邮箱验证邮件带返回路径。前端验证后返回确认页，仍需点击确认；不接受外站返回 URL。`PUT /auth/profile` 不再允许本人改变指导老师身份。
+`POST /auth/register/code` 接受邮箱并发送十分钟有效的注册验证码，返回 `token`；`POST /auth/register` 必须提交同一邮箱、`token` 和六位 `code`，验证通过后才创建已验证账号和会话。未验证时不会创建账号。验证码仅能使用一次，重发、过期或五次尝试后不能使用。注册仍公开开放，账号邀请不是必需条件。两接口可传受限的 `next: /invite/:token`，注册后前端返回邀请确认页，仍需点击确认；不接受外站返回 URL。已有账号的 `POST /auth/resend` 仍发送带返回路径的邮箱变更验证链接。`PUT /auth/profile` 不再允许本人改变指导老师身份。
+
+## 飞书登录与活动统计
+
+`GET /auth/providers` 增加 `feishu.enabled`、`feishu.linked`。`GET /auth/feishu?next=…` 发起 OAuth 授权，`mode=link` 将已验证的当前账号主动绑定；`GET /auth/feishu/callback` 校验浏览器 state、单次授权码、PKCE 和当前配置指纹。飞书 v3 令牌和用户信息仅在服务端使用，不持久保存。未绑定身份得到有浏览器 Cookie 约束的十分钟注册 claim，`GET /auth/feishu/signup?claim=…` 读取建议姓名和邮箱；注册接口附加 `feishuClaim`，须同时通过本站邮箱验证码，不按联系邮箱自动合并账号。`DELETE /auth/feishu` 解除绑定。`GET/PUT /admin/feishu` 仅系统管理员可用。
+
+`GET /overview?contestId=…` 返回 `totals`、逐活动 `activities` 和筛选 `choices`，统计限定在公开活动及当前用户获授权活动范围，隐藏活动越权查询返回 403。结果只有汇总数及公开活动字段，不含报名个人资料。
+
+`GET/PUT /admin/mail` 保留主 SMTP 字段，并增加按顺序排列的 `fallbacks`。每个备用包含 `id`、`name`、`enabled` 和 SMTP 连接、认证、发件字段；响应用 `passwordConfigured` 替代密码。`POST /admin/mail/probe` 可附加 `providerId` 单独检测已保存备用。邮件任务结果的 `providerId`、`providerName` 和 `attempts` 记录最终使用的服务器及前序失败。
+
+`POST /admin/mail/templates/:key/test` 提交当前已保存版本 `version`，向当前管理员发送测试邮件；`GET /admin/mail/templates/tests/:id` 查询状态。模板支持条件区块和变量校验，验证类邮件不能停用或删除验证码。版本冲突或格式错误保留客户端草稿。
+
+## 用户详情与账号操作
+
+`GET /admin/students`、`GET /admin/students/:id` 与相同结构的 `/admin/teachers` 支持分页、搜索和参与记录；教师包括指导报名。竞赛管理员的学生与教师视图权限限制到授权竞赛，不能修改账号。
+
+`GET /admin/users/:id` 返回用户详情及 `canEdit` / `canDelete`。`PUT /admin/users/:id` 接受 `version`、`name`、`username`、`email`、`profile`、`tags`，更新实名档案并取消待处理的旧资料申请；邮箱变更会撤销登录并要求重新验证。`PUT /admin/users/:id/ban` 接受 `version`、`banned` 和可选 `reason`，封禁立即撤销会话并禁止密码、GitHub 登录及旧验证链接。系统与高级管理员可编辑、封禁普通账号；高级管理员不能操作全局管理员。
+
+`DELETE /admin/users/:id` 仅系统管理员可调用，正文为 `version` 和 `confirmation: "删除账号"`。释放邮箱和用户名，撤销会话、绑定和授权，保留参赛历史并记录审计。不能通过此接口删除自己，最后一名永久系统管理员不能被停用。
 
 ## Token 范围与字段权限
 
@@ -180,6 +198,8 @@ X-ContestCenter-Signature: sha256=<hex HMAC>
 
 GET / POST `/auth/identity`、GET `/admin/identities`、POST `/admin/identities/:id/review` 完成实名审核；GET `/admin/students` 与详情按 STUDENTS 权限筛选竞赛。POST `/auth/verify-code`、`/auth/reset-code` 使用六位验证码，注销通过 POST `/auth/closure-code` 与 DELETE `/auth/account`（confirmation、password 或 code）完成。GET `/admissions/mine` 返回本人的有效已发放准考证。
 
-GET / PUT `/admin/storage`、POST `/admin/storage/test`、POST `/admin/storage/migrate` 配置、实测和迁移存储。POST `/files` 的 purpose 可为 PRIVATE / PERSONAL / AVATAR / TEAM / CONTEST_PUBLIC / CONTEST_PRIVATE，结合 registrationId / contestId / ticketId；GET `/files` 查询，DELETE `/files/:id` 删除，POST `/contests/:id/files/distribute` 分发指定 registrationIds。公开文件 GET `/files/public/:id`，私有文件下载仍校验会话及授权。
+GET / PUT `/admin/storage`、POST `/admin/storage/test`、POST `/admin/storage/migrate` 配置、实测和迁移存储。POST `/files` 的 purpose 可为 PRIVATE / PERSONAL / AVATAR / TEAM / CONTEST_PUBLIC / CONTEST_PRIVATE，结合 registrationId / contestId / ticketId；GET `/files` 查询，DELETE `/files/:id` 删除，POST `/contests/:id/files/distribute` 分发指定 registrationIds。公开文件 GET `/files/public/:id`，私有文件下载仍校验会话及授权。附件页面中的 PDF 预览通过相同接口读取，使用临时 Blob URL 和 PDF.js 在页面内展示，支持翻页、缩放和加密文档密码输入，不生成额外公开链接，关闭预览后释放临时 URL 和阅读器资源。PDF.js 所需字体、CMap、WASM 和许可随前端构建一并打包。
+
+GET `/auth/sessions?page=1&pageSize=20` 返回当前账号尚未过期的登录会话及总数，每页固定 20 条，其他 pageSize 返回 400。旧调用不传分页参数时返回最多 20 条的数组。会话撤销后，页面刷新当前页；最后一页为空时自动回到前一页。
 
 GET `/contests/:id/public-teams` 与 `/export` 不要求登录，按竞赛 publicRosterEnabled、publicRosterReviews 筛选并仅输出公示字段。PUT `/registrations/:id/public-rank` 配置排名。GET `/admin/mail/templates`、PUT `/admin/mail/templates/:key` 设置邮件完整格式；GET `/notifications/mail?resourceId=UUID` 查看投递状态，POST `/notifications/mail/:id/retry` 重发失败业务邮件，均验证资源访问权限。详细操作见 [平台功能说明](PLATFORM_GUIDE.md)。

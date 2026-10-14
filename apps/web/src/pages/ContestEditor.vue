@@ -289,7 +289,7 @@ function insertVariable(v: string) {
   <el-skeleton v-else-if="loading" :rows="8" animated />
   <template v-else>
     <div class="crumb">
-      <router-link to="/admin">管理后台</router-link><span>／</span
+      <router-link to="/admin/contests">竞赛中心</router-link><span>／</span
       ><span>{{ isNew ? '创建竞赛' : form.title }}</span>
     </div>
     <div class="page-heading" style="margin-top: 24px">
@@ -406,7 +406,7 @@ function insertVariable(v: string) {
                 >至</span
               ><el-input-number v-model="form.policy.maxMembers" :min="1" :max="30" /></el-form-item
             ><el-form-item label="指导老师"
-              ><el-select v-model="form.policy.coachMode"
+              ><el-select v-model="form.policy.coachMode" filterable
                 ><el-option label="不设置指导老师" value="DISABLED" /><el-option
                   label="可选指导老师"
                   value="OPTIONAL" /><el-option
@@ -424,7 +424,11 @@ function insertVariable(v: string) {
               <p class="form-help">非正式申请必须由管理员审核，其他报名规则相同。</p></el-form-item
             >
             <el-form-item label="平台基础字段模板"
-              ><el-select v-model="form.policy.platformProfiles" multiple placeholder="选择接入平台"
+              ><el-select
+                v-model="form.policy.platformProfiles"
+                multiple
+                placeholder="选择接入平台"
+                filterable
                 ><el-option
                   v-for="p in platformTemplates"
                   :key="p.id"
@@ -436,6 +440,7 @@ function insertVariable(v: string) {
                 v-model="form.policy.uniquePersonFields"
                 multiple
                 placeholder="例如学校与学号组合"
+                filterable
                 ><el-option
                   v-for="f in form.fields.filter((x: FieldDefinition) => x.scope === 'PERSON')"
                   :key="f.key"
@@ -462,7 +467,7 @@ function insertVariable(v: string) {
                 :max="100000000"
                 :step="100" /></el-form-item
             ><el-form-item v-if="form.policy.feeMode !== 'FREE'" label="审核与缴费顺序"
-              ><el-select v-model="form.policy.paymentSequence"
+              ><el-select v-model="form.policy.paymentSequence" filterable
                 ><el-option label="先审核，再缴费" value="REVIEW_FIRST" /><el-option
                   label="先缴费，再审核"
                   value="PAYMENT_FIRST" /></el-select></el-form-item
@@ -484,6 +489,7 @@ function insertVariable(v: string) {
                 v-model="form.policy.invoiceRequiredFields"
                 multiple
                 placeholder="按开票方要求选择"
+                filterable
                 ><el-option
                   v-for="(title, key) in {
                     contactName: '联系人',
@@ -509,7 +515,11 @@ function insertVariable(v: string) {
         <h3>可视化报名字段</h3>
         <div class="toolbar">
           <el-button type="primary" @click="editField()">添加字段</el-button
-          ><el-select placeholder="从全局字段导入" @change="importField" style="width: 220px"
+          ><el-select
+            placeholder="从全局字段导入"
+            @change="importField"
+            style="width: 220px"
+            filterable
             ><el-option
               v-for="f in registry"
               :key="f.key"
@@ -589,6 +599,7 @@ function insertVariable(v: string) {
           v-model="statusFilter"
           clearable
           placeholder="审核状态"
+          filterable
           ><el-option
             v-for="s in ['PENDING', 'APPROVED', 'REJECTED']"
             :key="s"
@@ -598,6 +609,7 @@ function insertVariable(v: string) {
           v-model="roster.filters.value.participationType"
           clearable
           placeholder="参赛性质"
+          filterable
           ><el-option value="OFFICIAL" label="正式参赛" /><el-option
             value="UNOFFICIAL"
             label="非正式参赛" /></el-select
@@ -730,7 +742,7 @@ function insertVariable(v: string) {
           ><el-form-item label="字段键名"
             ><el-input v-model="field.key" placeholder="小写字母、数字、下划线" /></el-form-item
           ><el-form-item label="作用域"
-            ><el-select v-model="field.scope"
+            ><el-select v-model="field.scope" filterable
               ><el-option
                 v-for="(s, k) in {
                   PERSON: '参赛者',
@@ -742,7 +754,7 @@ function insertVariable(v: string) {
                 :value="k"
                 :label="s" /></el-select></el-form-item
           ><el-form-item label="类型"
-            ><el-select v-model="field.type"
+            ><el-select v-model="field.type" filterable
               ><el-option
                 v-for="(s, k) in {
                   text: '短文本',

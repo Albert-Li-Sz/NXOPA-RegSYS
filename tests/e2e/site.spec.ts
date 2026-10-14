@@ -123,10 +123,18 @@ test('admin and contest configuration pages, financial and support views', async
   page.on('pageerror', (e) => errors.push(e.message));
   await login(page, 'admin');
   await page.goto('/admin');
-  await expect(page.getByRole('heading', { name: '管理后台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '管理中心', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: '认证服务', exact: true })).toHaveCount(0);
-  for (const name of ['用户与邀请', '评测平台', '邮件设置', 'API 与 Webhook', '全局设置', '任务']) {
-    await page.getByRole('tab', { name, exact: true }).click();
+  for (const [path, name] of [
+    ['/admin/users?tab=users', '用户与邀请'],
+    ['/admin/platforms', '评测平台'],
+    ['/admin?tab=mail', '邮件设置'],
+    ['/admin?tab=tokens', 'API 与 Webhook'],
+    ['/admin?tab=site', '全局设置'],
+    ['/admin/tasks', '任务'],
+  ]) {
+    await page.goto(path!);
+    await expect(page.getByRole('tab', { name: name!, exact: true })).toBeVisible();
     await expect(page.locator('.panel')).toBeVisible();
   }
   await page.goto('/admin/contests/33333333-3333-4333-8333-333333333333');

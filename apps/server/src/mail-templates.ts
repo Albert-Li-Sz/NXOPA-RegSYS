@@ -1,7 +1,17 @@
 import { BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
-import type { Principal } from '@contest-center/contracts';
-import { db, audit, lock } from './db.js';
+import {
+  mailTemplateForCategory,
+  resolveMailTemplate,
+  mailTemplateExample,
+  mailTemplateError,
+  renderMailTemplate,
+  authenticationMailCategories,
+  type Principal,
+} from '@contest-center/contracts';
+import { randomUUID } from 'node:crypto';
+import { db, audit, lock, enqueue } from './db.js';
+import { encrypt } from './security.js';
 import { requireSystemAdmin, checkVersion } from './security.js';
 import { siteSettings, publicLink } from './site-settings.js';
 export const mailCategories = [
@@ -16,12 +26,6 @@ export const mailCategories = [
   'ADMISSION',
   'GENERIC',
 ] as const;
-const variables = ['siteName', 'subject', 'message', 'actionUrl', 'code', 'name', 'status'];
-const defaults = {
-  subject: '{{subject}} · {{siteName}}',
-  text: '{{message}}\n\n验证码：{{code}}\n{{actionUrl}}\n\n{{siteName}}',
-  html: '<!DOCTYPE html><html><body style="margin:0;background:#f4f7fb;font-family:Arial,sans-serif"><div style="max-width:640px;margin:24px auto;padding:28px;background:#fff;border-radius:12px"><h2 style="color:#2080f0">{{siteName}}</h2><h3>{{subject}}</h3><p style="line-height:1.8">{{message}}</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px">{{code}}</p><p><a href="{{actionUrl}}" style="color:#2080f0">查看详情 / 完成操作</a></p><hr><p style="color:#8791a0;font-size:12px">此邮件由 {{siteName}} 自动发送。</p></div></body></html>',
-};
 export const mailCategoryLabels: Record<string, string> = {
   AUTH_VERIFY: '邮箱验证 / 注册验证码',
   AUTH_RESET: '密码重置',
@@ -34,18 +38,6 @@ export const mailCategoryLabels: Record<string, string> = {
   ADMISSION: '准考证发放',
   GENERIC: '其他通知',
 };
-const escape = (s: string) =>
-  s
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-function render(source: string, context: Record<string, string>, html = false) {
-  return source.replace(/{{\s*(\w+)\s*}}/g, (_m, key) =>
-    html ? escape(context[key] ?? '').replaceAll('\n', '<br>') : (context[key] ?? ''),
-  );
-}
 export async function formatMail(message: {
   subject: string;
   text: string;
@@ -57,8 +49,13 @@ export async function formatMail(message: {
 }) {
   const category = mailCategories.includes(message.category as any) ? message.category! : 'GENERIC';
   const stored = await db.mailTemplate.findUnique({ where: { key: category } });
-  const template = stored ?? { ...defaults, enabled: true };
-  if (!template.enabled) return { skipped: true as const };
+  const template = {
+    enabled: true,
+    ...stored,
+    ...resolveMailTemplate(category, stored ?? undefined),
+  };
+  if (!template.enabled && !authenticationMailCategories.includes(category))
+    return { skipped: true as const };
   const site = await siteSettings();
   const context = {
     siteName: site.name,
@@ -69,15 +66,12 @@ export async function formatMail(message: {
     name: message.name ?? '',
     status: message.status ?? '',
   };
-  let html = template.html;
-  if (!stored) {
-    if (!context.code) html = html.replace(/<p style="font-size:28px[^>]*>.*?<\/p>/, '');
-    if (!context.actionUrl) html = html.replace(/<p><a href="{{actionUrl}}".*?<\/p>/, '');
-  }
   return {
-    subject: render(template.subject, context).replace(/[\r\n]/g, ' '),
-    text: render(template.text, context).replace(/\n验证码：\s*\n/, '\n'),
-    html: render(html, context, true),
+    ...renderMailTemplate(
+      template.enabled ? template : mailTemplateForCategory(category),
+      context,
+      category,
+    ),
     category,
   };
 }
@@ -88,11 +82,59 @@ export class MailTemplateService {
     return mailCategories.map((key) => ({
       key,
       label: mailCategoryLabels[key],
-      ...defaults,
+      ...mailTemplateForCategory(key),
       enabled: true,
       version: 0,
       ...stored.find((x) => x.key === key),
+      ...resolveMailTemplate(
+        key,
+        stored.find((x) => x.key === key),
+      ),
     }));
+  }
+  async test(u: Principal, key: string, body: unknown) {
+    requireSystemAdmin(u);
+    z.enum(mailCategories).parse(key);
+    const { version } = z.object({ version: z.number().int().min(0) }).parse(body);
+    return db.$transaction(async (tx) => {
+      await lock(tx, 'mail-template:' + key);
+      const template = await tx.mailTemplate.findUnique({ where: { key } });
+      checkVersion(template?.version ?? 0, version);
+      if (template?.enabled === false)
+        throw new BadRequestException('此类邮件已停用，请先启用并保存');
+      const example = mailTemplateExample(key);
+      const job = await enqueue(
+        tx,
+        'MAIL',
+        `mail-template:${key}`,
+        `mail-template-test:${randomUUID()}`,
+        {
+          to: u.email,
+          category: key,
+          subject: example.subject,
+          text: example.text,
+          name: u.name,
+          status: example.status,
+          ...(example.code ? { encryptedCode: encrypt(example.code) } : {}),
+          actionPath: example.actionPath,
+          templateTest: true,
+          templateVersion: version,
+        },
+      );
+      await audit(tx, u.id, 'MAIL_TEMPLATE_TEST', key, { jobId: job.id });
+      return { jobId: job.id, to: u.email };
+    });
+  }
+  async testStatus(u: Principal, id: string) {
+    requireSystemAdmin(u);
+    const job = await db.job.findFirstOrThrow({
+      where: {
+        id: z.string().uuid().parse(id),
+        kind: 'MAIL',
+        resourceId: { startsWith: 'mail-template:' },
+      },
+    });
+    return { state: job.state, attempts: job.attempts, error: job.error, result: job.result };
   }
   async save(u: Principal, key: string, body: unknown) {
     requireSystemAdmin(u);
@@ -110,10 +152,8 @@ export class MailTemplateService {
         enabled: z.boolean(),
       })
       .parse(body);
-    for (const source of [b.subject, b.text, b.html])
-      for (const match of source.matchAll(/{{\s*(\w+)\s*}}/g))
-        if (!variables.includes(match[1]!))
-          throw new BadRequestException(`模板变量不支持：${match[1]}`);
+    const validation = mailTemplateError(b, key);
+    if (validation) throw new BadRequestException(validation);
     return db.$transaction(async (tx) => {
       await lock(tx, 'mail-template:' + key);
       const current = await tx.mailTemplate.findUnique({ where: { key } });

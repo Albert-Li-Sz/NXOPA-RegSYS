@@ -30,6 +30,22 @@ describe('student profile and administrator tags', () => {
     expect(() => userTagsSchema.parse(['x'.repeat(41)])).toThrow();
     expect(() => userTagsSchema.parse(Array.from({ length: 21 }, (_, i) => `标签${i}`))).toThrow();
   });
+  it('accepts only male and female for student and teacher identities', () => {
+    for (const gender of ['男', '女'])
+      expect(profileComplete({ ...complete, profile: { ...complete.profile, gender } })).toBe(true);
+    for (const gender of ['其他', '不便透露', '', 'male']) {
+      expect(profileComplete({ ...complete, profile: { ...complete.profile, gender } })).toBe(
+        false,
+      );
+      expect(
+        profileComplete({
+          kind: 'TEACHER',
+          name: '教师',
+          profile: { employee_id: 'T', employed_at: '2020-01-01', college: '院系', gender },
+        }),
+      ).toBe(false);
+    }
+  });
   it('validates real calendar dates in teacher identity information', () => {
     const teacher = {
       name: '教师测试',

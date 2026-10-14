@@ -4,6 +4,7 @@ dist/
 .env.*
 !.env.example
 .runtime/
+apps/web/public/pdfjs/
 tmp/
 test-results/
 playwright-report/

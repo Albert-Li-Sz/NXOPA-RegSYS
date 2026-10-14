@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { Client, until } from './client.js';
-import { verificationUrl, mailpitBase } from './mailpit.js';
+import { mailpitBase } from './mailpit.js';
 import { db, json, enqueue } from '../../apps/server/src/db.js';
 import { redis } from '../../apps/server/src/auth.js';
 import { decrypt } from '../../apps/server/src/security.js';
@@ -233,15 +233,13 @@ try {
   await delivered(current.version, mailpitBase);
   const email = `mail-settings-${run}@example.test`,
     client = new Client();
-  const session = await client.api('/auth/register', 'POST', {
+  const session = await client.register({
     email,
     username: `mail_settings_${run}`,
     password: 'MailSettings2026!',
     name: '邮件配置注册验收',
   });
   client.csrf = session.csrf;
-  const url = await verificationUrl(email);
-  await client.api('/auth/verify', 'POST', { token: url.searchParams.get('token') });
   assert.equal((await client.api('/auth/me')).user.verified, true);
   report.push(
     'Clearing authentication removes its secret; normal public registration still delivers and verifies email',

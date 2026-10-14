@@ -16,6 +16,8 @@ model User {
   identityStatus String @default("UNSUBMITTED")
   avatarAttachmentId String? @db.Uuid
   deactivatedAt DateTime?
+  bannedAt DateTime?
+  banReason String @default("")
   previousEmailHash String?
   verified Boolean @default(false)
   isAdmin Boolean @default(false)
@@ -87,6 +89,15 @@ model EmailToken {
   usedAt DateTime?
   codeHash String?
   attempts Int @default(0)
+}
+model RegistrationVerification {
+  id String @id
+  email String
+  codeHash String
+  expiresAt DateTime
+  usedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([email,usedAt])
 }
 model RoleAssignment {
   id String @id @default(uuid()) @db.Uuid

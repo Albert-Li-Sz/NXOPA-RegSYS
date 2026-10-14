@@ -302,7 +302,7 @@ try {
   const accountInvitation = await invite({ kind: 'ACCOUNT', targetEmail: email.toUpperCase() });
   const signupCoach = await invite({ kind: 'COACH_ROLE', targetEmail: email });
   const signup = new Client();
-  const session = await signup.api('/auth/register', 'POST', {
+  const session = await signup.register({
     username: `invited_${run}`,
     email,
     name: '邀请注册验收',
@@ -312,6 +312,17 @@ try {
   signup.user = session.user;
   signup.csrf = session.csrf;
   userIds.push(session.user.id);
+  assert.equal(session.user.verified, true);
+  // Mailbox changes on existing accounts still require verification before accepting invitations.
+  for (const changed of [`temporary-${email}`, email]) {
+    const current = (await signup.api('/auth/me')).user;
+    await signup.api('/auth/profile', 'PUT', {
+      version: current.version,
+      name: current.name,
+      profile: current.profile,
+      email: changed,
+    });
+  }
   await signup.api(invitationPath(accountInvitation));
   await status(signup, `${invitationPath(accountInvitation)}/accept`, 'POST', {}, 403);
   await status(signup, `${invitationPath(signupCoach)}/accept`, 'POST', {}, 403);
@@ -332,7 +343,7 @@ try {
   );
 
   const publicSignup = new Client();
-  const publicSession = await publicSignup.api('/auth/register', 'POST', {
+  const publicSession = await publicSignup.register({
     username: `public_${run}`,
     email: `public-${run}@example.test`,
     name: '公开邮箱注册验收',
@@ -341,7 +352,7 @@ try {
   userIds.push(publicSession.user.id);
   assert.equal(publicSession.user.isAdmin, false);
   assert.equal(publicSession.user.isCoach, false);
-  assert.equal(publicSession.user.verified, false);
+  assert.equal(publicSession.user.verified, true);
   record('public email registration remains open without an invitation and grants no extra role');
 
   const teamContest = await contest({

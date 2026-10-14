@@ -1,5 +1,16 @@
 import { z } from 'zod';
 export {
+  defaultMailTemplate,
+  mailTemplateForCategory,
+  resolveMailTemplate,
+  mailTemplateExample,
+  mailVariables,
+  authenticationMailCategories,
+  renderMailTemplate,
+  mailTemplateError,
+  type MailTemplateContext,
+} from './mail-template.js';
+export {
   platformTemplates,
   requiredPlatformFields,
   mergePlatformFields,
@@ -16,13 +27,13 @@ export const studentProfileSchema = z.object({
   student_id: z.string().trim().min(1, '请填写学号').max(100),
   class_name: z.string().trim().min(1, '请填写班级').max(100),
   college: z.string().trim().min(1, '请填写学院').max(100),
-  gender: z.enum(['男', '女', '其他', '不便透露'], '请选择性别'),
+  gender: z.enum(['男', '女'], '请选择男或女'),
 });
 export const teacherProfileSchema = z.object({
   employee_id: z.string().trim().min(1, '请填写工号').max(100),
   employed_at: z.iso.date('请填写有效入职日期'),
   college: z.string().trim().min(1, '请填写院系').max(100),
-  gender: z.enum(['男', '女', '其他', '不便透露']),
+  gender: z.enum(['男', '女'], '请选择男或女'),
 });
 export function profileComplete(value: { name: string; profile: unknown; kind?: string }) {
   return (
@@ -52,7 +63,7 @@ export const adminPermissionLabels: Record<AdminPermission, string> = {
   ADMISSIONS: '准考证',
   FILES: '附件分发与删除',
   SUPPORT: '工单处理',
-  STUDENTS: '学生视图',
+  STUDENTS: '学生与教师视图',
   INTEGRATIONS: '竞赛平台联动',
 };
 export const adminLevelLabels = {
@@ -110,8 +121,7 @@ export const invoiceSchema = z
     if (v.invoiceType === 'SPECIAL' && v.titleType === 'PERSON')
       ctx.addIssue({ code: 'custom', path: ['titleType'], message: '专票申请须使用单位抬头' });
   });
-export const mailSettingsSchema = z.object({
-  version: z.number().int().min(0),
+export const smtpServerSchema = z.object({
   enabled: z.boolean(),
   host: z
     .string()
@@ -131,8 +141,24 @@ export const mailSettingsSchema = z.object({
     .max(80)
     .regex(/^[^\r\n]*$/),
 });
+export const smtpFallbackSchema = smtpServerSchema.extend({
+  id: z.string().uuid(),
+  name: z.string().trim().min(1).max(80),
+});
+export type SmtpServerInput = z.infer<typeof smtpServerSchema>;
+const mailSettingsBaseSchema = smtpServerSchema.extend({
+  version: z.number().int().min(0),
+  fallbacks: z.array(smtpFallbackSchema).max(10).default([]),
+});
+export const mailSettingsSchema = mailSettingsBaseSchema.superRefine((value, ctx) => {
+  if (new Set(value.fallbacks.map((s) => s.id)).size !== value.fallbacks.length)
+    ctx.addIssue({ code: 'custom', path: ['fallbacks'], message: '备用 SMTP 标识不能重复' });
+});
 export type MailSettingsInput = z.infer<typeof mailSettingsSchema>;
-export const mailSettingsViewSchema = mailSettingsSchema.omit({ password: true }).extend({
+export const mailSettingsViewSchema = mailSettingsBaseSchema.omit({ password: true }).extend({
+  fallbacks: z.array(
+    smtpFallbackSchema.omit({ password: true }).extend({ passwordConfigured: z.boolean() }),
+  ),
   passwordConfigured: z.boolean(),
   source: z.enum(['DATABASE', 'ENVIRONMENT']),
 });
@@ -354,7 +380,7 @@ export function fieldsJsonSchema(fields: FieldDefinition[], scope: FieldDefiniti
         : 'string';
     properties[f.key] = {
       type,
-      ...(f.type === 'select' ? { enum: f.options } : {}),
+      ...(f.type === 'select' ? { enum: f.key === 'gender' ? ['男', '女'] : f.options } : {}),
       ...(f.type === 'multiselect'
         ? { items: { type: 'string', enum: f.options }, uniqueItems: true }
         : {}),
@@ -533,7 +559,7 @@ export const defaultFields: FieldDefinition[] = fieldsSchema.parse([
     scope: 'PERSON',
     type: 'select',
     required: true,
-    options: ['男', '女', '其他', '不便透露'],
+    options: ['男', '女'],
   },
   { key: 'major', label: '专业', scope: 'PERSON', type: 'text' },
   {

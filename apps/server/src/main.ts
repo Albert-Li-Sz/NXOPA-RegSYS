@@ -27,6 +27,8 @@ import { AdminService } from './admin.js';
 import { InvitationService } from './invitations.js';
 import { MailService } from './mail.js';
 import { GithubService } from './github.js';
+import { FeishuService } from './feishu.js';
+import { OverviewService } from './overview.js';
 import { AuthorizationService } from './authorization.js';
 import { PeopleService } from './people.js';
 import { StorageService } from './storage.js';
@@ -77,6 +79,8 @@ class Errors implements ExceptionFilter {
     InvitationService,
     MailService,
     GithubService,
+    FeishuService,
+    OverviewService,
     AuthorizationService,
     PeopleService,
     StorageService,

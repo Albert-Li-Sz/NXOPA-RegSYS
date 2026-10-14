@@ -10,7 +10,7 @@ export const activeGrantWhere = () => ({
 });
 export async function effectiveAuthorization(id: string, database: Tx = db) {
   const grants = await database.adminGrant.findMany({
-    where: { userId: id, ...activeGrantWhere() },
+    where: { userId: id, ...activeGrantWhere(), user: { deactivatedAt: null, bannedAt: null } },
     orderBy: { createdAt: 'asc' },
   });
   const isSystemAdmin = grants.some((g) => g.level === 'SYSTEM');
@@ -56,7 +56,7 @@ export async function ensurePermanentAdministrator(
         revokedAt: null,
         ...(excludedGrant ? { id: { not: excludedGrant } } : {}),
         ...(excludedUser ? { userId: { not: excludedUser } } : {}),
-        user: { deactivatedAt: null },
+        user: { deactivatedAt: null, bannedAt: null },
       },
     }))
   )
@@ -108,7 +108,8 @@ export class AuthorizationService {
       if (!actor.isAdmin || (b.level !== 'CONTEST' && !actor.isSystemAdmin))
         throw new ForbiddenException('授权权限已经失效');
       const target = await tx.user.findUniqueOrThrow({ where: { id: b.userId } });
-      if (target.deactivatedAt) throw new BadRequestException('已注销账号不能接受授权');
+      if (target.deactivatedAt || target.bannedAt)
+        throw new BadRequestException('已停用或封禁账号不能接受授权');
       if (b.contestId) await tx.contest.findUniqueOrThrow({ where: { id: b.contestId } });
       const result = await tx.adminGrant.create({
         data: {

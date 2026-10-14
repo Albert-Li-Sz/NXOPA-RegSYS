@@ -101,6 +101,7 @@ export async function verifyInstallationUpgrade(
   const users: { client: Client; purpose: 'verify' | 'reset'; token: string }[] = [];
   for (const purpose of ['verify', 'reset'] as const) {
     const client = new Client();
+    // This account is created on the previous image, before the new registration prerequisite exists.
     const session = await client.api('/auth/register', 'POST', {
       email: `upgrade-${purpose}@example.test`,
       username: `upgrade_${purpose}`,

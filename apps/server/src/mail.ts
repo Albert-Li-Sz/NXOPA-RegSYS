@@ -14,7 +14,10 @@ import { config } from './config.js';
 import { formatMail } from './mail-templates.js';
 
 const key = 'mail';
-type StoredMail = Omit<MailSettingsInput, 'version' | 'password'> & { encryptedPassword: string };
+type StoredServer = Omit<MailSettingsInput, 'version' | 'password' | 'fallbacks'> & {
+  encryptedPassword: string;
+};
+type StoredMail = StoredServer & { fallbacks: (StoredServer & { id: string; name: string })[] };
 function environmentMail(): StoredMail {
   const from = process.env.SMTP_FROM ?? '南晓开放原子社在线报名系统 <noreply@example.test>';
   const formatted = from.match(/^\s*(.*?)\s*<([^<>]+)>\s*$/);
@@ -38,26 +41,36 @@ function environmentMail(): StoredMail {
     encryptedPassword: process.env.SMTP_PASSWORD ? encrypt(process.env.SMTP_PASSWORD) : '',
     fromAddress: formatted ? formatted[2]!.trim() : from.trim(),
     fromName: formatted ? formatted[1]!.trim().replace(/^"|"$/g, '') : '',
+    fallbacks: [],
   };
 }
 async function settings(database: Tx = db) {
   const row = await database.setting.findUnique({ where: { key } });
   return {
-    value: row ? (row.value as unknown as StoredMail) : environmentMail(),
+    value: row
+      ? {
+          ...(row.value as unknown as StoredMail),
+          fallbacks: (row.value as unknown as StoredMail).fallbacks ?? [],
+        }
+      : environmentMail(),
     version: row?.version ?? 0,
     source: row ? ('DATABASE' as const) : ('ENVIRONMENT' as const),
   };
 }
 function view(s: Awaited<ReturnType<typeof settings>>): MailSettingsView {
-  const { encryptedPassword, ...value } = s.value;
+  const { encryptedPassword, fallbacks, ...value } = s.value;
   return {
     ...value,
+    fallbacks: fallbacks.map(({ encryptedPassword, ...value }) => ({
+      ...value,
+      passwordConfigured: !!encryptedPassword,
+    })),
     version: s.version,
     source: s.source,
     passwordConfigured: !!encryptedPassword,
   };
 }
-function transport(s: StoredMail) {
+function transport(s: StoredServer) {
   return nodemailer.createTransport({
     host: s.host,
     port: s.port,
@@ -98,23 +111,37 @@ export async function sendSystemMail(
   if (expectedVersion !== undefined && expectedVersion !== s.version)
     throw new Error('邮件设置已变更，请重新发送测试邮件');
   if (!s.value.enabled) throw new Error('邮件服务已停用，请启用邮件服务后重试');
-  const client = transport(s.value);
-  try {
-    const formatted = await formatMail(message);
-    if ('skipped' in formatted) return { configurationVersion: s.version, skipped: true };
-    await client.sendMail({
-      to: message.to,
-      subject: formatted.subject,
-      text: formatted.text,
-      html: formatted.html,
-      from: { name: s.value.fromName, address: s.value.fromAddress },
-    });
-    return { configurationVersion: s.version };
-  } catch (error) {
-    throw new Error(mailError(error));
-  } finally {
-    client.close();
+  const formatted = await formatMail(message);
+  if ('skipped' in formatted) return { configurationVersion: s.version, skipped: true };
+  const attempts: { providerId: string; name: string; error: string }[] = [];
+  for (const server of [
+    { ...s.value, id: 'primary', name: '主 SMTP' },
+    ...s.value.fallbacks.filter((server) => server.enabled),
+  ]) {
+    let client: ReturnType<typeof transport> | undefined;
+    try {
+      client = transport(server);
+      const sent = await client.sendMail({
+        to: message.to,
+        subject: formatted.subject,
+        text: formatted.text,
+        html: formatted.html,
+        from: { name: server.fromName, address: server.fromAddress },
+      });
+      if (!sent.accepted?.length || sent.rejected?.length) throw new Error('Recipient rejected');
+      return {
+        configurationVersion: s.version,
+        providerId: server.id,
+        providerName: server.name,
+        attempts,
+      };
+    } catch (error) {
+      attempts.push({ providerId: server.id, name: server.name, error: mailError(error) });
+    } finally {
+      client?.close();
+    }
   }
+  throw new Error(attempts.map((attempt) => `${attempt.name}：${attempt.error}`).join('；'));
 }
 export class MailService {
   async get(u: Principal) {
@@ -137,11 +164,31 @@ export class MailService {
           encryptedPassword = current.value.encryptedPassword;
         if (!encryptedPassword) throw new BadRequestException('请填写邮件服务器密码或授权码');
       }
-      const { version, password, ...value } = b;
+      const fallbacks: StoredMail['fallbacks'] = [];
+      for (const fallback of b.fallbacks) {
+        const previous = current.value.fallbacks.find((server) => server.id === fallback.id);
+        if (fallback.authEnabled && !fallback.username)
+          throw new BadRequestException(`${fallback.name}：请填写认证用户名`);
+        const encryptedPassword = !fallback.authEnabled
+          ? ''
+          : fallback.password
+            ? encrypt(fallback.password)
+            : previous?.username === fallback.username
+              ? previous.encryptedPassword
+              : '';
+        if (fallback.authEnabled && !encryptedPassword)
+          throw new BadRequestException(`${fallback.name}：请填写密码或授权码`);
+        const { password, ...server } = fallback;
+        fallbacks.push({ ...server, encryptedPassword });
+      }
+      const { version, password, fallbacks: inputFallbacks, ...value } = b;
       const row = await tx.setting.upsert({
         where: { key },
-        create: { key, value: json({ ...value, encryptedPassword }) },
-        update: { value: json({ ...value, encryptedPassword }), version: { increment: 1 } },
+        create: { key, value: json({ ...value, encryptedPassword, fallbacks }) },
+        update: {
+          value: json({ ...value, encryptedPassword, fallbacks }),
+          version: { increment: 1 },
+        },
       });
       await audit(tx, u.id, 'MAIL_SETTINGS_UPDATED', key, {
         version: row.version,
@@ -150,6 +197,13 @@ export class MailService {
         port: b.port,
         security: b.security,
         authEnabled: b.authEnabled,
+        fallbacks: fallbacks.map(({ id, name, host, port, enabled }) => ({
+          id,
+          name,
+          host,
+          port,
+          enabled,
+        })),
       });
       return view({
         value: row.value as unknown as StoredMail,
@@ -160,11 +214,18 @@ export class MailService {
   }
   async probe(u: Principal, body: unknown) {
     requireSystemAdmin(u);
-    const { version } = z.object({ version: z.number().int().min(0) }).parse(body);
+    const { version, providerId } = z
+      .object({ version: z.number().int().min(0), providerId: z.string().optional() })
+      .parse(body);
     const s = await settings();
     checkVersion(s.version, version);
     if (!s.value.enabled) throw new BadRequestException('请先启用并保存邮件服务');
-    const client = transport(s.value);
+    const server =
+      providerId && providerId !== 'primary'
+        ? s.value.fallbacks.find((server) => server.id === providerId)
+        : s.value;
+    if (!server || !server.enabled) throw new BadRequestException('此 SMTP 不存在或未启用');
+    const client = transport(server);
     try {
       await client.verify();
       return { ok: true, message: '邮件服务器连接及认证正常' };

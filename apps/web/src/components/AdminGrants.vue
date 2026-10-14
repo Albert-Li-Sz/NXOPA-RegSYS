@@ -150,7 +150,7 @@ onMounted(load);
             :value="user.id"
             :label="`${user.name} · ${user.email}`" /></el-select></el-form-item
       ><el-form-item label="管理员级别"
-        ><el-select v-model="form.level" style="width: 100%"
+        ><el-select v-model="form.level" style="width: 100%" filterable
           ><el-option
             v-for="level in isSystemAdmin() ? ['SYSTEM', 'SENIOR', 'CONTEST'] : ['CONTEST']"
             :key="level"

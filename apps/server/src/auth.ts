@@ -9,11 +9,13 @@ import {
   profileComplete,
   type Principal,
 } from '@contest-center/contracts';
-import { db, audit, event, json, lock } from './db.js';
+import { db, audit, event, json, lock, type Tx } from './db.js';
 import { config } from './config.js';
 import { publicLink } from './site-settings.js';
 import { opaqueToken, sha, hmac, same, encrypt } from './security.js';
 import { effectiveAuthorization } from './authorization.js';
+import { feishuSignup, attachFeishuSignup, clearFeishuSignup } from './feishu.js';
+import { paginated, type ListQuery } from './pagination.js';
 
 export const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
 export type AuthRequest = Request & {
@@ -30,15 +32,15 @@ export async function rateLimit(key: string, max = 20) {
   if (n > max) throw new ForbiddenException('请求过于频繁，请稍后重试');
 }
 export const passwordSchema = z.string().min(10, '密码至少 10 位').max(128);
-const publicUser = async (id: string): Promise<Principal> => {
-  const u = await db.user.findUniqueOrThrow({ where: { id }, include: { roles: true } });
+const publicUser = async (id: string, database: Tx = db): Promise<Principal> => {
+  const u = await database.user.findUniqueOrThrow({ where: { id }, include: { roles: true } });
   return {
     id: u.id,
     email: u.email,
     username: u.username,
     name: u.name,
     verified: u.verified,
-    ...(await effectiveAuthorization(id)),
+    ...(await effectiveAuthorization(id, database)),
     isCoach: u.isCoach,
     hasPassword: !!u.passwordHash,
     profileComplete: profileComplete(u),
@@ -49,7 +51,7 @@ const publicUser = async (id: string): Promise<Principal> => {
     avatarUrl: u.avatarAttachmentId ? `/api/v1/files/public/${u.avatarAttachmentId}` : null,
     relatedUserIds: u.personId
       ? (
-          await db.user.findMany({
+          await database.user.findMany({
             where: { personId: u.personId, OR: [{ id: u.id }, { deactivatedAt: { not: null } }] },
             select: { id: true },
           })
@@ -63,14 +65,10 @@ export async function attachPrincipal(req: AuthRequest) {
   const id = sha(String(token));
   const s = await db.session.findUnique({
     where: { id },
-    include: { user: { select: { passwordHash: true } } },
+    include: { user: { select: { deactivatedAt: true, bannedAt: true } } },
   });
   if (s && s.expiresAt > new Date()) {
-    if (
-      (await db.user.findUnique({ where: { id: s.userId }, select: { deactivatedAt: true } }))
-        ?.deactivatedAt
-    )
-      return;
+    if (s.user.deactivatedAt || s.user.bannedAt) return;
     req.sessionId = id;
     req.principal = await publicUser(s.userId);
   }
@@ -88,13 +86,19 @@ export function csrf(req: AuthRequest) {
 }
 export async function session(req: AuthRequest, res: Response, id: string) {
   const token = opaqueToken();
-  await db.session.create({
-    data: {
-      id: sha(token),
-      userId: id,
-      expiresAt: new Date(Date.now() + 7 * 86400000),
-      userAgent: String(req.headers['user-agent'] ?? '').slice(0, 300),
-    },
+  const principal = await db.$transaction(async (tx) => {
+    await lock(tx, `auth:${id}`);
+    const current = await tx.user.findUniqueOrThrow({ where: { id } });
+    if (current.deactivatedAt || current.bannedAt) throw new ForbiddenException('账号已停用或封禁');
+    await tx.session.create({
+      data: {
+        id: sha(token),
+        userId: id,
+        expiresAt: new Date(Date.now() + 7 * 86400000),
+        userAgent: String(req.headers['user-agent'] ?? '').slice(0, 300),
+      },
+    });
+    return publicUser(id, tx);
   });
   res.cookie('cc_session', token, {
     httpOnly: true,
@@ -103,7 +107,7 @@ export async function session(req: AuthRequest, res: Response, id: string) {
     maxAge: 7 * 86400000,
     path: '/',
   });
-  return { user: await publicUser(id), csrf: hmac(config.encryptionKey, sha(token)) };
+  return { user: principal, csrf: hmac(config.encryptionKey, sha(token)) };
 }
 async function mailToken(id: string, purpose: string, next?: string) {
   const raw = opaqueToken();
@@ -147,6 +151,43 @@ async function mailToken(id: string, purpose: string, next?: string) {
   });
 }
 export class AuthService {
+  async registrationCode(body: unknown, req: AuthRequest) {
+    const b = z
+      .object({ email: z.email(), next: invitationReturnPathSchema.optional() })
+      .parse(body);
+    const email = b.email.toLowerCase();
+    await rateLimit(`register-code:${req.ip}`, 10);
+    await rateLimit(`register-code-email:${sha(email)}`, 3);
+    const token = opaqueToken(),
+      id = sha(token);
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    await db.$transaction(async (tx) => {
+      await lock(tx, `register:${email}`);
+      if (await tx.user.findUnique({ where: { email } }))
+        throw new BadRequestException('此邮箱已注册，请登录或找回密码');
+      await tx.registrationVerification.updateMany({
+        where: { email, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      await tx.registrationVerification.create({
+        data: {
+          id,
+          email,
+          codeHash: hmac(config.encryptionKey, `${id}:${code}`),
+          expiresAt: new Date(Date.now() + 600000),
+        },
+      });
+      await event(tx, 'MAIL', id, {
+        to: email,
+        subject: '注册邮箱验证码',
+        category: 'AUTH_VERIFY',
+        encryptedCode: encrypt(code),
+        registrationTokenId: id,
+        text: '请在注册页面填写六位验证码，完成邮箱验证后创建账号。验证码在 10 分钟内有效。',
+      });
+    });
+    return { token, expiresIn: 600 };
+  }
   async register(body: unknown, req: AuthRequest, res: Response) {
     await rateLimit(`register:${req.ip}`, 10);
     const b = z
@@ -155,6 +196,8 @@ export class AuthService {
         username: z.string().regex(/^[a-zA-Z0-9_]{3,32}$/),
         name: z.string().trim().min(1).max(100),
         password: passwordSchema,
+        token: z.string().min(30).max(100),
+        code: z.string().regex(/^\d{6}$/, '请输入邮箱中的六位验证码'),
         kind: z.enum(['STUDENT', 'TEACHER']).default('STUDENT'),
         identifier: z.string().trim().min(1).max(100).optional(),
         enrollmentYear: z
@@ -168,6 +211,7 @@ export class AuthService {
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .optional(),
         next: invitationReturnPathSchema.optional(),
+        feishuClaim: z.string().min(30).max(100).optional(),
       })
       .parse(body);
     if (
@@ -180,22 +224,49 @@ export class AuthService {
             new Date(b.employedAt).toISOString().slice(0, 10) !== b.employedAt))
     )
       throw new BadRequestException('学生需填写学号和入学年份，教师需填写工号和有效入职日期');
-    const u = await db.user.create({
-      data: {
-        name: b.name,
-        username: b.username,
-        email: b.email.toLowerCase(),
-        passwordHash: await hash(b.password, { type: argon2id }),
-        kind: b.kind,
-        isCoach: b.kind === 'TEACHER',
-        profile: json(
-          b.kind === 'TEACHER'
-            ? { employee_id: b.identifier, employed_at: b.employedAt }
-            : { student_id: b.identifier, enrollment_year: b.enrollmentYear },
-        ),
-      },
+    const email = b.email.toLowerCase(),
+      tokenId = sha(b.token);
+    const feishu = await feishuSignup(req, b.feishuClaim);
+    const attempts = await redis.incr(`register-code-attempts:${tokenId}`);
+    if (attempts === 1) await redis.expire(`register-code-attempts:${tokenId}`, 600);
+    if (attempts > 5) throw new BadRequestException('验证码尝试次数过多，请重新发送');
+    const passwordHash = await hash(b.password, { type: argon2id });
+    const u = await db.$transaction(async (tx) => {
+      await lock(tx, `register:${email}`);
+      const verification = await tx.registrationVerification.findUnique({ where: { id: tokenId } });
+      if (
+        !verification ||
+        verification.email !== email ||
+        verification.usedAt ||
+        verification.expiresAt <= new Date() ||
+        !same(verification.codeHash, hmac(config.encryptionKey, `${tokenId}:${b.code}`))
+      )
+        throw new BadRequestException('邮箱验证码无效或已过期，请重新发送');
+      const account = await tx.user.create({
+        data: {
+          name: b.name,
+          username: b.username,
+          email,
+          passwordHash,
+          verified: true,
+          kind: b.kind,
+          isCoach: b.kind === 'TEACHER',
+          profile: json(
+            b.kind === 'TEACHER'
+              ? { employee_id: b.identifier, employed_at: b.employedAt }
+              : { student_id: b.identifier, enrollment_year: b.enrollmentYear },
+          ),
+        },
+      });
+      await tx.registrationVerification.update({
+        where: { id: tokenId },
+        data: { usedAt: new Date() },
+      });
+      await audit(tx, account.id, 'ACCOUNT_REGISTER', account.id);
+      if (feishu) await attachFeishuSignup(tx, account.id, feishu);
+      return account;
     });
-    await mailToken(u.id, 'VERIFY', b.next);
+    await clearFeishuSignup(res, b.feishuClaim);
     return session(req, res, u.id);
   }
   async login(body: unknown, req: AuthRequest, res: Response) {
@@ -208,6 +279,7 @@ export class AuthService {
     });
     if (!u?.passwordHash || u.deactivatedAt || !(await verify(u.passwordHash, b.password)))
       throw new UnauthorizedException('账号或密码错误');
+    if (u.bannedAt) throw new ForbiddenException('账号已被封禁，请联系管理员');
     return session(req, res, u.id);
   }
   async logout(req: AuthRequest, res: Response) {
@@ -215,12 +287,21 @@ export class AuthService {
     res.clearCookie('cc_session', { path: '/' });
     return { ok: true };
   }
-  async sessions(req: AuthRequest) {
-    return db.session.findMany({
-      where: { userId: user(req).id, expiresAt: { gt: new Date() } },
-      select: { id: true, createdAt: true, expiresAt: true, userAgent: true },
-      orderBy: { createdAt: 'desc' },
-    });
+  async sessions(req: AuthRequest, query: ListQuery = {}) {
+    if (query.pageSize !== undefined) z.coerce.number().pipe(z.literal(20)).parse(query.pageSize);
+    const where = { userId: user(req).id, expiresAt: { gt: new Date() } };
+    return paginated(
+      query,
+      (options) =>
+        db.session.findMany({
+          where,
+          select: { id: true, createdAt: true, expiresAt: true, userAgent: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          ...options,
+        }),
+      () => db.session.count({ where }),
+      20,
+    );
   }
   async revoke(req: AuthRequest, id: string) {
     await db.session.deleteMany({ where: { id, userId: user(req).id } });
@@ -237,7 +318,7 @@ export class AuthService {
     await rateLimit(`forgot:${req.ip}`, 5);
     const { email } = z.object({ email: z.email() }).parse(body);
     const u = await db.user.findUnique({ where: { email: email.toLowerCase() } });
-    if (u && !u.deactivatedAt) await mailToken(u.id, 'RESET');
+    if (u && !u.deactivatedAt && !u.bannedAt) await mailToken(u.id, 'RESET');
     return { ok: true };
   }
   async consume(body: unknown, purpose: string) {
@@ -255,6 +336,8 @@ export class AuthService {
       const t = await tx.emailToken.findUnique({ where: { id: sha(b.token) } });
       if (!t || t.purpose !== purpose || t.usedAt || t.expiresAt < new Date())
         throw new BadRequestException('链接已失效');
+      const account = await tx.user.findUniqueOrThrow({ where: { id: t.userId } });
+      if (account.deactivatedAt || account.bannedAt) throw new BadRequestException('链接已失效');
       const changed = await tx.emailToken.updateMany({
         where: { id: t.id, usedAt: null },
         data: { usedAt: new Date() },
@@ -283,6 +366,8 @@ export class AuthService {
       .parse(body);
     if (b.profile.display_name !== undefined)
       b.profile.display_name = z.string().trim().max(100).parse(b.profile.display_name);
+    if (b.profile.gender !== undefined)
+      z.enum(['男', '女'], '请选择男或女').parse(b.profile.gender);
     if (b.version !== u.version) throw new BadRequestException('资料已更新，请刷新');
     if (b.isCoach !== undefined && b.isCoach !== u.isCoach)
       throw new ForbiddenException('身份变更须由管理员生成邀请链接并确认');
@@ -388,6 +473,7 @@ export class AuthService {
         fresh.usedAt ||
         fresh.expiresAt <= new Date() ||
         account.deactivatedAt ||
+        account.bannedAt ||
         account.email !== u.email
       )
         throw new BadRequestException('验证码已失效');

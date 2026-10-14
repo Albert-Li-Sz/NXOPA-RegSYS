@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -27,6 +27,12 @@
     "backup": "bash scripts/backup.sh",
     "restore": "bash scripts/restore.sh",
     "test:auth": "tsx tests/integrations/auth.ts",
+    "test:template-bugs": "tsx tests/integrations/template-bugs.ts",
+    "test:feishu": "tsx tests/integrations/feishu.ts",
+    "test:mail-failover": "tsx tests/integrations/mail-failover.ts",
+    "test:overview": "tsx tests/integrations/overview.ts",
+    "test:ui-features": "playwright test tests/e2e/platform-improvements.spec.ts",
+    "test:accounts": "tsx tests/integrations/account-management.ts",
     "test:invitations": "tsx tests/integrations/invitations.ts",
     "test:mail": "tsx tests/integrations/mail-settings.ts",
     "fixtures:domjudge": "tsx scripts/prepare-domjudge.ts",

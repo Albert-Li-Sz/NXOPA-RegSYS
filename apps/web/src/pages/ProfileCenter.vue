@@ -12,6 +12,7 @@ import { api, auth, loadAuth, date, label } from '../api';
 import type { Data, FieldDefinition } from '../types';
 import DynamicFields from '../components/DynamicFields.vue';
 import MailDelivery from '../components/MailDelivery.vue';
+import { usePagedList } from '../composables/usePagedList';
 const route = useRoute(),
   router = useRouter();
 const tab = ref(String(route.query.tab || 'overview')),
@@ -19,11 +20,19 @@ const tab = ref(String(route.query.tab || 'overview')),
   profile = reactive<Data>({ profile: {} }),
   identity = reactive<Data>({ profile: {} }),
   requests = ref<Data[]>([]),
-  sessions = ref<Data[]>([]),
   contests = ref<Data[]>([]),
   code = ref(''),
   github = ref({ enabled: false, linked: false }),
+  feishu = ref({ enabled: false, linked: false }),
   closure = reactive({ confirmation: '', password: '', code: '' });
+const {
+  page: sessionsPage,
+  items: sessions,
+  total: sessionsTotal,
+  loading: sessionsLoading,
+  error: sessionsError,
+  load: loadSessions,
+} = usePagedList('login-sessions', () => '/auth/sessions', { fixedPageSize: 20 });
 const teacher = computed(() => auth.user?.kind === 'TEACHER');
 const identityState = computed(() =>
   requests.value.some((request) => request.status === 'PENDING')
@@ -100,15 +109,16 @@ async function refresh() {
   reset();
   const result = await api('/auth/identity');
   requests.value = result.requests;
-  sessions.value = await api('/auth/sessions');
+  await loadSessions();
 }
 onMounted(async () => {
   reset();
   const providers = await api('/auth/providers');
   github.value = providers.github;
+  feishu.value = providers.feishu;
   const result = await api('/auth/identity');
   requests.value = result.requests;
-  sessions.value = await api('/auth/sessions');
+  await loadSessions();
   if (auth.user?.grants?.length) contests.value = await api('/contests?all=true');
 });
 async function save() {
@@ -179,7 +189,7 @@ async function revokeSession(id: string) {
     await router.replace('/login');
     return;
   }
-  sessions.value = await api('/auth/sessions');
+  await loadSessions();
 }
 async function resign(grant: Data) {
   await ElMessageBox.confirm('卸任后将失去该项管理权限。', '卸任授权', { type: 'warning' });
@@ -233,6 +243,12 @@ const contestName = (id: string | null) =>
         <small>UID：{{ auth.user.id }}</small>
       </div>
     </div>
+    <el-alert
+      v-if="auth.user.profile.gender && !['男', '女'].includes(String(auth.user.profile.gender))"
+      title="性别现在仅支持男、女。已有其他值请在实名认证中重新选择并提交审核。"
+      type="warning"
+      :closable="false"
+    />
     <el-tabs v-model="tab" class="profile-tabs">
       <el-tab-pane label="总览" name="overview">
         <div class="profile-layout">
@@ -319,9 +335,10 @@ const contestName = (id: string | null) =>
           <p class="form-help">修改邮箱后需重新验证，后续通知发送至当前邮箱。</p>
         </div>
         <MailDelivery :resource-id="auth.user.id" />
-        <div class="card">
+        <div class="card login-sessions">
           <h3>登录会话</h3>
-          <el-table :data="sessions"
+          <el-alert v-if="sessionsError" :title="sessionsError" type="error" :closable="false" />
+          <el-table :data="sessions" v-loading="sessionsLoading"
             ><el-table-column prop="userAgent" label="设备" min-width="220" /><el-table-column
               label="登录时间"
               width="175"
@@ -334,6 +351,16 @@ const contestName = (id: string | null) =>
               ></el-table-column
             ></el-table
           >
+          <div class="list-pagination">
+            <span class="form-help">每页 20 条</span>
+            <el-pagination
+              v-model:current-page="sessionsPage"
+              :page-size="20"
+              :total="sessionsTotal"
+              :disabled="sessionsLoading"
+              layout="total, prev, pager, next"
+            />
+          </div>
         </div>
       </el-tab-pane>
       <el-tab-pane label="实名认证" name="identity" lazy>
@@ -389,6 +416,25 @@ const contestName = (id: string | null) =>
         </div>
       </el-tab-pane>
       <el-tab-pane label="设置" name="settings" lazy>
+        <div class="card" v-if="feishu.enabled || feishu.linked">
+          <h3>飞书账号</h3>
+          <p class="muted">
+            {{
+              feishu.linked
+                ? '已绑定飞书，可使用飞书登录。'
+                : '验证邮箱后，可绑定飞书登录当前账号。'
+            }}
+          </p>
+          <div class="actions">
+            <a v-if="!feishu.linked" href="/api/v1/auth/feishu?mode=link"
+              ><el-button :disabled="!auth.user?.verified">绑定飞书</el-button></a
+            ><el-button
+              v-else
+              @click="api('/auth/feishu', 'DELETE').then(() => (feishu.linked = false))"
+              >解除飞书绑定</el-button
+            >
+          </div>
+        </div>
         <div class="card" v-if="github.enabled || github.linked">
           <h3>GitHub 账号</h3>
           <p>
@@ -502,6 +548,14 @@ const contestName = (id: string | null) =>
 }
 .profile-tabs :deep(.card:last-child) {
   margin-bottom: 0;
+}
+.login-sessions .list-pagination {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.login-sessions .list-pagination .form-help {
+  margin: 0;
 }
 @media (max-width: 760px) {
   .profile-tabs :deep(.el-tabs__content) {

@@ -60,6 +60,28 @@ const worker = new Worker(
       const p = j.payload as Record<string, unknown>;
       let result: unknown = { ok: true };
       if (j.kind === 'MAIL') {
+        if (p.templateTest === true) {
+          const template = await db.mailTemplate.findUnique({ where: { key: String(p.category) } });
+          if ((template?.version ?? 0) !== p.templateVersion)
+            throw new Error('邮件模板已变更，请重新发送模板测试邮件');
+        }
+        if (typeof p.registrationTokenId === 'string') {
+          const verification = await db.registrationVerification.findUnique({
+            where: { id: p.registrationTokenId },
+          });
+          if (
+            !verification ||
+            verification.usedAt ||
+            verification.expiresAt <= new Date() ||
+            verification.email !== p.to
+          ) {
+            await db.job.update({
+              where: { id: j.id },
+              data: { state: 'SUCCESS', result: { skipped: true, reason: '注册验证码已失效' } },
+            });
+            return;
+          }
+        }
         const token =
           typeof p.verificationTokenId === 'string'
             ? await db.emailToken.findUnique({
@@ -76,6 +98,7 @@ const worker = new Worker(
             token.expiresAt <= new Date() ||
             !tokenUser ||
             tokenUser.deactivatedAt ||
+            tokenUser.bannedAt ||
             tokenUser.email !== p.to)
         ) {
           await db.job.update({

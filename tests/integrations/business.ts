@@ -218,7 +218,7 @@ try {
           phone: '00000000000',
           class_name: '验收一班',
           college: '验收学院',
-          gender: '不便透露',
+          gender: '男',
         },
       })),
     ],

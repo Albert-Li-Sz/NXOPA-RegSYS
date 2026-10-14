@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { policySchema } from '../../packages/contracts/src/index.js';
+import { registrationProof } from './registration-proof.js';
 const root = fileURLToPath(new URL('../../', import.meta.url)),
   exec = promisify(execFile),
   checks: string[] = [],
@@ -234,6 +235,7 @@ async function message(email: string, match: (m: any) => boolean = () => true): 
 async function register(index: number, kind = 'STUDENT') {
   const actor = new Actor(),
     result = await actor.api('/auth/register', 'POST', {
+      ...(await registrationProof(actor, `platform-${index}@example.test`, undefined, mailBase)),
       email: `platform-${index}@example.test`,
       username: `platform_${index}`,
       name: `测试用户${index}`,
@@ -244,6 +246,9 @@ async function register(index: number, kind = 'STUDENT') {
     });
   actor.user = result.user;
   actor.csrf = result.csrf;
+  assert.equal(actor.user.verified, true);
+  await sql(`UPDATE "User" SET verified=false WHERE id='${actor.user.id}'`);
+  await actor.api('/auth/resend', 'POST', {});
   const tokenId = await sql(
     `SELECT id FROM "EmailToken" WHERE "userId"='${actor.user.id}' AND purpose='VERIFY' ORDER BY "expiresAt" DESC LIMIT 1`,
   );
@@ -562,6 +567,12 @@ try {
     template = templates.find((t: any) => t.key === 'SUPPORT_REPLY');
   const initialIdentityActor = new Actor(),
     initialIdentitySignup = await initialIdentityActor.api('/auth/register', 'POST', {
+      ...(await registrationProof(
+        initialIdentityActor,
+        'first-identity@example.test',
+        undefined,
+        mailBase,
+      )),
       email: 'first-identity@example.test',
       username: 'first_identity',
       name: '首次实名测试',
@@ -580,7 +591,7 @@ try {
       class_name: '实名测试班级',
       college: '实名测试学院',
       school: '实名测试学校',
-      gender: '不便透露',
+      gender: '男',
     },
     version: initialIdentityActor.user.version,
   });

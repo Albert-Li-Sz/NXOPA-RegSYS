@@ -149,10 +149,8 @@ test('manual team, optional teacher, review first, receipt and partial/full conf
         .filter({ has: owner.page.locator(`#member-${index}-gender`) })
         .locator('.el-select')
         .click();
-      await owner.page.getByRole('option', { name: '不便透露', exact: true }).click();
-      await expect(owner.page.getByRole('option', { name: '不便透露', exact: true })).toHaveCount(
-        0,
-      );
+      await owner.page.getByRole('option', { name: '男', exact: true }).click();
+      await expect(owner.page.getByRole('option', { name: '男', exact: true })).toHaveCount(0);
     }
     await owner.page.getByRole('button', { name: '提交报名', exact: true }).click();
     await expect(owner.page.getByText('已提交', { exact: true })).toBeVisible();

@@ -105,10 +105,10 @@ test('contest administrators cannot open system mail configuration; sync action 
 }) => {
   await page.goto('/admin?tab=mail');
   await signIn(page, 'manager');
-  await expect(page.getByRole('heading', { name: '管理后台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '竞赛中心', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: '邮件设置', exact: true })).toHaveCount(0);
   await expect(page.locator('#mail-host')).toHaveCount(0);
-  await page.getByRole('tab', { name: '评测平台', exact: true }).click();
+  await page.getByRole('link', { name: '外接平台中心', exact: true }).click();
   await expect(page.getByRole('heading', { name: '比赛绑定与报名同步' })).toBeVisible();
   const registration = await db.registration.findFirstOrThrow({ where: { status: 'SUBMITTED' } });
   const admin = await new Client().login('admin');
