@@ -55,6 +55,7 @@ jobs:
           pnpm test
           pnpm test:install-cli
           pnpm test:install-images
+          pnpm test:web-static
           pnpm test:install-bootstrap
           pnpm exec playwright install --with-deps chromium
           pnpm test:release-features

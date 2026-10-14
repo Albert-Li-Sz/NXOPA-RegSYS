@@ -10,6 +10,7 @@ const mime = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.js', 'text/javascript; charset=utf-8'],
   ['.mjs', 'text/javascript; charset=utf-8'],
+  ['.wasm', 'application/wasm'],
   ['.css', 'text/css; charset=utf-8'],
   ['.json', 'application/json; charset=utf-8'],
   ['.map', 'application/json; charset=utf-8'],
@@ -63,7 +64,7 @@ const server = createServer(async (req, res) => {
     }
     if (!info) {
       // Missing static files must not masquerade as successful HTML responses.
-      if (/^\/(assets|brand)\//.test(pathname) || mime.has(extname(pathname))) {
+      if (/^\/(assets|brand|pdfjs)\//.test(pathname) || mime.has(extname(pathname))) {
         reply(404, '文件不存在');
         return;
       }

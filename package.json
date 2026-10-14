@@ -41,6 +41,7 @@
     "test:install": "pnpm test:install-cli && tsx tests/integrations/install.ts",
     "test:install-cli": "node --test tests/install-cli.test.mjs",
     "test:install-images": "node --test tests/install-images.test.mjs",
+    "test:web-static": "node --test tests/web-static.test.mjs",
     "test:install-proxy": "tsx tests/integrations/install-proxy.ts",
     "test:full": "tsx tests/integrations/full-regression.ts",
     "test:file-race": "tsx tests/integrations/file-race.ts",
