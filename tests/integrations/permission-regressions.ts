@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { db } from '../../apps/server/src/db.js';
 import { writeFile } from 'node:fs/promises';
 import { Client } from './client.js';
 import { policySchema } from '../../packages/contracts/src/index.js';
@@ -54,6 +56,25 @@ const upload = async (ticketId: string) => {
 };
 const standaloneFile = await upload(standalone.id),
   linkedFile = await upload(linked.id);
+await check('job search retains contest authorization scope', async () => {
+  const resourceId = randomUUID();
+  const job = await db.job.create({
+    data: {
+      kind: 'WEBHOOK',
+      resourceId,
+      dedupeKey: `permission-test:${resourceId}`,
+      state: 'SUCCESS',
+      payload: {},
+      error: 'Private task from another activity',
+    },
+  });
+  try {
+    const result = await viewer.api(`/admin/jobs?page=1&pageSize=20&search=${resourceId}`);
+    assert.equal(result.total, 0, 'Search must not replace the contest resource scope');
+  } finally {
+    await db.job.delete({ where: { id: job.id } });
+  }
+});
 await check('VIEW grant cannot enumerate other users support tickets', async () => {
   const rows = await viewer.api(`/support?contestId=${contest.id}&page=1&pageSize=20`);
   assert.equal(rows.total, 0);
@@ -102,6 +123,41 @@ await check('invalid calendar date cannot enter identity approval queue', async 
     },
   });
   assert.equal(response.status, 400);
+});
+await check('deleting a submitted form attachment invalidates qualification', async () => {
+  const c = await admin.api('/contests', 'POST', {
+    ...contest,
+    title: '报名附件删除与资格回归',
+    policy: policySchema.parse({ coachMode: 'DISABLED', manualReview: false }),
+    fields: [
+      { key: 'proof', label: '报名证明', type: 'file', scope: 'REGISTRATION', required: true },
+    ],
+  });
+  let r = await owner.api('/registrations', 'POST', { contestId: c.id });
+  try {
+    const file = await owner.upload(r.id);
+    r = await owner.api(`/registrations/${r.id}`, 'PUT', {
+      ...r,
+      answers: { registration: { proof: file.id } },
+    });
+    r = await owner.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version });
+    assert.equal(r.eligible, true);
+    await owner.api(`/files/${file.id}`, 'DELETE');
+    const current = await owner.api(`/registrations/${r.id}`);
+    assert.equal(current.eligible, false, 'Removed required evidence must revoke qualification');
+    assert.equal(current.status, 'CORRECTION');
+    assert.equal(
+      (
+        await owner.raw(`/api/v1/registrations/${r.id}/submit`, 'POST', {
+          version: current.version,
+        })
+      ).status,
+      403,
+    );
+  } finally {
+    const current = await owner.api(`/registrations/${r.id}`);
+    await owner.api(`/registrations/${r.id}/cancel`, 'POST', { version: current.version });
+  }
 });
 await check('deleted files cannot be bound to a new support ticket', async () => {
   const file = await owner.upload();
@@ -155,4 +211,5 @@ await writeFile(
   '.runtime/reports/permission-regressions.json',
   JSON.stringify({ success: !failures.length, checks, failures }, null, 2),
 );
+await db.$disconnect();
 assert.deepEqual(failures, []);

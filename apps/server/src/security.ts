@@ -62,11 +62,10 @@ export function canRead(u: Principal, r: Registration) {
   );
 }
 export function canEdit(u: Principal, r: Registration) {
-  return (
-    manages(u, r.contestId, 'REGISTRATIONS') ||
-    owns(u, r.ownerId) ||
-    r.coaches.some((c) => owns(u, c.userId))
-  );
+  return manages(u, r.contestId, 'REGISTRATIONS') || canActForApplicant(u, r);
+}
+export function canActForApplicant(u: Principal, r: Registration) {
+  return owns(u, r.ownerId) || r.coaches.some((c) => owns(u, c.userId));
 }
 export async function getRegistration(u: Principal, id: string, edit = false) {
   const r = await db.registration.findUnique({ where: { id }, include: registrationInclude });

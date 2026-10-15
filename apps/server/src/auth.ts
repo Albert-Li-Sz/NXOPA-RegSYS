@@ -288,7 +288,6 @@ export class AuthService {
     return { ok: true };
   }
   async sessions(req: AuthRequest, query: ListQuery = {}) {
-    if (query.pageSize !== undefined) z.coerce.number().pipe(z.literal(20)).parse(query.pageSize);
     const where = { userId: user(req).id, expiresAt: { gt: new Date() } };
     return paginated(
       query,

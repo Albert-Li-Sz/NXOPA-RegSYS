@@ -3,13 +3,94 @@ import { z } from 'zod';
 import { invoiceSchema, policySchema, type Principal } from '@contest-center/contracts';
 import { db, audit, event, lock, json } from './db.js';
 import { paginated, dateFilter, type ListQuery } from './pagination.js';
-import { loaded, policy, refresh } from './registrations.js';
-import { canEdit, getRegistration, requireManager, checkVersion } from './security.js';
+import { refresh } from './registrations.js';
+import {
+  financeLoaded as loaded,
+  financePolicy as policy,
+  getFinance,
+  canEditFinance as canEdit,
+  balanceChange,
+  financeNotify,
+} from './finance-accounts.js';
+import { requireManager, ownerIds } from './security.js';
 import { bindFile } from './files.js';
 const cents = z.number().int().positive().max(100_000_000);
+async function ledgerWithReversalState<T extends { id: string; kind: string }>(rows: T[]) {
+  const payments = rows.filter((row) => row.kind === 'PAYMENT').map((row) => `reverse:${row.id}`);
+  const reversals = payments.length
+    ? await db.ledgerEntry.findMany({
+        where: { sourceId: { in: payments }, kind: 'REVERSAL' },
+        select: { sourceId: true },
+      })
+    : [];
+  const reversed = new Set(reversals.map((row) => row.sourceId));
+  return rows.map((row) => ({ ...row, reversed: reversed.has(`reverse:${row.id}`) }));
+}
 export class FinanceService {
+  async accounts(u: Principal, query: ListQuery = {}) {
+    if (query.contestId && query.role !== 'mine') requireManager(u, query.contestId, 'FINANCE');
+    const where = {
+      OR: [
+        { feeCents: { gt: 0 } },
+        { netPaidCents: { not: 0 } },
+        { vouchers: { some: {} } },
+        { ledger: { some: {} } },
+        { refunds: { some: {} } },
+        { invoices: { some: {} } },
+      ],
+      ...(query.contestId
+        ? {
+            contestId: query.contestId,
+            ...(query.role === 'mine' ? { ownerId: { in: ownerIds(u) } } : {}),
+          }
+        : { ownerId: { in: ownerIds(u) } }),
+      ...(query.search
+        ? { contest: { title: { contains: query.search, mode: 'insensitive' as const } } }
+        : {}),
+    };
+    return paginated(
+      { page: '1', ...query },
+      (options) =>
+        db.financeAccount.findMany({
+          where,
+          ...options,
+          include: { contest: { select: { title: true } } },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        }),
+      () => db.financeAccount.count({ where }),
+    );
+  }
+  async account(u: Principal, id: string) {
+    const r = await getFinance(u, id);
+    const [vouchers, ledger, refunds, invoices] = await Promise.all([
+      db.paymentVoucher.findMany({ where: { registrationId: id }, orderBy: { createdAt: 'desc' } }),
+      db.ledgerEntry.findMany({ where: { registrationId: id }, orderBy: { createdAt: 'desc' } }),
+      db.refund.findMany({ where: { registrationId: id }, orderBy: { createdAt: 'desc' } }),
+      db.invoiceRequest.findMany({ where: { registrationId: id }, orderBy: { createdAt: 'desc' } }),
+    ]);
+    return {
+      id: r.id,
+      contestId: r.contestId,
+      contest: { title: r.contest.title },
+      number: r.number,
+      feeCents: r.feeCents,
+      netPaidCents: r.netPaidCents,
+      cancelledAt: r.cancelledAt,
+      policy: policy(r),
+      version: r.version,
+      canEdit: canEdit(u, r),
+      canManage:
+        u.isAdmin ||
+        !!u.permissions?.[r.contestId]?.includes('FINANCE') ||
+        (!u.permissions && u.contestIds.includes(r.contestId)),
+      vouchers,
+      ledger: await ledgerWithReversalState(ledger),
+      refunds,
+      invoices,
+    };
+  }
   async history(u: Principal, id: string, collection: string, query: ListQuery = {}) {
-    await getRegistration(u, id);
+    await getFinance(u, id);
     const models = {
       vouchers: db.paymentVoucher,
       ledger: db.ledgerEntry,
@@ -38,8 +119,14 @@ export class FinanceService {
     };
     return paginated(
       { page: '1', ...query },
-      (options) =>
-        model.findMany({ where, ...options, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }),
+      async (options) => {
+        const rows = await model.findMany({
+          where,
+          ...options,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        });
+        return collection === 'ledger' ? ledgerWithReversalState(rows) : rows;
+      },
       () => model.count({ where }),
     );
   }
@@ -118,18 +205,15 @@ export class FinanceService {
             note: b.reason || '管理员确认线下实际到账',
           },
         });
-        await tx.registration.update({
-          where: { id: r.id },
-          data: { netPaidCents: { increment: amount }, version: { increment: 1 } },
-        });
+        await balanceChange(tx, r, amount);
       }
       await audit(tx, u.id, 'VOUCHER_REVIEW', r.id, {
         voucherId: id,
         decision: b.decision,
         amountCents: amount,
       });
-      await event(tx, 'NOTIFY', r.id, { message: `缴费核账：${b.decision}。${b.reason}` });
-      await refresh(tx, r.id);
+      await financeNotify(tx, r, { message: `缴费核账：${b.decision}。${b.reason}` });
+      if (r.registration) await refresh(tx, r.id);
       return result;
     });
   }
@@ -160,13 +244,10 @@ export class FinanceService {
           note: reason,
         },
       });
-      await tx.registration.update({
-        where: { id: r.id },
-        data: { netPaidCents: { decrement: e.amountCents }, version: { increment: 1 } },
-      });
+      await balanceChange(tx, r, -e.amountCents);
       await audit(tx, u.id, 'PAYMENT_REVERSE', r.id, { ledgerId: id, reason });
-      await event(tx, 'NOTIFY', r.id, { message: '收款已冲正，请查看账簿与资格状态。' });
-      await refresh(tx, r.id);
+      await financeNotify(tx, r, { message: '收款已冲正，请查看账簿与资格状态。' });
+      if (r.registration) await refresh(tx, r.id);
       return result;
     });
   }
@@ -229,10 +310,7 @@ export class FinanceService {
             note: x.reason,
           },
         });
-        await tx.registration.update({
-          where: { id: r.id },
-          data: { netPaidCents: { decrement: x.amountCents }, version: { increment: 1 } },
-        });
+        await balanceChange(tx, r, -x.amountCents);
       }
       const result = await tx.refund.update({
         where: { id },
@@ -245,8 +323,8 @@ export class FinanceService {
         },
       });
       await audit(tx, u.id, 'REFUND_REVIEW', r.id, { refundId: id, decision: b.decision });
-      await event(tx, 'NOTIFY', r.id, { message: `退款处理：${b.decision}` });
-      await refresh(tx, r.id);
+      await financeNotify(tx, r, { message: `退款处理：${b.decision}` });
+      if (r.registration) await refresh(tx, r.id);
       return result;
     });
   }
@@ -319,7 +397,7 @@ export class FinanceService {
         },
       });
       await audit(tx, u.id, 'INVOICE_REVIEW', r.id, { invoiceId: id, decision: b.decision });
-      await event(tx, 'NOTIFY', r.id, {
+      await financeNotify(tx, r, {
         message: `开票处理：${b.decision}`,
         category: 'INVOICE',
         status: b.decision,
@@ -329,7 +407,8 @@ export class FinanceService {
         subject: '开票申请处理结果',
         text: `开票状态：${b.decision}${b.reason ? `；${b.reason}` : ''}`,
         category: 'INVOICE',
-        actionPath: `/registrations/${r.id}?tab=finance`,
+        actionPath: `/finance/${r.id}`,
+        finance: true,
       });
       return out;
     });

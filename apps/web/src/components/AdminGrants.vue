@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PaginatedTable from './PaginatedTable.vue';
 import { computed, onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -98,7 +99,7 @@ onMounted(load);
         style="max-width: 320px"
       /><el-button @click="load">刷新</el-button>
     </div>
-    <el-table :data="filtered"
+    <PaginatedTable page-key="admingrants-filtered" :filter-key="search" :data="filtered"
       ><el-table-column label="用户" min-width="200"
         ><template #default="{ row }"
           ><strong>{{ row.user.name }}</strong> ·
@@ -131,7 +132,7 @@ onMounted(load);
             >撤回</el-button
           ></template
         ></el-table-column
-      ></el-table
+      ></PaginatedTable
     >
   </div>
   <el-dialog v-model="dialog" title="新增管理授权" width="660px"

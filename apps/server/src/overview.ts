@@ -19,6 +19,8 @@ export class OverviewService {
         closesAt: true,
         manuallyClosed: true,
         published: true,
+        deletedSubmittedCount: true,
+        deletedCancelledCount: true,
       },
       orderBy: [{ startsAt: 'desc' }, { id: 'asc' }],
     });
@@ -57,6 +59,8 @@ export class OverviewService {
     const now = new Date();
     const activities = selected.map((c) => {
       const stats = empty();
+      stats.submitted = c.deletedSubmittedCount;
+      stats.cancelled = c.deletedCancelledCount;
       stats.participants = participants.find((row) => row.contestId === c.id)?._count._all ?? 0;
       for (const group of groups.filter((row) => row.contestId === c.id)) {
         const count = group._count._all;
@@ -72,6 +76,8 @@ export class OverviewService {
       }
       return {
         ...c,
+        deletedSubmittedCount: undefined,
+        deletedCancelledCount: undefined,
         phase:
           c.manuallyClosed || c.closesAt < now ? 'CLOSED' : c.opensAt > now ? 'UPCOMING' : 'OPEN',
         ...stats,

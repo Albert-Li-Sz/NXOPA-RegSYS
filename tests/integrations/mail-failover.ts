@@ -6,16 +6,24 @@ import { Client, until } from './client.js';
 import { db, json } from '../../apps/server/src/db.js';
 import { redis } from '../../apps/server/src/auth.js';
 import { decrypt } from '../../apps/server/src/security.js';
+import { sendSystemMail } from '../../apps/server/src/mail.js';
 const original = await db.setting.findUnique({ where: { key: 'mail' } }),
   checks: string[] = [];
+let beforeReject: (() => Promise<void>) | undefined;
 const server = createServer((socket) => {
   socket.write('220 fixture SMTP\r\n');
   socket.on('data', (bytes) => {
     const line = bytes.toString();
     if (/^EHLO|^HELO/.test(line)) socket.write('250 fixture\r\n');
     else if (/^MAIL FROM/.test(line)) socket.write('250 OK\r\n');
-    else if (/^RCPT TO/.test(line)) socket.write('550 Recipient rejected\r\n');
-    else if (/^QUIT/.test(line)) socket.end('221 Bye\r\n');
+    else if (/^RCPT TO/.test(line)) {
+      const action = beforeReject;
+      beforeReject = undefined;
+      void (async () => {
+        if (action) await action();
+        socket.write('550 Recipient rejected\r\n');
+      })().catch(() => socket.destroy());
+    } else if (/^QUIT/.test(line)) socket.end('221 Bye\r\n');
     else socket.write('250 OK\r\n');
   });
 });
@@ -100,6 +108,40 @@ try {
   assert.equal(delivered.providerId, working.id);
   assert.equal(delivered.attempts.length, 1);
   pass('SMTP 拒绝收件人时也会自动切换，实际邮件完成投递');
+  const activity = await admin.api('/contests', 'POST', {
+    title: `邮件取消保护 ${Date.now()}`,
+    season: '验收',
+    description: '独立取消场景',
+    startsAt: new Date(Date.now() + 172800000).toISOString(),
+    opensAt: new Date(Date.now() - 86400000).toISOString(),
+    closesAt: new Date(Date.now() + 86400000).toISOString(),
+    published: true,
+    fields: [],
+    policy: {},
+  });
+  const registration = await admin.api('/registrations', 'POST', { contestId: activity.id });
+  beforeReject = async () => {
+    await admin.api(`/registrations/${registration.id}/cancel`, 'POST', {
+      version: registration.version,
+    });
+  };
+  const stopped = await sendSystemMail(
+    {
+      to: admin.user.email,
+      subject: `删除中止 ${registration.id}`,
+      text: '此邮件应在取消后停止备用发送',
+      actionPath: `/registrations/${registration.id}`,
+    },
+    undefined,
+    async () => (await db.registration.count({ where: { id: registration.id } })) > 0,
+  );
+  assert.ok(
+    'skipped' in stopped && stopped.skipped,
+    'Deletion during SMTP failure must prevent subsequent backup delivery',
+  );
+  assert.equal(await db.registration.count({ where: { id: registration.id } }), 0);
+  await db.contest.update({ where: { id: activity.id }, data: { archived: true } });
+  pass('发送中删除报名后，停止切换备用 SMTP，不投递已删除的报名通知');
   const secret = 'FictitiousBackupSecret2026!',
     protectedServer = {
       ...working,

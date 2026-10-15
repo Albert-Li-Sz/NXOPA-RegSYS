@@ -69,6 +69,7 @@ export async function checkUserInterfaces(
     originalPhone = await page.locator('#profile-phone').inputValue();
   await expect(page.locator('#profile-name')).toBeDisabled();
   try {
+    await page.getByRole('button', { name: '编辑', exact: true }).click();
     await page.locator('#profile-nickname').fill('参赛用户'.repeat(20));
     await page.locator('#profile-phone').fill('13800000000');
     await page.getByRole('button', { name: '保存资料', exact: true }).click();
@@ -80,6 +81,8 @@ export async function checkUserInterfaces(
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: `${directory}/long-profile-name.png`, fullPage: true });
   } finally {
+    const edit = page.getByRole('button', { name: '编辑', exact: true });
+    if (await edit.isVisible()) await edit.click();
     await page.locator('#profile-nickname').fill(originalNickname);
     await page.locator('#profile-phone').fill(originalPhone);
     await page.getByRole('button', { name: '保存资料', exact: true }).click();
@@ -104,6 +107,7 @@ export async function checkUserInterfaces(
     await httpPage.getByRole('button', { name: '登录', exact: true }).click();
     await expect(httpPage).toHaveURL(/\/contests$/, { timeout: 5000 });
     await httpPage.goto(base.replace('127.0.0.1', 'nxopa-ui.test') + '/account');
+    await httpPage.getByRole('button', { name: '编辑', exact: true }).click();
     await httpPage.getByRole('button', { name: '保存资料', exact: true }).click();
     await expect(httpPage.getByText('资料已保存', { exact: true })).toBeVisible();
     assert.ok(keys.length >= 2);

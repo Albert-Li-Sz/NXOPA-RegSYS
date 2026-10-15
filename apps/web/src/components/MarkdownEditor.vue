@@ -47,8 +47,8 @@ function insert(value: string) {
       v-model="text"
       type="textarea"
       :rows="9"
-      aria-label="竞赛介绍"
-      placeholder="介绍竞赛内容、参赛要求和注意事项"
+      aria-label="活动介绍"
+      placeholder="介绍活动内容、参加要求和注意事项"
     />
   </div>
 </template>

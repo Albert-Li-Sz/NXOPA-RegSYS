@@ -279,9 +279,22 @@ export const policySchema = z
       ctx.addIssue({ code: 'custom', message: '必需老师时至少允许一位老师' });
   });
 export type ContestPolicy = z.infer<typeof policySchema>;
+export const activityModulesSchema = z.object({
+  admissions: z.boolean().default(true),
+  rooms: z.boolean().default(false),
+  integrations: z.boolean().default(true),
+});
 export const contestSchema = z
   .object({
     version: z.number().int().optional(),
+    kind: z.enum(['ACTIVITY', 'COMPETITION']).default('COMPETITION'),
+    confirmModuleChanges: z.boolean().optional(),
+    modules: activityModulesSchema.default(() => ({
+      admissions: true,
+      rooms: false,
+      integrations: true,
+    })),
+    seatingMode: z.enum(['REGISTRATION', 'PERSON']).default('REGISTRATION'),
     title: z.string().min(2).max(200),
     season: z.string().max(40),
     description: z.string().max(30000),
@@ -303,7 +316,10 @@ export const contestSchema = z
     policy: policySchema,
     fields: fieldsSchema,
   })
-  .refine((c) => new Date(c.opensAt) < new Date(c.closesAt), { message: '报名截止须晚于开放时间' });
+  .refine((c) => new Date(c.opensAt) < new Date(c.closesAt), { message: '报名截止须晚于开放时间' })
+  .refine((c) => !c.correctionUntil || new Date(c.correctionUntil) >= new Date(c.closesAt), {
+    message: '补正截止不能早于报名截止',
+  });
 export const personSchema = z.object({
   id: uuid.optional(),
   userId: uuid.nullable().optional(),
@@ -320,6 +336,10 @@ export const registrationSchema = z.object({
   organization: organizationSchema.nullable().optional(),
   answers: answersSchema.default({}),
   people: z.array(personSchema).min(1).max(30),
+  coaches: z
+    .array(z.object({ id: uuid, answers: answersSchema }))
+    .max(10)
+    .optional(),
 });
 export type PersonInput = z.infer<typeof personSchema>;
 export type Answers = z.infer<typeof answersSchema>;
@@ -597,3 +617,5 @@ export const defaultTemplate = String.raw`\documentclass[UTF8,fontset=fandol,a4p
 \vspace{6mm}\noindent 请携带有效身份证件及本准考证，按竞赛公告要求提前到场。\\[3mm]
 本准考证按报名单位发放，团队成员共用一张。
 \end{document}`;
+
+export * from './activity-workflows.js';

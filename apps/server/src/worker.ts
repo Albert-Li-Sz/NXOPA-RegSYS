@@ -8,6 +8,8 @@ import { config } from './config.js';
 import { decrypt, hmac, safeUrl } from './security.js';
 import { platformConfig, envelope, scheduleSync } from './integrations.js';
 import { admissionMaterial, activeTemplate } from './admissions.js';
+import { modulesFor } from './workflow.js';
+import { migrateCancelledRegistrations } from './registration-removal.js';
 import { renderTemplate } from './templates.js';
 import { sendSystemMail } from './mail.js';
 import { publicLink } from './site-settings.js';
@@ -22,30 +24,38 @@ const queue = new Queue('contest-center', { connection });
 async function compile(id: string, source: string, assets: Record<string, string> = {}) {
   const dir = path.join(config.spool, id);
   await rm(dir, { recursive: true, force: true });
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  await writeFile(path.join(dir, 'request.tmp'), JSON.stringify({ source, assets }), {
-    mode: 0o600,
-  });
-  await rename(path.join(dir, 'request.tmp'), path.join(dir, 'request.json'));
-  let result: { ok: boolean; error?: string } | undefined;
-  for (let i = 0; i < 90; i++) {
-    try {
-      result = JSON.parse(await readFile(path.join(dir, 'result.json'), 'utf8'));
-      break;
-    } catch {
-      await pause(1000);
+  try {
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await writeFile(path.join(dir, 'request.tmp'), JSON.stringify({ source, assets }), {
+      mode: 0o600,
+    });
+    await rename(path.join(dir, 'request.tmp'), path.join(dir, 'request.json'));
+    let result: { ok: boolean; error?: string } | undefined;
+    for (let i = 0; i < 90; i++) {
+      if (
+        (await db.job.findUnique({ where: { id }, select: { state: true } }))?.state === 'CANCELLED'
+      )
+        throw new Error('任务已取消');
+      try {
+        result = JSON.parse(await readFile(path.join(dir, 'result.json'), 'utf8'));
+        break;
+      } catch {
+        await pause(1000);
+      }
     }
+    if (!result?.ok)
+      throw new Error(result?.error ?? 'LaTeX runner did not complete within 90 seconds');
+    const pdf = await readFile(path.join(dir, 'document.pdf'));
+    if (pdf.length > 10 * 1024 * 1024 || pdf.subarray(0, 5).toString() !== '%PDF-')
+      throw new Error('Invalid compiler output');
+    const storageKey = `pdf-${id}`;
+    const ref = await putBlob(storageKey, pdf, 'application/pdf');
+    return ref;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
-  if (!result?.ok)
-    throw new Error(result?.error ?? 'LaTeX runner did not complete within 90 seconds');
-  const pdf = await readFile(path.join(dir, 'document.pdf'));
-  if (pdf.length > 10 * 1024 * 1024 || pdf.subarray(0, 5).toString() !== '%PDF-')
-    throw new Error('Invalid compiler output');
-  const storageKey = `pdf-${id}`;
-  const ref = await putBlob(storageKey, pdf, 'application/pdf');
-  await rm(dir, { recursive: true, force: true });
-  return ref;
 }
+await migrateCancelledRegistrations();
 const worker = new Worker(
   'contest-center',
   async (qjob) => {
@@ -56,9 +66,24 @@ const worker = new Worker(
       data: { state: 'RUNNING', attempts: { increment: 1 }, error: null },
     });
     if (!claimed.count) return;
+    let producedBlob: StorageRef | undefined;
     try {
       const p = j.payload as Record<string, unknown>;
       let result: unknown = { ok: true };
+      if (
+        (j.kind === 'MAIL' &&
+          String(p.actionPath ?? '').startsWith('/registrations/') &&
+          p.finance !== true) ||
+        ['ADMISSION', 'SYNC'].includes(j.kind)
+      ) {
+        if (!(await db.registration.count({ where: { id: j.resourceId } }))) {
+          await db.job.updateMany({
+            where: { id: j.id, state: 'RUNNING' },
+            data: { state: 'CANCELLED', payload: {}, result: { deleted: true } },
+          });
+          return;
+        }
+      }
       if (j.kind === 'MAIL') {
         if (p.templateTest === true) {
           const template = await db.mailTemplate.findUnique({ where: { key: String(p.category) } });
@@ -119,11 +144,20 @@ const worker = new Worker(
             status: typeof p.status === 'string' ? p.status : undefined,
           },
           p.test === true ? Number(p.configurationVersion) : undefined,
+          String(p.actionPath ?? '').startsWith('/registrations/') && p.finance !== true
+            ? async () =>
+                !!(await db.registration.count({ where: { id: j.resourceId } })) &&
+                (await db.job.findUnique({ where: { id: j.id }, select: { state: true } }))
+                  ?.state === 'RUNNING'
+            : undefined,
         );
       } else if (j.kind === 'PDF_PREVIEW') {
         result = await compile(j.id, String(p.source));
       } else if (j.kind === 'STORAGE_MIGRATION') {
         result = await migrateObjects(String(p.profileId), j.id);
+      } else if (j.kind === 'SPOOL_DELETE') {
+        if (!/^[a-f0-9-]{36}$/.test(String(p.jobId))) throw new Error('Invalid spool job');
+        await rm(path.join(config.spool, String(p.jobId)), { recursive: true, force: true });
       } else if (j.kind === 'OBJECT_DELETE') {
         await removeBlob(p.storageRef as StorageRef);
       } else if (j.kind === 'ADMISSION') {
@@ -134,7 +168,11 @@ const worker = new Worker(
           where: { id: document.registrationId },
           include: registrationInclude,
         });
-        if (!r.eligible || r.version !== document.registrationVersion)
+        if (
+          !modulesFor(r.contest).admissions ||
+          !r.eligible ||
+          r.version !== document.registrationVersion
+        )
           throw new Error('Registration changed or no longer eligible');
         const template = await activeTemplate(r.contestId);
         if (
@@ -146,6 +184,7 @@ const worker = new Worker(
         const material = await admissionMaterial(r, document);
         const source = renderTemplate(template.source, material.context);
         const storageRef = await compile(j.id, source, material.assets);
+        producedBlob = storageRef;
         await db.$transaction(async (tx) => {
           await lock(tx, r.id);
           const current = await tx.registration.findUniqueOrThrow({ where: { id: r.id } });
@@ -172,6 +211,7 @@ const worker = new Worker(
               status: 'RELEASED',
             });
         });
+        producedBlob = undefined;
         result = { documentId: document.id };
       } else if (j.kind === 'SYNC') {
         result = await db.$transaction(
@@ -179,6 +219,16 @@ const worker = new Worker(
             const mappingId = String(p.mappingId);
             await lock(tx, `sync:${mappingId}`);
             const mapping = await tx.accountMapping.findUniqueOrThrow({ where: { id: mappingId } });
+            await lock(tx, mapping.registrationId);
+            await lock(
+              tx,
+              (
+                await tx.registration.findUniqueOrThrow({
+                  where: { id: mapping.registrationId },
+                  select: { contestId: true },
+                })
+              ).contestId,
+            );
             const expectedMapping = {
               id: mapping.id,
               registration: { version: Number(p.version), eligible: true },
@@ -216,6 +266,7 @@ const worker = new Worker(
                 throw new Error('报名、学校或平台配置已改变，请重新发起同步');
               return binding;
             }
+            if (!modulesFor(r.contest).integrations) throw new Error('此活动已关闭平台联动');
             const binding = await versions();
             const c = await platformConfig(mapping.bindingId);
             c.configuration.organizationId = p.organizationId
@@ -310,13 +361,18 @@ const worker = new Worker(
         });
         if (!response.ok) throw new Error(`Webhook HTTP ${response.status}`);
       }
-      await db.job.update({
-        where: { id: j.id },
+      await db.job.updateMany({
+        where: { id: j.id, state: 'RUNNING' },
         data: { state: 'SUCCESS', result: json(result) },
       });
     } catch (error) {
+      if (producedBlob) await removeBlob(producedBlob).catch(() => undefined);
+      if ((await db.job.findUnique({ where: { id: j.id } }))?.state === 'CANCELLED') return;
       const message = (error instanceof Error ? error.message : 'Task failed').slice(0, 1500);
-      await db.job.update({ where: { id: j.id }, data: { state: 'FAILED', error: message } });
+      await db.job.updateMany({
+        where: { id: j.id, state: 'RUNNING' },
+        data: { state: 'FAILED', error: message },
+      });
       if (j.kind === 'ADMISSION')
         await db.admissionDocument.updateMany({
           where: {
@@ -363,8 +419,19 @@ async function dispatch() {
   for (const e of events) {
     await db.$transaction(async (tx) => {
       await lock(tx, `outbox:${e.id}`);
-      if ((await tx.outboxEvent.findUniqueOrThrow({ where: { id: e.id } })).deliveredAt) return;
+      const currentEvent = await tx.outboxEvent.findUnique({ where: { id: e.id } });
+      if (!currentEvent || currentEvent.deliveredAt) return;
       const p = e.payload as Record<string, unknown>;
+      const registrationMail =
+        e.type === 'MAIL' &&
+        String(p.actionPath ?? '').startsWith('/registrations/') &&
+        p.finance !== true;
+      if (['NOTIFY', 'ELIGIBILITY'].includes(e.type) || registrationMail)
+        await lock(tx, e.resourceId);
+      if (registrationMail && !(await tx.registration.count({ where: { id: e.resourceId } }))) {
+        await tx.outboxEvent.deleteMany({ where: { id: e.id } });
+        return;
+      }
       if (e.type === 'TASK')
         await tx.job.updateMany({
           where: { id: String(p.jobId), state: 'OUTBOX' },
@@ -431,8 +498,42 @@ async function dispatch() {
               update: {},
             });
         }
+      } else if (e.type === 'REGISTRATION_REMOVED') {
+        const hooks = await tx.webhook.findMany({
+          where: { enabled: true, OR: [{ contestId: String(p.contestId) }, { contestId: null }] },
+        });
+        for (const hook of hooks)
+          await tx.job.upsert({
+            where: { dedupeKey: `hook:${e.id}:${hook.id}` },
+            create: {
+              kind: 'WEBHOOK',
+              resourceId: e.resourceId,
+              dedupeKey: `hook:${e.id}:${hook.id}`,
+              payload: json({
+                webhookId: hook.id,
+                body: {
+                  schemaVersion: 1,
+                  eventId: e.id,
+                  type: 'registration.eligibility',
+                  registrationId: e.resourceId,
+                  contestId: p.contestId,
+                  version: p.version,
+                  eligible: false,
+                  deleted: true,
+                },
+              }),
+            },
+            update: {},
+          });
       } else if (e.type === 'ELIGIBILITY') {
-        const r = await tx.registration.findUniqueOrThrow({ where: { id: e.resourceId } });
+        const r = await tx.registration.findUnique({ where: { id: e.resourceId } });
+        if (!r) {
+          await tx.outboxEvent.updateMany({
+            where: { id: e.id },
+            data: { deliveredAt: new Date() },
+          });
+          return;
+        }
         if (r.eligible) {
           const bindings = await tx.platformBinding.findMany({
             where: {
@@ -474,7 +575,7 @@ async function dispatch() {
             update: {},
           });
       }
-      await tx.outboxEvent.update({ where: { id: e.id }, data: { deliveredAt: new Date() } });
+      await tx.outboxEvent.updateMany({ where: { id: e.id }, data: { deliveredAt: new Date() } });
     });
   }
   await db.job.updateMany({
@@ -509,7 +610,8 @@ async function dispatch() {
     take: 100,
   });
   for (const a of scheduled) {
-    const r = await db.registration.findUniqueOrThrow({ where: { id: a.registrationId } });
+    const r = await db.registration.findUnique({ where: { id: a.registrationId } });
+    if (!r) continue;
     if (
       r.eligible &&
       r.version === a.registrationVersion &&
@@ -523,15 +625,17 @@ async function dispatch() {
           });
         if (
           current.state !== 'READY' ||
+          current.version !== a.version ||
           !registration.eligible ||
           registration.version !== a.registrationVersion ||
           (await activeTemplate(registration.contestId, tx))?.id !== a.templateId
         )
           return;
-        await tx.admissionDocument.update({
-          where: { id: a.id },
+        const released = await tx.admissionDocument.updateMany({
+          where: { id: a.id, version: a.version, state: 'READY' },
           data: { state: 'RELEASED', releasedAt: new Date() },
         });
+        if (!released.count) return;
         await event(tx, 'NOTIFY', a.registrationId, {
           message: '您的准考证已发放，可以下载。',
           category: 'ADMISSION',

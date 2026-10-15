@@ -24,6 +24,7 @@ import {
   type Registration,
   type Tx,
 } from './db.js';
+import { modulesFor } from './workflow.js';
 import { config } from './config.js';
 import {
   decrypt,
@@ -159,6 +160,8 @@ export async function platformConfig(
 export async function scheduleSync(tx: Tx, registrationId: string, bindingId: string) {
   await lock(tx, registrationId);
   const r = await tx.registration.findUniqueOrThrow({ where: { id: registrationId } });
+  const activity = await tx.contest.findUniqueOrThrow({ where: { id: r.contestId } });
+  if (!modulesFor(activity).integrations) throw new BadRequestException('此活动未启用平台联动');
   if (!r.eligible) throw new BadRequestException('报名尚未取得参赛资格');
   const b = await tx.platformBinding.findUniqueOrThrow({
     where: { id: bindingId },
@@ -429,6 +432,11 @@ export class IntegrationService {
       })
       .parse(body);
     requireManager(u, b.contestId, 'INTEGRATIONS');
+    if (
+      b.enabled &&
+      !modulesFor(await db.contest.findUniqueOrThrow({ where: { id: b.contestId } })).integrations
+    )
+      throw new BadRequestException('此活动未启用平台联动');
     const instance = await db.platformInstance.findUniqueOrThrow({ where: { id: b.instanceId } });
     if (!u.isAdmin && !(instance.allowedContestIds as string[]).includes(b.contestId))
       throw new ForbiddenException('该竞赛未获授权使用此平台实例');
@@ -649,6 +657,7 @@ export class IntegrationService {
   }
   async credentials(u: Principal, id: string) {
     const r = await getRegistration(u, id);
+    if (!modulesFor(r.contest).integrations) throw new ForbiddenException('此活动未启用平台联动');
     const manager = manages(u, r.contestId, 'INTEGRATIONS');
     if (
       !manager &&
@@ -668,28 +677,49 @@ export class IntegrationService {
       where: { registrationId: id, state: 'VERIFIED' },
     });
     await db.$transaction((tx) => audit(tx, u.id, 'CREDENTIAL_VIEW', id));
-    return rows.map((x) => ({
-      id: x.id,
-      username: x.username,
-      password: decrypt(x.credential),
-      bindingId: x.bindingId,
-    }));
+    return rows
+      .filter((x) => (x.details as Record<string, unknown>)?.registrationVersion === r.version)
+      .map((x) => ({
+        id: x.id,
+        username: x.username,
+        password: decrypt(x.credential),
+        bindingId: x.bindingId,
+      }));
   }
   async jobs(u: Principal, query: ListQuery = {}) {
     if (!u.isAdmin && !u.contestIds.length) throw new ForbiddenException();
-    const regs = u.isAdmin
+    const resourceGroups = u.isAdmin
       ? undefined
-      : (
-          await db.registration.findMany({
+      : await Promise.all([
+          db.registration.findMany({
             where: { contestId: { in: u.contestIds } },
             select: { id: true },
-          })
-        ).map((r) => r.id);
+          }),
+          db.financeAccount.findMany({
+            where: { contestId: { in: u.contestIds } },
+            select: { id: true },
+          }),
+          db.remoteRevocation.findMany({
+            where: { contestId: { in: u.contestIds } },
+            select: { registrationId: true },
+          }),
+        ]);
+    const resources = resourceGroups
+      ? [
+          ...new Set([
+            ...resourceGroups[0].map((r) => r.id),
+            ...resourceGroups[1].map((r) => r.id),
+            ...resourceGroups[2].map((r) => r.registrationId),
+          ]),
+        ]
+      : undefined;
     const where = {
-      ...(regs ? { resourceId: { in: regs } } : {}),
+      AND: [
+        ...(resources ? [{ resourceId: { in: resources } }] : []),
+        ...(query.search ? [{ resourceId: { contains: query.search } }] : []),
+      ],
       ...(query.status ? { state: query.status } : {}),
       ...(query.kind ? { kind: query.kind } : {}),
-      ...(query.search ? { resourceId: { contains: query.search } } : {}),
       createdAt: dateFilter(query),
     };
     return paginated(
@@ -716,10 +746,16 @@ export class IntegrationService {
   }
   async retry(u: Principal, id: string) {
     const job = await db.job.findUniqueOrThrow({ where: { id } });
+    if (job.state === 'CANCELLED') throw new BadRequestException('已删除报名的任务不可重试');
     if (job.kind === 'STORAGE_MIGRATION') requireSystemAdmin(u);
     if (!u.isAdmin) {
-      const r = await getRegistration(u, job.resourceId);
-      requireManager(u, r.contestId, 'INTEGRATIONS');
+      const deletedContest =
+        job.kind === 'WEBHOOK' ? (job.payload as any)?.body?.contestId : undefined;
+      if (deletedContest) requireManager(u, String(deletedContest), 'INTEGRATIONS');
+      else {
+        const r = await getRegistration(u, job.resourceId);
+        requireManager(u, r.contestId, 'INTEGRATIONS');
+      }
     }
     if (
       job.kind === 'MAIL' &&

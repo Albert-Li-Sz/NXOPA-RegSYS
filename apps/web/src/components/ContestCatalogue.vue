@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
+import ListPagination from './ListPagination.vue';
+import { useLocalPagination } from '../composables/useLocalPagination';
 import { Calendar, User, Search, ArrowRight } from '@element-plus/icons-vue';
 import { shortDate, date, money } from '../api';
 import { useRoute } from 'vue-router';
@@ -27,6 +29,8 @@ const filtered = computed(() =>
   ),
 );
 const seasons = computed(() => [...new Set(props.contests.map((c) => c.season))]);
+const list = useLocalPagination('contest-catalogue', () => filtered.value);
+watch([filter, search, season], list.reset);
 </script>
 <template>
   <div class="page-heading">
@@ -54,7 +58,7 @@ const seasons = computed(() => [...new Set(props.contests.map((c) => c.season))]
   </div>
   <el-empty v-else-if="!filtered.length" description="暂时没有符合条件的竞赛" />
   <section v-else class="contest-grid" aria-label="竞赛列表">
-    <article v-for="c in filtered" :key="c.id" class="contest-card">
+    <article v-for="c in list.items.value" :key="c.id" class="contest-card">
       <div class="card-tags">
         <el-tag effect="dark" round
           ><el-icon><User /></el-icon
@@ -101,6 +105,12 @@ const seasons = computed(() => [...new Set(props.contests.map((c) => c.season))]
       >
     </article>
   </section>
+  <ListPagination
+    v-if="!loading && !error"
+    v-model:page="list.page.value"
+    v-model:size="list.pageSize.value"
+    :total="list.total.value"
+  />
 </template>
 <style scoped>
 .catalogue-title {

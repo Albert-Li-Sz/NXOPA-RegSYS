@@ -179,10 +179,58 @@
     "/api/v1/notifications/mail": {
       "get": {
         "operationId": "ApiController_mailDeliveryStatus",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                20,
+                50,
+                100
+              ],
+              "default": 20
+            }
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "分页结果或兼容数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PageResult"
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    }
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation failed",
@@ -252,7 +300,8 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "description": "按创建时间与 ID 降序分页，合并邮件任务和未派发事件。必须有对应账号、报名、财务或工单资源的访问权限；其他收件人邮箱保持脱敏，重发操作独立校验。旧调用最多返回 200 条。"
       }
     },
     "/api/v1/notifications/mail/{id}/retry": {
@@ -3295,10 +3344,75 @@
     "/api/v1/files": {
       "get": {
         "operationId": "ApiController_fileList",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                20,
+                50,
+                100
+              ],
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "contestId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "registrationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "分页结果或兼容数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PageResult"
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    }
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation failed",
@@ -3368,7 +3482,8 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "description": "按账号、报名关联或 FILES 管理权限筛选附件。支持分页与名称搜索，权限条件同时作用于列表和总数。旧调用返回数组，个人附件旧调用最多 500 条；分页可读取更早记录。"
       },
       "post": {
         "operationId": "ApiController_upload",
@@ -5897,7 +6012,9 @@
             "schema": {
               "type": "integer",
               "enum": [
-                20
+                20,
+                50,
+                100
               ],
               "default": 20
             }
@@ -5921,12 +6038,14 @@
                             "pageSize": {
                               "type": "integer",
                               "enum": [
-                                20
+                                20,
+                                50,
+                                100
                               ]
                             },
                             "items": {
                               "type": "array",
-                              "maxItems": 20,
+                              "maxItems": 100,
                               "items": {}
                             }
                           }
@@ -6012,7 +6131,7 @@
             "cookie": []
           }
         ],
-        "description": "仅返回当前账号尚未过期的会话，每页固定 20 条。显式传入 page 或 pageSize 返回分页结果；旧调用返回最多 20 条的数组。"
+        "description": "仅返回当前账号尚未过期的会话，默认每页 20 条，可选择 20、50、100 条。显式传入 page 或 pageSize 返回分页结果；旧调用返回最多 20 条的数组。"
       }
     },
     "/api/v1/auth/sessions/{id}": {
@@ -6656,10 +6775,73 @@
     "/api/v1/contests": {
       "get": {
         "operationId": "ApiController_contests",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                20,
+                50,
+                100
+              ],
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "managed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "分页结果或兼容数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PageResult"
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    }
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation failed",
@@ -6725,7 +6907,8 @@
         "tags": [
           "contests"
         ],
-        "security": []
+        "security": [],
+        "description": "兼容原数组；传 page/pageSize 返回分页列表。managed=true 仅返回当前账号具有查看管理权限的活动，包含 registrationCounts.official/unofficial，按已提交及待补正报名中的有效成员人数统计，不含草稿、已撤回或删除报名，也不含指导老师。团队按成员人数计。"
       },
       "post": {
         "operationId": "ApiController_createContest",
@@ -7009,6 +7192,1648 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ContestInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contests/{id}/rooms": {
+      "get": {
+        "operationId": "ApiController_rooms",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "contests"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "ApiController_createRoom",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "contests"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "location": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "capacity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10000
+                  },
+                  "sortOrder": {
+                    "default": 0,
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "location",
+                  "capacity",
+                  "sortOrder",
+                  "enabled"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contests/{id}/rooms/{roomId}": {
+      "put": {
+        "operationId": "ApiController_saveRoom",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "contests"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "location": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "capacity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10000
+                  },
+                  "sortOrder": {
+                    "default": 0,
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "location",
+                  "capacity",
+                  "sortOrder",
+                  "enabled"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "ApiController_deleteRoom",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "contests"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "version"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contests/{id}/seating/preview": {
+      "post": {
+        "operationId": "ApiController_previewSeating",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Allocation preview/result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatingPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "contests"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "description": "ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "registrationIds": {
+                    "minItems": 1,
+                    "maxItems": 10000,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "replace": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "assignments": {
+                    "maxItems": 30000,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "registrationId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "personId": {
+                          "nullable": true,
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "roomId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "seat": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "registrationId",
+                        "roomId",
+                        "seat"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "seatingVersion": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "registrationVersions": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "required": [
+                  "registrationIds",
+                  "replace"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contests/{id}/seating/commit": {
+      "post": {
+        "operationId": "ApiController_commitSeating",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Allocation preview/result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatingPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "contests"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "description": "ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "registrationIds": {
+                    "minItems": 1,
+                    "maxItems": 10000,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "replace": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "assignments": {
+                    "maxItems": 30000,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "registrationId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "personId": {
+                          "nullable": true,
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "roomId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "seat": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "registrationId",
+                        "roomId",
+                        "seat"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "seatingVersion": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "registrationVersions": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "required": [
+                  "registrationIds",
+                  "replace"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contests/{id}/seating/clear": {
+      "post": {
+        "operationId": "ApiController_clearSeating",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "contests"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "seatingVersion": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "roomId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": [
+                  "seatingVersion"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/revocations": {
+      "get": {
+        "operationId": "ApiController_revocations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "integrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/integrations/revocations/{id}/complete": {
+      "post": {
+        "operationId": "ApiController_completeRevocation",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "integrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/finance/accounts": {
+      "get": {
+        "operationId": "ApiController_financeAccounts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "finance"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "description": "Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted."
+      }
+    },
+    "/api/v1/finance/accounts/{id}": {
+      "get": {
+        "operationId": "ApiController_financeAccount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "finance"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "description": "Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted."
+      }
+    },
+    "/api/v1/registrations/{id}": {
+      "delete": {
+        "operationId": "ApiController_removeRegistration",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletion receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationDeletionReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "registrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "description": "Permanently removes registration data, releases seats and invalidates admissions. Settlement data survives in an independent finance account; cancellation does not automatically refund. Creator may cancel; scoped registration managers may delete with a reason.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "version",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "ApiController_detail",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "registrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "ApiController_save",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "registrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationInput"
               }
             }
           }
@@ -7299,6 +9124,107 @@
         }
       }
     },
+    "/api/v1/registrations/review-queue": {
+      "get": {
+        "operationId": "ApiController_reviewQueue",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Review queue",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      }
+                    }
+                  },
+                  "required": [
+                    "ids"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "registrations"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "description": "Scoped REGISTRATIONS permission required. Returns all submitted IDs matching the current list filters in review order, independent of page size; defaults to pending review."
+      }
+    },
     "/api/v1/registrations/summary": {
       "get": {
         "operationId": "ApiController_summary",
@@ -7455,191 +9381,6 @@
             "cookie": []
           }
         ]
-      }
-    },
-    "/api/v1/registrations/{id}": {
-      "get": {
-        "operationId": "ApiController_detail",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          },
-          "400": {
-            "description": "Validation failed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Scope or role denied",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Record missing",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Version conflict or duplicate identity",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limit exceeded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "registrations"
-        ],
-        "security": [
-          {
-            "cookie": []
-          }
-        ]
-      },
-      "put": {
-        "operationId": "ApiController_save",
-        "parameters": [
-          {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "maxLength": 200
-            },
-            "description": "Same actor, method, URL and body replay the encrypted saved result."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          },
-          "400": {
-            "description": "Validation failed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Scope or role denied",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Record missing",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Version conflict or duplicate identity",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limit exceeded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "registrations"
-        ],
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegistrationInput"
-              }
-            }
-          }
-        }
       }
     },
     "/api/v1/registrations/{id}/finance/{collection}": {
@@ -8091,7 +9832,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "Deletion receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationDeletionReceipt"
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation failed",
@@ -8162,6 +9910,7 @@
             "cookie": []
           }
         ],
+        "description": "Permanently removes registration data, releases seats and invalidates admissions. Settlement data survives in an independent finance account; cancellation does not automatically refund. Creator may cancel; scoped registration managers may delete with a reason.",
         "requestBody": {
           "required": true,
           "content": {
@@ -8171,12 +9920,19 @@
                 "properties": {
                   "version": {
                     "type": "integer",
-                    "minimum": -9007199254740991,
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
                     "maximum": 9007199254740991
+                  },
+                  "reason": {
+                    "default": "用户取消报名",
+                    "type": "string",
+                    "maxLength": 3000
                   }
                 },
                 "required": [
-                  "version"
+                  "version",
+                  "reason"
                 ],
                 "additionalProperties": false
               }
@@ -10893,6 +12649,11 @@
                     "type": "string",
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
                   },
                   "name": {
                     "type": "string"
@@ -16377,7 +18138,7 @@
                       "verification": {
                         "type": "object",
                         "additionalProperties": {
-                          "$ref": "#/components/schemas/Value62___schema0"
+                          "$ref": "#/components/schemas/Value75___schema0"
                         }
                       }
                     },
@@ -16597,6 +18358,53 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "kind": {
+            "default": "COMPETITION",
+            "type": "string",
+            "enum": [
+              "ACTIVITY",
+              "COMPETITION"
+            ]
+          },
+          "confirmModuleChanges": {
+            "type": "boolean"
+          },
+          "modules": {
+            "default": {
+              "admissions": true,
+              "rooms": false,
+              "integrations": true
+            },
+            "type": "object",
+            "properties": {
+              "admissions": {
+                "default": true,
+                "type": "boolean"
+              },
+              "rooms": {
+                "default": false,
+                "type": "boolean"
+              },
+              "integrations": {
+                "default": true,
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "admissions",
+              "rooms",
+              "integrations"
+            ],
+            "additionalProperties": false
+          },
+          "seatingMode": {
+            "default": "REGISTRATION",
+            "type": "string",
+            "enum": [
+              "REGISTRATION",
+              "PERSON"
+            ]
           },
           "title": {
             "type": "string",
@@ -16960,6 +18768,9 @@
           }
         },
         "required": [
+          "kind",
+          "modules",
+          "seatingMode",
           "title",
           "season",
           "description",
@@ -16979,7 +18790,293 @@
         ],
         "additionalProperties": false
       },
-      "Value2___schema0": {
+      "RoomInput": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "location": {
+            "default": "",
+            "type": "string",
+            "maxLength": 300
+          },
+          "capacity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "sortOrder": {
+            "default": 0,
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "location",
+          "capacity",
+          "sortOrder",
+          "enabled"
+        ],
+        "additionalProperties": false
+      },
+      "SeatingRequest": {
+        "type": "object",
+        "properties": {
+          "registrationIds": {
+            "minItems": 1,
+            "maxItems": 10000,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "replace": {
+            "default": false,
+            "type": "boolean"
+          },
+          "assignments": {
+            "maxItems": 30000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "registrationId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "personId": {
+                  "nullable": true,
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "roomId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "seat": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "exclusiveMinimum": true,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "registrationId",
+                "roomId",
+                "seat"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "seatingVersion": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "registrationVersions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "required": [
+          "registrationIds",
+          "replace"
+        ],
+        "additionalProperties": false
+      },
+      "SeatingPreview": {
+        "type": "object",
+        "properties": {
+          "seatingVersion": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "registrationVersions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "assignments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "registrationId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "personId": {
+                  "nullable": true,
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "roomId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "seat": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "exclusiveMinimum": true,
+                  "maximum": 9007199254740991
+                },
+                "unitKey": {
+                  "type": "string"
+                },
+                "roomName": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "number": {
+                  "nullable": true,
+                  "type": "number"
+                }
+              },
+              "required": [
+                "registrationId",
+                "roomId",
+                "seat",
+                "unitKey",
+                "roomName",
+                "number"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "seatingVersion",
+          "registrationVersions",
+          "errors",
+          "total",
+          "assignments"
+        ],
+        "additionalProperties": false
+      },
+      "RegistrationDeletionReceipt": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "registrationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "financeAccountId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "deleted",
+          "registrationId",
+          "financeAccountId"
+        ],
+        "additionalProperties": false
+      },
+      "RegistrationActions": {
+        "type": "object",
+        "properties": {
+          "edit": {
+            "type": "boolean"
+          },
+          "editOwnMember": {
+            "type": "boolean"
+          },
+          "submit": {
+            "type": "boolean"
+          },
+          "withdraw": {
+            "type": "boolean"
+          },
+          "cancel": {
+            "type": "boolean"
+          },
+          "delete": {
+            "type": "boolean"
+          },
+          "review": {
+            "type": "boolean"
+          },
+          "amendReview": {
+            "type": "boolean"
+          },
+          "requestFinance": {
+            "type": "boolean"
+          },
+          "credentials": {
+            "type": "boolean"
+          },
+          "editReason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "edit",
+          "editOwnMember",
+          "submit",
+          "withdraw",
+          "cancel",
+          "delete",
+          "review",
+          "amendReview",
+          "requestFinance",
+          "credentials",
+          "editReason"
+        ],
+        "additionalProperties": false
+      },
+      "Value7___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -17000,13 +19097,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value2___schema0"
+              "$ref": "#/components/schemas/Value7___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value2___schema0"
+              "$ref": "#/components/schemas/Value7___schema0"
             }
           }
         ]
@@ -17073,7 +19170,7 @@
             "default": {},
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value2___schema0"
+              "$ref": "#/components/schemas/Value7___schema0"
             }
           },
           "people": {
@@ -17123,7 +19220,7 @@
                   "default": {},
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/Value2___schema0"
+                    "$ref": "#/components/schemas/Value7___schema0"
                   }
                 }
               },
@@ -17131,6 +19228,31 @@
                 "name",
                 "email",
                 "captain",
+                "answers"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "coaches": {
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "answers": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/Value7___schema0"
+                  }
+                }
+              },
+              "required": [
+                "id",
                 "answers"
               ],
               "additionalProperties": false
@@ -17146,7 +19268,7 @@
         ],
         "additionalProperties": false
       },
-      "Value3___schema0": {
+      "Value8___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -17167,13 +19289,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value3___schema0"
+              "$ref": "#/components/schemas/Value8___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value3___schema0"
+              "$ref": "#/components/schemas/Value8___schema0"
             }
           }
         ]
@@ -17263,7 +19385,7 @@
               "equals": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/Value3___schema0"
+                    "$ref": "#/components/schemas/Value8___schema0"
                   }
                 ]
               },
@@ -17291,7 +19413,7 @@
         ],
         "additionalProperties": false
       },
-      "Value4___schema0": {
+      "Value9___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -17312,18 +19434,18 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value4___schema0"
+              "$ref": "#/components/schemas/Value9___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value4___schema0"
+              "$ref": "#/components/schemas/Value9___schema0"
             }
           }
         ]
       },
-      "Value4___schema1": {
+      "Value9___schema1": {
         "anyOf": [
           {
             "type": "string"
@@ -17344,13 +19466,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value4___schema1"
+              "$ref": "#/components/schemas/Value9___schema1"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value4___schema1"
+              "$ref": "#/components/schemas/Value9___schema1"
             }
           }
         ]
@@ -17471,7 +19593,7 @@
                 "answers": {
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/Value4___schema0"
+                    "$ref": "#/components/schemas/Value9___schema0"
                   }
                 }
               },
@@ -17577,7 +19699,7 @@
                         "equals": {
                           "allOf": [
                             {
-                              "$ref": "#/components/schemas/Value4___schema1"
+                              "$ref": "#/components/schemas/Value9___schema1"
                             }
                           ]
                         },
@@ -17609,7 +19731,7 @@
               "answers": {
                 "type": "object",
                 "additionalProperties": {
-                  "$ref": "#/components/schemas/Value4___schema0"
+                  "$ref": "#/components/schemas/Value9___schema0"
                 }
               }
             },
@@ -17639,7 +19761,7 @@
                 "answers": {
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/Value4___schema0"
+                    "$ref": "#/components/schemas/Value9___schema0"
                   }
                 }
               },
@@ -17688,7 +19810,7 @@
         ],
         "additionalProperties": false
       },
-      "Value5___schema0": {
+      "Value10___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -17709,13 +19831,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value5___schema0"
+              "$ref": "#/components/schemas/Value10___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value5___schema0"
+              "$ref": "#/components/schemas/Value10___schema0"
             }
           }
         ]
@@ -17762,7 +19884,7 @@
           "verification": {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value5___schema0"
+              "$ref": "#/components/schemas/Value10___schema0"
             }
           }
         },
@@ -18216,7 +20338,7 @@
         ],
         "additionalProperties": false
       },
-      "Value62___schema0": {
+      "Value75___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -18237,13 +20359,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value62___schema0"
+              "$ref": "#/components/schemas/Value75___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value62___schema0"
+              "$ref": "#/components/schemas/Value75___schema0"
             }
           }
         ]

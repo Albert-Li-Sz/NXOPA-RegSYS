@@ -37,6 +37,7 @@ export const router = createRouter({
       component: () => import('./pages/Registration.vue'),
       meta: { auth: true },
     },
+    { path: '/finance/:id', component: () => import('./pages/Finance.vue'), meta: { auth: true } },
     { path: '/invite/:token', component: () => import('./pages/Invite.vue'), meta: { auth: true } },
     { path: '/support/:id?', component: () => import('./pages/Support.vue'), meta: { auth: true } },
     ...adminCenters.map((center) => ({

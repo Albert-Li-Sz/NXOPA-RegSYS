@@ -67,7 +67,9 @@ export function mergePlatformFields(
 ): FieldDefinition[] {
   const fixed = requiredPlatformFields(profiles);
   return [
-    ...fields.filter((f) => !fixed.some((x) => x.scope === f.scope && x.key === f.key)),
+    ...fields
+      .filter((f) => !fixed.some((x) => x.scope === f.scope && x.key === f.key))
+      .map((f) => (f.source && !profiles.includes(f.source) ? { ...f, locked: false } : f)),
     ...fixed,
   ];
 }

@@ -74,7 +74,13 @@ test('personal destinations are peers and administrators have separate centers',
     await expect(page.getByRole('link', { name: '返回竞赛', exact: true })).toHaveCount(0);
     await expect(page.locator('.personal-nav')).toHaveCount(0);
   }
-  for (const name of ['竞赛中心', '外接平台中心', '用户中心', '日志与任务中心', '审核中心'])
+  for (const name of [
+    '活动及竞赛管理中心',
+    '外接平台中心',
+    '用户中心',
+    '日志与任务中心',
+    '审核中心',
+  ])
     await expect(navigation.getByRole('link', { name, exact: true })).toHaveCount(0);
   await page.locator('.user-menu').click();
   await page.getByRole('menuitem', { name: '个人信息', exact: true }).click();
@@ -91,7 +97,7 @@ test('administrator centers group their tabs and fit desktop and mobile widths',
 }) => {
   await login(page, 'admin');
   for (const [name, tabs] of [
-    ['竞赛中心', ['竞赛管理']],
+    ['活动及竞赛管理中心', ['活动及竞赛管理']],
     ['外接平台中心', ['评测平台']],
     ['用户中心', ['学生视图', '教师视图', '用户与邀请', '管理员授权']],
     ['日志与任务中心', ['任务', '审计日志']],

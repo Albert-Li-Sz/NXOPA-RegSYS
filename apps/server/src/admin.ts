@@ -127,13 +127,21 @@ export class AdminService {
   }
   async field(u: Principal, body: unknown) {
     requireAdmin(u);
-    const f = fieldSchema.parse(body);
-    return db.fieldDefinition.upsert({
-      where: { key: f.key },
-      create: { key: f.key, definition: json(f) },
-      update: { definition: json(f), version: { increment: 1 } },
+    const { version, ...f } = fieldSchema
+      .extend({ version: z.number().int().optional() })
+      .parse(body);
+    return db.$transaction(async (tx) => {
+      await lock(tx, `global-field:${f.key}`);
+      const current = await tx.fieldDefinition.findUnique({ where: { key: f.key } });
+      if (version !== undefined) checkVersion(current?.version ?? 0, version);
+      return tx.fieldDefinition.upsert({
+        where: { key: f.key },
+        create: { key: f.key, definition: json(f) },
+        update: { definition: json(f), version: { increment: 1 } },
+      });
     });
   }
+
   async logs(u: Principal, contestId?: string, query: ListQuery = {}) {
     if (contestId) requireManager(u, contestId);
     else requireAdmin(u);

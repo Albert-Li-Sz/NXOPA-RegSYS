@@ -1,0 +1,246 @@
+{
+  "checkedAt": "2026-10-15T01:14:48.818458+00:00",
+  "branch": "codex/activity-workflows",
+  "baseCommit": "1627a87cc6612ff6a567f66e99be56c4b0591c34",
+  "workingTreeDirty": true,
+  "environment": "Isolated PostgreSQL, Redis, Mailpit and XeLaTeX; local API and Vue development server",
+  "fullRegression": {
+    "success": true,
+    "command": "PLATFORM_TEST_LATEX_IMAGE=ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.4.0 E2E_MAX_FAILURES=5 pnpm test:full",
+    "suites": [
+      {
+        "suite": "test:integration",
+        "success": true,
+        "elapsedMs": 10372,
+        "log": ".runtime/reports/full-test-integration.log"
+      },
+      {
+        "suite": "test:auth",
+        "success": true,
+        "elapsedMs": 4759,
+        "log": ".runtime/reports/full-test-auth.log"
+      },
+      {
+        "suite": "test:accounts",
+        "success": true,
+        "elapsedMs": 9510,
+        "log": ".runtime/reports/full-test-accounts.log"
+      },
+      {
+        "suite": "test:feishu",
+        "success": true,
+        "elapsedMs": 2608,
+        "log": ".runtime/reports/full-test-feishu.log"
+      },
+      {
+        "suite": "test:invitations",
+        "success": true,
+        "elapsedMs": 7548,
+        "log": ".runtime/reports/full-test-invitations.log"
+      },
+      {
+        "suite": "test:mail",
+        "success": true,
+        "elapsedMs": 9831,
+        "log": ".runtime/reports/full-test-mail.log"
+      },
+      {
+        "suite": "test:mail-failover",
+        "success": true,
+        "elapsedMs": 7287,
+        "log": ".runtime/reports/full-test-mail-failover.log"
+      },
+      {
+        "suite": "test:template-bugs",
+        "success": true,
+        "elapsedMs": 4271,
+        "log": ".runtime/reports/full-test-template-bugs.log"
+      },
+      {
+        "suite": "test:overview",
+        "success": true,
+        "elapsedMs": 999,
+        "log": ".runtime/reports/full-test-overview.log"
+      },
+      {
+        "suite": "test:enhancements",
+        "success": true,
+        "elapsedMs": 5988,
+        "log": ".runtime/reports/full-test-enhancements.log"
+      },
+      {
+        "suite": "test:admissions",
+        "success": true,
+        "elapsedMs": 5836,
+        "log": ".runtime/reports/full-test-admissions.log"
+      },
+      {
+        "suite": "test:activity-workflows",
+        "success": true,
+        "elapsedMs": 5778,
+        "log": ".runtime/reports/full-test-activity-workflows.log"
+      },
+      {
+        "suite": "test:workflow-upgrade",
+        "success": true,
+        "elapsedMs": 3122,
+        "log": ".runtime/reports/full-test-workflow-upgrade.log"
+      },
+      {
+        "suite": "test:bugs",
+        "success": true,
+        "elapsedMs": 3715,
+        "log": ".runtime/reports/full-test-bugs.log"
+      },
+      {
+        "suite": "test:permissions",
+        "success": true,
+        "elapsedMs": 976,
+        "log": ".runtime/reports/full-test-permissions.log"
+      },
+      {
+        "suite": "test:file-race",
+        "success": true,
+        "elapsedMs": 1540,
+        "log": ".runtime/reports/full-test-file-race.log"
+      },
+      {
+        "suite": "test:load",
+        "success": true,
+        "elapsedMs": 11972,
+        "log": ".runtime/reports/full-test-load.log"
+      },
+      {
+        "suite": "test:mcp",
+        "success": true,
+        "elapsedMs": 1473,
+        "log": ".runtime/reports/full-test-mcp.log"
+      },
+      {
+        "suite": "test:e2e",
+        "success": true,
+        "elapsedMs": 237349,
+        "log": ".runtime/reports/full-test-e2e.log"
+      }
+    ],
+    "browserScenarios": 52,
+    "checkedAt": "2026-10-15T01:13:04.395Z"
+  },
+  "targeted": {
+    "success": true,
+    "checks": [
+      "审核通过后永久取消、列表和统计更新、释放重新报名限制",
+      "未付款可补正，永久删除后独立财务、凭证授权和并发退款保持正确",
+      "多考场容量、座位唯一、预览版本、跨角色隔离、删除释放座位",
+      "指导老师不能永久取消，历史取消迁移可重复执行",
+      "通用活动关闭功能后，后端同步拒绝入口",
+      "团队按成员同场排考、一队一张真实 PDF 汇总座位，考场变更使原准考证失效",
+      "两人并发争抢最后座位，版本与数据库约束保证不超额",
+      "永久删除清除专属附件、旧请求重放不返回报名资料，远端权限进入人工撤权待办",
+      "预设切换保留原配置，关闭功能需确认并撤销本地入口，远端待办完成有去重审计",
+      "关闭功能与准考证生成并发时，锁内复核配置，不创建被关闭功能的文档",
+      "连续审核队列跨越二十条分页且受权限限制，模板版本冲突拒绝覆盖"
+    ]
+  },
+  "upgrade": {
+    "success": true,
+    "checks": [
+      "建立真实 v0.4.0 表结构、取消／未取消报名、财务及后台任务，并备份",
+      "迁移清除历史取消报名及资料副本，财务余额与四类单据逐项一致，撤权待办保留",
+      "升级前备份可恢复旧报名与账目，验证回退需要完整备份"
+    ]
+  },
+  "permissions": {
+    "success": true,
+    "checks": [
+      "job search retains contest authorization scope",
+      "VIEW grant cannot enumerate other users support tickets",
+      "VIEW grant cannot read standalone ticket",
+      "VIEW grant cannot read standalone support file",
+      "VIEW grant cannot upload to standalone ticket",
+      "VIEW grant cannot read standalone support mail status",
+      "VIEW grant cannot read registration-linked ticket",
+      "VIEW grant cannot read registration-linked support file",
+      "VIEW grant cannot upload to registration-linked ticket",
+      "VIEW grant cannot read registration-linked support mail status",
+      "invalid student year returns a validation error",
+      "invalid calendar date cannot enter identity approval queue",
+      "deleting a submitted form attachment invalidates qualification",
+      "deleted files cannot be bound to a new support ticket",
+      "a support attachment cannot be moved to another ticket",
+      "SUPPORT grant permits ticket, file and delivery reads",
+      "SUPPORT revocation removes access immediately"
+    ],
+    "failures": []
+  },
+  "mailFailover": {
+    "checks": [
+      "主 SMTP 失败后按顺序尝试备用，成功后不再调用后续备用",
+      "管理员调整备用顺序即时生效，主 SMTP 正常时优先使用主服务器",
+      "SMTP 拒绝收件人时也会自动切换，实际邮件完成投递",
+      "发送中删除报名后，停止切换备用 SMTP，不投递已删除的报名通知",
+      "备用密码加密、留空保留，更换用户名需重新配置，重复标识被拒绝"
+    ]
+  },
+  "boundaries": [
+    "Deleted registrations have no restorable snapshots. Financial records retain independent access.",
+    "Remote connector revocation remains a manually completed todo. Remote OJ live provisioning was not rerun in this task.",
+    "Rollback after permanent cleanup requires the pre-upgrade database and file backup."
+  ],
+  "local": {
+    "web": "http://localhost:5173",
+    "health": "http://localhost:3000/api/v1/health",
+    "healthStatus": "ok"
+  },
+  "roleWorkflowFollowUp": {
+    "success": true,
+    "focusedCheckedAt": "2026-10-15T00:26:28.122Z",
+    "focusedCommand": "PLAYWRIGHT_OUTPUT_DIR=.runtime/reports/role-workflows-final pnpm exec playwright test tests/e2e/activity-workflows.spec.ts",
+    "focusedBrowserScenarios": [
+      "administrators edit and save other peoples entries without participant submission actions",
+      "completed reviews use amendment actions and require a new decision and reason",
+      "finance applications belong to applicants while administrators process the applications",
+      "finance-only administrators can issue invoices without registration file-management permissions",
+      "personal activity tabs never inherit administrator list scope",
+      "view-only management grants do not expose applicant actions or contest credentials",
+      "saved profile and settings require Edit; Cancel restores the saved values",
+      "review opens a read-only information dialog and separates correction, editing and approval",
+      "coach field drafts cancel cleanly and save with the rest of the registration",
+      "version conflicts preserve draft fields until the user explicitly cancels",
+      "multiple rooms preview allocations before commit and saved configuration stays read-only",
+      "new generic activities default to optional modules off and narrow screens remain usable"
+    ],
+    "rootCause": "Management editing was reused for applicant submission and financial requests; completed and pending reviews shared the same actions; invoice dialogs retained attachment state across requests.",
+    "fixes": [
+      "Administrator editing does not grant applicant submission, withdrawal or financial applications; own registrations and linked coach operations remain available.",
+      "Only pending unpaid submissions can be withdrawn; reviewed registrations use editing, resubmission or cancellation.",
+      "Initial reviews and amendments have separate actions, options, required reasons and queue behavior; unsubmitted changes cannot be reviewed.",
+      "Applicant requests and finance processing have separate permissions, including after registration removal.",
+      "FINANCE administrators can upload actual invoices without FILES or REGISTRATIONS management grants.",
+      "Invoice dialogs start with independent empty attachments; successful voucher submission resets the new-request form; failures retain the current draft.",
+      "Personal contest registration and admission tabs explicitly request role=mine.",
+      "Credential buttons match participant association, activity modules and INTEGRATIONS rights.",
+      "Unreleased admission downloads require ADMISSIONS rights rather than VIEW.",
+      "Draft status and individual-entry labels no longer imply pending review or team captain status.",
+      "Room-managed admission generation uses committed seating rather than asking for a separate legacy room.",
+      "Reversed payments show completion and do not offer duplicate reversal, including filtered ledger pages."
+    ],
+    "visualViewport": {
+      "width": 831,
+      "height": 883
+    }
+  },
+  "engineering": {
+    "typecheck": true,
+    "unitTestsPassed": 13,
+    "build": true,
+    "format": true,
+    "diffCheck": true
+  },
+  "paginationFollowUp": {
+    "success": true,
+    "report": "docs/acceptance/pagination.json",
+    "newBrowserScenarios": 9,
+    "focusedBrowserChecksPassed": 14
+  }
+}

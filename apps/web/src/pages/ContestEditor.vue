@@ -1,16 +1,25 @@
 <script setup lang="ts">
+import PaginatedTable from '../components/PaginatedTable.vue';
+import PaginatedList from '../components/PaginatedList.vue';
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus';
 import {
   policySchema,
   defaultFields,
   defaultTemplate,
   platformTemplates,
   mergePlatformFields,
+  registrationReviewPhase,
 } from '@contest-center/contracts';
 import { api, date, label, money, downloadArchive } from '../api';
 import type { Data, FieldDefinition } from '../types';
+import EditActions from '../components/EditActions.vue';
+import RegistrationReview from '../components/RegistrationReview.vue';
+import RemoteRevocations from '../components/RemoteRevocations.vue';
+import SeatingManager from '../components/SeatingManager.vue';
+import FinanceList from '../components/FinanceList.vue';
+import { useEditSession, mayLeaveEdits } from '../composables/useEditSession';
 import MarkdownEditor from '../components/MarkdownEditor.vue';
 import PlatformBindings from '../components/PlatformBindings.vue';
 import FileLibrary from '../components/FileLibrary.vue';
@@ -34,6 +43,9 @@ const route = useRoute(),
   registry = ref<Data[]>([]),
   preview = ref<Data>();
 const form = ref<Data>({
+  kind: 'COMPETITION',
+  modules: { admissions: true, rooms: false, integrations: true },
+  seatingMode: 'REGISTRATION',
   title: '',
   season: '2026',
   description: '',
@@ -52,7 +64,91 @@ const form = ref<Data>({
   policy: policySchema.parse({}),
   fields: JSON.parse(JSON.stringify(defaultFields)),
 });
-const template = ref({ name: '竞赛准考证模板', source: defaultTemplate });
+const template = ref({ name: '活动准考证模板', source: defaultTemplate, version: 0 });
+const savedModules = ref(JSON.stringify(form.value.modules));
+const edit = useEditSession(form, isNew.value),
+  templateEdit = useEditSession(template);
+const revocations = ref<Data[]>([]);
+const reviewOpen = ref(false),
+  reviewId = ref(''),
+  reviewQueue = ref<string[]>([]);
+async function openReview(row: Data) {
+  if (registrationReviewPhase(row as { status: string; review: string }) === 'AMEND') {
+    reviewQueue.value = [];
+    reviewId.value = row.id;
+    reviewOpen.value = true;
+    return;
+  }
+  const queue = await api(
+    `/registrations/review-queue?contestId=${route.params.id}&${roster.query(false)}`,
+  );
+  const ids = queue.ids as string[],
+    index = ids.indexOf(row.id);
+  reviewQueue.value = [...ids.slice(index + 1), ...ids.slice(0, Math.max(0, index))].filter(
+    (id) => id !== row.id,
+  );
+  reviewId.value = row.id;
+  reviewOpen.value = true;
+}
+async function nextReview() {
+  while (reviewQueue.value.length) {
+    const id = reviewQueue.value.shift()!;
+    const response = await fetch(`/api/v1/registrations/${id}?history=false`, {
+      credentials: 'same-origin',
+    });
+    if (response.status === 404) continue;
+    if (!response.ok) {
+      reviewOpen.value = false;
+      moduleError.value = '报名状态或管理权限已变化，请刷新后继续';
+      return;
+    }
+    const value = await response.json();
+    if (!value.actions.review) continue;
+    reviewId.value = id;
+    return;
+  }
+  reviewOpen.value = false;
+  ElMessage.success('当前筛选范围内的报名已处理完成');
+}
+async function removeRegistration(row: Data) {
+  const { value } = await ElMessageBox.prompt(
+    '报名资料及准考证将永久删除；财务单据独立保留。请填写删除原因。',
+    '删除报名',
+    {
+      inputType: 'textarea',
+      inputValidator: (value: string) => !!value.trim() || '请填写删除原因',
+      confirmButtonText: '永久删除',
+      type: 'warning',
+    },
+  );
+  await api(`/registrations/${row.id}`, 'DELETE', { version: row.version, reason: value });
+  await refreshModules();
+}
+function bindingSaved(value: Data) {
+  if (edit.editing.value && edit.dirty.value) {
+    moduleError.value = '平台绑定已保存；活动设置草稿保留，请在保存设置前核对最新配置。';
+    return;
+  }
+  form.value = value;
+  savedModules.value = JSON.stringify(value.modules);
+}
+async function applyPreset() {
+  await ElMessageBox.confirm(
+    '应用预设将重置当前草稿中的费用、老师、功能开关和报名形式；报名字段保留。保存后生效。',
+    '应用配置预设',
+  );
+  const activity = form.value.kind === 'ACTIVITY';
+  form.value.policy = policySchema.parse({ coachMode: activity ? 'DISABLED' : 'OPTIONAL' });
+  form.value.modules = { admissions: !activity, rooms: false, integrations: !activity };
+  form.value.seatingMode = 'REGISTRATION';
+}
+function newKind() {
+  if (isNew.value) {
+    const activity = form.value.kind === 'ACTIVITY';
+    form.value.policy = policySchema.parse({ coachMode: activity ? 'DISABLED' : 'OPTIONAL' });
+    form.value.modules = { admissions: !activity, rooms: false, integrations: !activity };
+  }
+}
 const selected = ref<Data[]>([]),
   statusFilter = ref(''),
   search = ref(''),
@@ -67,7 +163,15 @@ watch([statusFilter, search], ([review, value]) => {
   roster.filters.value = { ...roster.filters.value, review, search: value };
   selected.value = [];
 });
-watch([roster.page, roster.pageSize, roster.filters], () => (selected.value = []), { deep: true });
+const rosterTable = ref<TableInstance>();
+watch(
+  roster.filters,
+  () => {
+    selected.value = [];
+    rosterTable.value?.clearSelection();
+  },
+  { deep: true },
+);
 watch(
   () => form.value.policy.platformProfiles,
   (profiles) => {
@@ -84,7 +188,10 @@ async function load() {
     if (!isNew.value) {
       form.value = await api(`/contests/${route.params.id}`);
       form.value.policy = policySchema.parse(form.value.policy);
+      savedModules.value = JSON.stringify(form.value.modules);
       if (tab.value === 'settings' && !permission('CONTEST')) tab.value = 'registrations';
+      if (permission('INTEGRATIONS'))
+        revocations.value = await api(`/integrations/revocations?contestId=${route.params.id}`);
       await refreshModules();
     }
   } catch (e) {
@@ -106,7 +213,13 @@ async function refreshModules() {
       const active =
         templates.value.find((t) => t.contestId === route.params.id && t.active) ??
         templates.value.find((t) => t.active);
-      if (active) template.value = { name: active.name, source: active.source };
+      if (active && !templateEdit.editing.value)
+        template.value = {
+          name: active.name,
+          source: active.source,
+          version:
+            templates.value.find((t) => t.contestId === route.params.id && t.active)?.version ?? 0,
+        };
     }
     if (tab.value === 'integrations') instances.value = await api('/integrations/instances');
   } catch (e) {
@@ -164,14 +277,30 @@ async function save() {
       p.maxMembers = 1;
     }
     if (p.coachMode === 'DISABLED') p.maxCoaches = 0;
+    const previous = JSON.parse(savedModules.value);
+    const disabled = Object.keys(previous).filter(
+      (key) => previous[key] && !form.value.modules[key],
+    );
+    if (!isNew.value && disabled.length)
+      await ElMessageBox.confirm(
+        '关闭功能会停止相应操作，使相关准考证或本地平台权限失效。已有配置与财务资料保留；外接平台权限需另行处理。确认保存？',
+        '确认关闭功能',
+        { type: 'warning' },
+      );
     const c = await api(
       isNew.value ? '/contests' : `/contests/${route.params.id}`,
       isNew.value ? 'POST' : 'PUT',
-      form.value,
+      { ...form.value, confirmModuleChanges: disabled.length > 0 },
     );
     ElMessage.success('竞赛配置已保存');
+    edit.finish();
     if (isNew.value) router.replace(`/admin/contests/${c.id}`);
-    else form.value = await api(`/contests/${c.id}`);
+    else {
+      form.value = await api(`/contests/${c.id}`);
+      savedModules.value = JSON.stringify(form.value.modules);
+      if (permission('INTEGRATIONS'))
+        revocations.value = await api(`/integrations/revocations?contestId=${route.params.id}`);
+    }
   } finally {
     busy.value = false;
   }
@@ -210,6 +339,7 @@ function importField(key: string) {
 }
 async function saveTemplate() {
   await api('/admissions/templates', 'POST', { ...template.value, contestId: route.params.id });
+  templateEdit.finish();
   ElMessage.success('模板新版本已保存');
   await refreshModules();
 }
@@ -230,11 +360,19 @@ async function generate() {
     ElMessage.warning('请选择已取得资格的报名');
     return;
   }
-  const { value } = await ElMessageBox.prompt(
-    '考场 / 座位起始号（连续分配），例如 A101 / 1',
+  await ElMessageBox.confirm(
+    `本次将为${selected.value.length ? '已勾选' : '当前页'}的 ${ids.length} 份有效报名生成准考证。确认继续？`,
     '批量生成准考证',
   );
-  const [room, seat] = value.split('/').map((x) => x.trim());
+  let room = '',
+    seat = '';
+  if (!form.value.modules.rooms) {
+    const { value } = await ElMessageBox.prompt(
+      '考场 / 座位起始号（连续分配），例如 A101 / 1',
+      '生成准考证',
+    );
+    [room, seat] = value.split('/').map((x) => x.trim());
+  }
   await api('/admissions/generate', 'POST', {
     registrationIds: ids,
     location: form.value.location,
@@ -256,6 +394,10 @@ async function downloadAdmissions() {
     ElMessage.warning('每次最多下载 1000 份，请分批选择');
     return;
   }
+  await ElMessageBox.confirm(
+    `下载${selected.value.length ? '已勾选' : '当前页'}的 ${registrationIds.length} 份有效报名准考证。`,
+    '确认下载范围',
+  );
   await downloadArchive('/admissions/batch', { registrationIds }, 'admissions.zip');
 }
 const availableVariables = computed(() => [
@@ -289,58 +431,112 @@ function insertVariable(v: string) {
   <el-skeleton v-else-if="loading" :rows="8" animated />
   <template v-else>
     <div class="crumb">
-      <router-link to="/admin/contests">竞赛中心</router-link><span>／</span
-      ><span>{{ isNew ? '创建竞赛' : form.title }}</span>
+      <router-link to="/admin/contests">活动及竞赛管理中心</router-link><span>／</span
+      ><span>{{ isNew ? '创建活动及竞赛' : form.title }}</span>
     </div>
     <div class="page-heading" style="margin-top: 24px">
       <div>
-        <h1>{{ isNew ? '创建竞赛' : form.title }}</h1>
+        <h1>{{ isNew ? '创建活动及竞赛' : form.title }}</h1>
         <p class="subtitle">配置报名规则，处理审核、准考证和平台联动</p>
       </div>
       <el-button v-if="!isNew" @click="router.push(`/contests/${route.params.id}`)"
         >查看公开页面</el-button
       >
     </div>
-    <el-tabs v-model="tab"
-      ><el-tab-pane v-if="permission('CONTEST')" label="竞赛设置" name="settings" /><el-tab-pane
+    <EditActions
+      v-if="['settings', 'fields'].includes(tab)"
+      :session="edit"
+      :allow="permission('CONTEST')"
+    />
+    <el-tabs v-model="tab" :before-leave="mayLeaveEdits"
+      ><el-tab-pane v-if="permission('CONTEST')" label="活动设置" name="settings" /><el-tab-pane
         v-if="permission('CONTEST')"
         label="报名字段"
         name="fields" /><el-tab-pane
         v-if="!isNew"
         label="报名管理"
         name="registrations" /><el-tab-pane
-        v-if="!isNew && permission('ADMISSIONS')"
+        v-if="!isNew && permission('ADMISSIONS') && form.modules.admissions"
         label="准考证模板"
         name="templates" /><el-tab-pane
-        v-if="!isNew && permission('INTEGRATIONS')"
+        v-if="!isNew && permission('INTEGRATIONS') && form.modules.integrations"
         label="平台联动"
         name="integrations" /><el-tab-pane
         v-if="!isNew && permission('FILES')"
-        label="竞赛附件"
-        name="files"
+        label="活动附件"
+        name="files" /><el-tab-pane
+        v-if="!isNew && permission('ADMISSIONS') && form.modules.rooms"
+        label="考场与座位"
+        name="rooms" /><el-tab-pane
+        v-if="!isNew && permission('FINANCE')"
+        label="财务记录"
+        name="finance" /><el-tab-pane
+        v-if="revocations.length && permission('INTEGRATIONS')"
+        label="平台撤权待办"
+        name="revocations"
     /></el-tabs>
     <el-alert v-if="moduleError" :title="moduleError" type="error" :closable="false"
       ><el-button @click="refreshModules">重新加载</el-button></el-alert
     >
+    <RemoteRevocations v-if="tab === 'revocations'" :contest-id="String(route.params.id)" />
+    <SeatingManager v-if="tab === 'rooms'" :contest-id="String(route.params.id)" />
+    <FinanceList v-if="tab === 'finance'" :contest-id="String(route.params.id)" />
+    <RegistrationReview
+      v-model="reviewOpen"
+      :registration-id="reviewId"
+      @reviewed="refreshModules"
+      @next="nextReview"
+    />
     <FileLibrary
       v-if="tab === 'files' && permission('FILES')"
       :contest-id="String(route.params.id)"
     />
     <div class="panel" v-if="tab === 'settings'">
-      <el-form label-position="top"
+      <el-form
+        :key="String(edit.editing.value)"
+        label-position="top"
+        :disabled="!edit.editing.value || busy"
+        :class="{ 'read-mode': !edit.editing.value }"
         ><div class="card">
           <h3>基本信息</h3>
+          <div class="card">
+            <h3>活动类型与功能</h3>
+            <el-form-item label="配置类型"
+              ><el-select v-model="form.kind" filterable @change="newKind"
+                ><el-option value="COMPETITION" label="竞赛" /><el-option
+                  value="ACTIVITY"
+                  label="通用活动" /></el-select></el-form-item
+            ><el-button v-if="edit.editing.value" @click="applyPreset"
+              >应用此类型的默认预设</el-button
+            >
+            <p class="form-help">
+              已保存活动切换类型仅改变类型；应用预设需单独确认，已有数据会在保存时检查。
+            </p>
+            <div class="toolbar">
+              <el-checkbox v-model="form.modules.admissions">启用准考证</el-checkbox
+              ><el-checkbox v-model="form.modules.rooms">启用考场与座位</el-checkbox
+              ><el-checkbox v-model="form.modules.integrations">启用评测平台联动</el-checkbox>
+            </div>
+            <el-form-item v-if="form.modules.rooms" label="排考单位"
+              ><el-select v-model="form.seatingMode" filterable
+                ><el-option
+                  value="REGISTRATION"
+                  label="每份报名一座（个人一人／团队一队）" /><el-option
+                  value="PERSON"
+                  label="每位成员一座，同队同场" /></el-select
+            ></el-form-item>
+          </div>
           <div class="form-grid">
-            <el-form-item label="竞赛名称" required for="contest-title"
+            <el-form-item label="名称" required for="contest-title"
               ><el-input id="contest-title" v-model="form.title" /></el-form-item
             ><el-form-item label="赛季" for="contest-season"
               ><el-input id="contest-season" v-model="form.season" /></el-form-item
-            ><el-form-item label="比赛开始时间"
+            ><el-form-item label="活动开始时间"
               ><el-date-picker
                 v-model="form.startsAt"
                 type="datetime"
                 value-format="YYYY-MM-DDTHH:mm:ssZ" /></el-form-item
-            ><el-form-item label="比赛地点"><el-input v-model="form.location" /></el-form-item
+            ><el-form-item label="活动地点"><el-input v-model="form.location" /></el-form-item
             ><el-form-item label="报名开放时间"
               ><el-date-picker
                 v-model="form.opensAt"
@@ -379,7 +575,7 @@ function insertVariable(v: string) {
               公示仅包含队名、学校、队员姓名、指导老师、排名与审核状态。
             </p></el-form-item
           >
-          <el-form-item label="竞赛介绍"
+          <el-form-item label="活动介绍"
             ><MarkdownEditor
               v-model="form.description"
               v-model:format="form.descriptionFormat" /></el-form-item
@@ -507,15 +703,19 @@ function insertVariable(v: string) {
             ><el-input v-model="form.policy.paymentInstructions" type="textarea" :rows="4"
           /></el-form-item>
         </div>
-        <el-button type="primary" :loading="busy" @click="save">保存竞赛配置</el-button></el-form
+        <el-button v-if="edit.editing.value" type="primary" :loading="busy" @click="save"
+          >保存活动配置</el-button
+        ></el-form
       >
     </div>
-    <div class="panel" v-if="tab === 'fields'">
+    <div class="panel" v-if="tab === 'fields'" :class="{ 'read-mode': !edit.editing.value }">
       <div class="card">
         <h3>可视化报名字段</h3>
         <div class="toolbar">
-          <el-button type="primary" @click="editField()">添加字段</el-button
+          <el-button v-if="edit.editing.value" type="primary" @click="editField()"
+            >添加字段</el-button
           ><el-select
+            v-if="edit.editing.value"
             placeholder="从全局字段导入"
             @change="importField"
             style="width: 220px"
@@ -537,7 +737,7 @@ function insertVariable(v: string) {
           <p>系统生成：{{ p.generated.join('、') }}</p>
           <p>管理员配置：{{ p.administrator.join('、') }}</p>
         </div>
-        <el-table :data="form.fields"
+        <PaginatedTable page-key="contesteditor-form-fields" :data="form.fields"
           ><el-table-column label="字段" prop="label" /><el-table-column
             label="键名"
             prop="key"
@@ -553,26 +753,35 @@ function insertVariable(v: string) {
             ><template #default="{ row }">{{
               row.required ? '是' : '否'
             }}</template></el-table-column
-          ><el-table-column label="操作" width="180"
-            ><template #default="{ row, $index }"
-              ><el-button text :disabled="row.locked" @click="editField($index)">编辑</el-button
+          ><el-table-column v-if="edit.editing.value" label="操作" width="180"
+            ><template #default="{ row }"
+              ><el-button text :disabled="row.locked" @click="editField(form.fields.indexOf(row))"
+                >编辑</el-button
               ><el-button
                 text
                 type="danger"
                 :disabled="row.locked"
-                @click="form.fields.splice($index, 1)"
+                @click="form.fields.splice(form.fields.indexOf(row), 1)"
                 >移除</el-button
               ><el-button
                 text
-                v-if="$index > 0"
-                @click="form.fields.splice($index - 1, 0, ...form.fields.splice($index, 1))"
+                v-if="form.fields.indexOf(row) > 0"
+                @click="
+                  form.fields.splice(
+                    form.fields.indexOf(row) - 1,
+                    0,
+                    ...form.fields.splice(form.fields.indexOf(row), 1),
+                  )
+                "
                 >上移</el-button
               ></template
             ></el-table-column
-          ></el-table
+          ></PaginatedTable
         >
         <p class="form-help">字段配置随竞赛保存为新版本。已提交报名保留原表单版本。</p>
-        <el-button type="primary" :loading="busy" @click="save">保存字段配置</el-button>
+        <el-button v-if="edit.editing.value" type="primary" :loading="busy" @click="save"
+          >保存字段配置</el-button
+        >
       </div>
     </div>
     <div class="panel" v-if="tab === 'registrations'">
@@ -601,7 +810,7 @@ function insertVariable(v: string) {
           placeholder="审核状态"
           filterable
           ><el-option
-            v-for="s in ['PENDING', 'APPROVED', 'REJECTED']"
+            v-for="s in ['DRAFT', 'PENDING', 'CORRECTION', 'APPROVED', 'REJECTED']"
             :key="s"
             :value="s"
             :label="label(s)" /></el-select
@@ -617,9 +826,18 @@ function insertVariable(v: string) {
           :href="`/api/v1/registrations/export?contestId=${route.params.id}&${roster.query(false)}`"
           ><el-button>导出名单</el-button></a
         ><el-button @click="refreshModules">刷新</el-button
-        ><el-button type="primary" @click="generate">批量生成准考证</el-button
-        ><el-button @click="downloadAdmissions">下载准考证 ZIP</el-button
-        ><label class="upload-label"
+        ><el-button
+          v-if="permission('ADMISSIONS') && form.modules.admissions"
+          type="primary"
+          @click="generate"
+          >批量生成准考证</el-button
+        ><el-button
+          v-if="permission('ADMISSIONS') && form.modules.admissions"
+          @click="downloadAdmissions"
+          >下载准考证 ZIP</el-button
+        ><label
+          v-if="permission('ADMISSIONS') && form.modules.admissions && !form.modules.rooms"
+          class="upload-label"
           >导入座位 CSV<input type="file" accept=".csv" @change="importSeats"
         /></label>
       </div>
@@ -629,8 +847,14 @@ function insertVariable(v: string) {
           :title="roster.error.value"
           type="error"
           :closable="false"
-        /><el-table :data="filtered" @selection-change="(value: Data[]) => (selected = value)"
-          ><el-table-column type="selection" /><el-table-column label="队名 / 姓名" min-width="240"
+        /><el-table
+          ref="rosterTable"
+          row-key="id"
+          :data="filtered"
+          @selection-change="(value: Data[]) => (selected = value)"
+          ><el-table-column reserve-selection type="selection" /><el-table-column
+            label="队名 / 姓名"
+            min-width="240"
             ><template #default="{ row }"
               ><router-link :to="`/registrations/${row.id}`">{{
                 row.teamName || row.people[0]?.name
@@ -643,7 +867,15 @@ function insertVariable(v: string) {
           ><el-table-column label="人数" width="70"
             ><template #default="{ row }">{{ row.people.length }}</template></el-table-column
           ><el-table-column label="审核" width="120"
-            ><template #default="{ row }">{{ label(row.review) }}</template></el-table-column
+            ><template #default="{ row }">{{
+              label(
+                row.status === 'DRAFT'
+                  ? 'DRAFT'
+                  : row.status === 'CORRECTION'
+                    ? 'CORRECTION'
+                    : row.review,
+              )
+            }}</template></el-table-column
           ><el-table-column label="净到账" width="120"
             ><template #default="{ row }">{{ money(row.netPaidCents) }}</template></el-table-column
           ><el-table-column label="资格" width="90"
@@ -652,9 +884,22 @@ function insertVariable(v: string) {
                 row.eligible ? '有效' : '待完成'
               }}</el-tag></template
             ></el-table-column
-          ><el-table-column label="操作" width="110"
+          ><el-table-column label="操作" width="220"
             ><template #default="{ row }"
-              ><router-link :to="`/registrations/${row.id}`">查看 / 审核</router-link></template
+              ><el-button
+                v-if="permission('REGISTRATIONS') && registrationReviewPhase(row)"
+                text
+                type="primary"
+                @click="openReview(row)"
+                >{{ registrationReviewPhase(row) === 'AMEND' ? '修改审核' : '审核' }}</el-button
+              ><router-link :to="`/registrations/${row.id}`">修改及查看</router-link
+              ><el-button
+                v-if="permission('REGISTRATIONS')"
+                text
+                type="danger"
+                @click="removeRegistration(row)"
+                >删除</el-button
+              ></template
             ></el-table-column
           ></el-table
         >
@@ -671,19 +916,23 @@ function insertVariable(v: string) {
       <div class="two-columns">
         <div class="card">
           <h3>LaTeX 模板</h3>
+          <EditActions :session="templateEdit" />
           <el-input
             v-model="template.name"
+            :disabled="!templateEdit.editing.value"
             placeholder="模板名称"
             style="margin-bottom: 15px"
           /><el-input
             v-model="template.source"
+            :disabled="!templateEdit.editing.value"
             type="textarea"
             :rows="22"
             class="monospace"
             aria-label="LaTeX 模板源码"
           />
           <div class="actions">
-            <el-button type="primary" @click="saveTemplate">保存为新版本</el-button
+            <el-button v-if="templateEdit.editing.value" type="primary" @click="saveTemplate"
+              >保存为新版本</el-button
             ><el-button @click="previewTemplate">生成预览</el-button
             ><el-button v-if="preview" @click="checkPreview">检查预览任务</el-button
             ><a
@@ -703,26 +952,46 @@ function insertVariable(v: string) {
               >、<code v-pre>{{ this.name }}</code> 和 <code v-pre>{{/each}}</code
               >。数据自动转义。
             </p>
-            <el-button
-              v-for="v in availableVariables"
-              :key="v"
-              text
-              type="primary"
-              style="display: block; margin: 0"
-              @click="insertVariable(v)"
-              >{{ v }}</el-button
+            <PaginatedList
+              :items="availableVariables"
+              page-key="template-variables"
+              :always="false"
+              v-slot="{ items }"
             >
+              <el-button
+                v-for="v in items"
+                :key="v"
+                text
+                type="primary"
+                style="display: block; margin: 0"
+                :disabled="!templateEdit.editing.value"
+                @click="insertVariable(v)"
+                >{{ v }}</el-button
+              >
+            </PaginatedList>
           </div>
           <div class="card">
             <h3>模板版本</h3>
-            <div v-for="t in templates" :key="t.id" style="margin-bottom: 14px">
-              <el-tag v-if="t.active" size="small">当前</el-tag>
-              {{ t.contestId ? '竞赛' : '全局' }} v{{ t.version }}
-              <p class="muted">{{ date(t.createdAt) }}</p>
-              <el-button text @click="template = { name: t.name, source: t.source }"
-                >载入此版本</el-button
-              >
-            </div>
+            <PaginatedList
+              :items="templates"
+              page-key="template-versions"
+              :always="false"
+              v-slot="{ items }"
+            >
+              <div v-for="t in items" :key="t.id" style="margin-bottom: 14px">
+                <el-tag v-if="t.active" size="small">当前</el-tag>
+                {{ t.contestId ? '竞赛' : '全局' }} v{{ t.version }}
+                <p class="muted">{{ date(t.createdAt) }}</p>
+                <el-button
+                  text
+                  @click="
+                    templateEdit.begin();
+                    template = { name: t.name, source: t.source, version: template.version };
+                  "
+                  >载入此版本</el-button
+                >
+              </div>
+            </PaginatedList>
           </div>
         </aside>
       </div>
@@ -732,7 +1001,7 @@ function insertVariable(v: string) {
         :contests="[form as any]"
         :instances="instances"
         :initial-contest-id="String(route.params.id)"
-        @saved="form = $event"
+        @saved="bindingSaved"
       />
     </div>
     <el-dialog v-model="fieldDialog" title="编辑报名字段" width="600px"

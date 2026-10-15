@@ -51,6 +51,13 @@ const env = {
   FEISHU_ACCOUNTS_BASE_URL: `http://127.0.0.1:${feishu}`,
   FEISHU_API_BASE_URL: `http://127.0.0.1:${feishu}`,
   TEST_LATEX_CONTAINER: `${project}-latex-1`,
+  WORKFLOW_UPGRADE_PG_CONTAINER: `${project}-postgres-1`,
+  PLAYWRIGHT_OUTPUT_DIR: path.join(root, '.runtime/reports', `full-browser-${process.pid}`),
+  PLAYWRIGHT_HTML_OUTPUT_DIR: path.join(
+    root,
+    '.runtime/reports',
+    `full-browser-report-${process.pid}`,
+  ),
 };
 await mkdir(env.STORAGE_DIR, { recursive: true });
 await mkdir(env.LATEX_SPOOL, { recursive: true });
@@ -203,7 +210,7 @@ try {
   await wait(`${env.FEISHU_API_BASE_URL}/fixture`);
   const suites = (
     process.env.FULL_REGRESSION_SUITES ??
-    'test:integration,test:auth,test:accounts,test:feishu,test:invitations,test:mail,test:mail-failover,test:template-bugs,test:overview,test:enhancements,test:admissions,test:bugs,test:permissions,test:file-race,test:load,test:mcp,test:e2e'
+    'test:integration,test:auth,test:accounts,test:feishu,test:invitations,test:mail,test:mail-failover,test:template-bugs,test:overview,test:enhancements,test:admissions,test:activity-workflows,test:workflow-upgrade,test:bugs,test:permissions,test:file-race,test:load,test:mcp,test:e2e'
   )
     .split(',')
     .filter(Boolean);
@@ -269,6 +276,9 @@ try {
         results,
         checkedAt: new Date().toISOString(),
         commit: (await exec('git', ['rev-parse', 'HEAD'], { cwd: root })).stdout.trim(),
+        workingTreeDirty: !!(
+          await exec('git', ['status', '--porcelain'], { cwd: root })
+        ).stdout.trim(),
       },
       null,
       2,

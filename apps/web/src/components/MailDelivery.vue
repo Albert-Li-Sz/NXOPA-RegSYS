@@ -1,22 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { api, date, label } from '../api';
-import type { Data } from '../types';
+import { usePagedList } from '../composables/usePagedList';
+import ListPagination from './ListPagination.vue';
 const props = defineProps<{ resourceId: string }>();
-const rows = ref<Data[]>([]),
-  loading = ref(false),
-  error = ref('');
+const list = usePagedList(
+  'mail-delivery',
+  () => `/notifications/mail?resourceId=${props.resourceId}`,
+);
+const rows = list.items,
+  loading = list.loading,
+  error = list.error;
 async function refresh() {
-  loading.value = true;
-  error.value = '';
-  try {
-    rows.value = await api(`/notifications/mail?resourceId=${props.resourceId}`);
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '无法读取邮件状态';
-  } finally {
-    loading.value = false;
-  }
+  await list.load();
 }
 async function retry(id: string) {
   await api(`/notifications/mail/${id}/retry`, 'POST');
@@ -24,10 +21,16 @@ async function retry(id: string) {
   await refresh();
 }
 onMounted(refresh);
-watch(() => props.resourceId, refresh);
+watch(
+  () => props.resourceId,
+  () => {
+    if (list.page.value === 1) void refresh();
+    else list.page.value = 1;
+  },
+);
 </script>
 <template>
-  <div class="card mail-delivery">
+  <div class="card mail-delivery" data-pagination-key="mail-delivery">
     <div class="member-heading">
       <h3>邮件推送情况</h3>
       <el-button :loading="loading" @click="refresh">刷新</el-button>
@@ -57,5 +60,11 @@ watch(() => props.resourceId, refresh);
         ></el-table-column
       >
     </el-table>
+    <ListPagination
+      v-model:page="list.page.value"
+      v-model:size="list.pageSize.value"
+      :total="list.total.value"
+      :loading="loading"
+    />
   </div>
 </template>

@@ -106,6 +106,7 @@ export async function sendSystemMail(
     status?: string;
   },
   expectedVersion?: number,
+  isCurrent?: () => Promise<boolean>,
 ) {
   const s = await settings();
   if (expectedVersion !== undefined && expectedVersion !== s.version)
@@ -118,6 +119,8 @@ export async function sendSystemMail(
     { ...s.value, id: 'primary', name: '主 SMTP' },
     ...s.value.fallbacks.filter((server) => server.enabled),
   ]) {
+    if (isCurrent && !(await isCurrent()))
+      return { configurationVersion: s.version, skipped: true, reason: '关联报名已删除，停止发送' };
     let client: ReturnType<typeof transport> | undefined;
     try {
       client = transport(server);

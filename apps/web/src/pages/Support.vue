@@ -7,6 +7,7 @@ import { api, auth, date, label, upload } from '../api';
 import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
 import type { Data, ContestView } from '../types';
+import PaginatedList from '../components/PaginatedList.vue';
 const list = usePagedList('support', () => '/support');
 const route = useRoute(),
   router = useRouter(),
@@ -107,21 +108,29 @@ async function send() {
       </div>
       <div class="two-columns">
         <div>
-          <div class="card" v-for="m in ticket.messages" :key="m.id">
-            <div class="member-heading">
-              <strong>{{ m.actor?.name || '用户' }}</strong
-              ><span class="muted">{{ date(m.createdAt) }}</span>
+          <PaginatedList
+            :items="ticket.messages"
+            page-key="support-messages"
+            :always="false"
+            start-at-end
+            v-slot="{ items }"
+          >
+            <div class="card" v-for="m in items" :key="m.id">
+              <div class="member-heading">
+                <strong>{{ m.actor?.name || '用户' }}</strong
+                ><span class="muted">{{ date(m.createdAt) }}</span>
+              </div>
+              <p class="pre-line">{{ m.text }}</p>
+              <a
+                v-for="id in m.attachments"
+                :key="id"
+                :href="`/api/v1/files/${id}`"
+                target="_blank"
+                style="margin-right: 15px"
+                >下载附件</a
+              >
             </div>
-            <p class="pre-line">{{ m.text }}</p>
-            <a
-              v-for="id in m.attachments"
-              :key="id"
-              :href="`/api/v1/files/${id}`"
-              target="_blank"
-              style="margin-right: 15px"
-              >下载附件</a
-            >
-          </div>
+          </PaginatedList>
           <div class="card">
             <h3>添加回复</h3>
             <el-input

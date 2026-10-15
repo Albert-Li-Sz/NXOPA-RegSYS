@@ -47,20 +47,21 @@ LaTeX Runner 通过专用任务卷交付结果，容器无网络。每次编译�
 
 ## 应用模块
 
-| 模块          | 负责的业务                                        | 主要依赖                       |
-| ------------- | ------------------------------------------------- | ------------------------------ |
-| identity      | 注册、验证、密码、GitHub 登录、必填资料与用户标签 | SMTP、统一授权                 |
-| invitations   | 账号与角色邀请 URL、接收确认、撤销、状态与审计    | identity、contests、coaching   |
-| contests      | 竞赛介绍、发布、报名窗口、公告和配置版本          | 全局配置、字段库               |
-| forms         | 全局字段、表单配置、版本和服务端校验              | 用户资料预填                   |
-| registrations | 个人及团队报名、成员、提交、审核、资格计算        | forms、coaching、finance       |
-| coaching      | 指导老师档案、双向关联、代办权限                  | identity、registrations        |
-| finance       | 费用快照、凭证、核账、不可覆盖的账簿、退款和开票  | registrations、附件            |
-| admissions    | 模板库、预览、生成、版本、发放与下载              | 报名快照、字段库、LaTeX Runner |
-| support       | 系统及竞赛工单、回复、附件与处理                  | 用户与竞赛权限                 |
-| integrations  | 平台实例、字段映射、连接探测、比赛账号和同步任务  | Connector 契约、报名资格       |
-| automation    | 联合注册 API、Webhook、MCP 查询与服务 Token       | 同一套应用服务和权限           |
-| shared        | 审计、Outbox、任务、通知、文件与配置              | PostgreSQL、Redis、持久卷      |
+| 模块          | 负责的业务                                           | 主要依赖                       |
+| ------------- | ---------------------------------------------------- | ------------------------------ |
+| identity      | 注册、验证、密码、GitHub 登录、必填资料与用户标签    | SMTP、统一授权                 |
+| invitations   | 账号与角色邀请 URL、接收确认、撤销、状态与审计       | identity、contests、coaching   |
+| contests      | 竞赛介绍、发布、报名窗口、公告和配置版本             | 全局配置、字段库               |
+| forms         | 全局字段、表单配置、版本和服务端校验                 | 用户资料预填                   |
+| registrations | 个人及团队报名、成员、提交、审核、资格计算           | forms、coaching、finance       |
+| coaching      | 指导老师档案、双向关联、代办权限                     | identity、registrations        |
+| finance       | 独立财务账户、费用快照、凭证、核账、账簿、退款和开票 | 活动策略、账号与附件           |
+| seating       | 多考场、容量、按报名或成员排考、预览与版本提交       | 报名资格、准考证               |
+| admissions    | 模板库、预览、生成、版本、发放与下载                 | 报名快照、字段库、LaTeX Runner |
+| support       | 系统及竞赛工单、回复、附件与处理                     | 用户与竞赛权限                 |
+| integrations  | 平台实例、字段映射、连接探测、比赛账号和同步任务     | Connector 契约、报名资格       |
+| automation    | 联合注册 API、Webhook、MCP 查询与服务 Token          | 同一套应用服务和权限           |
+| shared        | 审计、Outbox、任务、通知、文件与配置                 | PostgreSQL、Redis、持久卷      |
 
 API、MCP 与平台接口通过应用服务读取和变更报名。Worker 消费任务并复用业务服务，不建立独立的报名或财务规则。
 
@@ -82,11 +83,15 @@ erDiagram
     USER o|--o{ REGISTRATION_PERSON : optionally_links
     REGISTRATION ||--o{ REGISTRATION_COACH : associates
     USER ||--o{ REGISTRATION_COACH : coaches
-    REGISTRATION ||--o{ FEE_ORDER : billed
-    FEE_ORDER ||--o{ PAYMENT_VOUCHER : evidences
-    FEE_ORDER ||--o{ LEDGER_ENTRY : records
-    FEE_ORDER ||--o{ REFUND : refunds
-    FEE_ORDER ||--o{ INVOICE_REQUEST : invoices
+    CONTEST ||--o{ FINANCE_ACCOUNT : settles
+    USER ||--o{ FINANCE_ACCOUNT : owns
+    FINANCE_ACCOUNT ||--o{ PAYMENT_VOUCHER : evidences
+    FINANCE_ACCOUNT ||--o{ LEDGER_ENTRY : records
+    FINANCE_ACCOUNT ||--o{ REFUND : refunds
+    FINANCE_ACCOUNT ||--o{ INVOICE_REQUEST : invoices
+    CONTEST ||--o{ EXAM_ROOM : contains
+    EXAM_ROOM ||--o{ SEAT_ASSIGNMENT : allocates
+    REGISTRATION ||--o{ SEAT_ASSIGNMENT : seats
     REGISTRATION o|--o{ SUPPORT_TICKET : relates
     SUPPORT_TICKET ||--o{ SUPPORT_MESSAGE : discusses
     REGISTRATION_REVISION ||--o{ ADMISSION_DOCUMENT : prints
@@ -100,6 +105,8 @@ erDiagram
 一个账号可同时成为参赛者、老师或管理员。角色授权通过邀请链接确认，`INVITATION` 保存令牌摘要、接收者、角色、竞赛、有效期和确认时间。确认、角色撤销和老师关联使用 PostgreSQL 事务锁序列化；撤销角色同时使对应未确认邀请失效，已确认链接重放不恢复权限。角色读取仍使用每次请求的当前数据库身份。首次管理员通过初始化命令建立。
 
 代填队员的 `REGISTRATION_PERSON.userId` 可为空。队伍属于报名单；参赛人员和指导老师的当前关系支持编辑，已提交版本保存独立快照。成员邀请与老师关联复用同一 `/invite/:token` 确认页，单次确认在同一事务内消费邀请和建立关系。
+
+财务账户沿用原报名 UUID，但不对报名建立外键；删除报名不会级联删除财务单据。永久取消移除所有报名修订、成员、邀请、准考证及专属附件引用，只保留最小删除审计、匿名计数、独立结算信息和远端撤权待办。对象及编译目录由可重试任务清理。排考以报名锁和活动排考锁串行化，数据库唯一约束阻止重复占座；预览版本同时包含活动排考版本与各报名版本。
 
 ## 报名流程
 

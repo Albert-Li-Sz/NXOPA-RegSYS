@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { migrateCancelledRegistrations } from './registration-removal.js';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
@@ -18,6 +19,7 @@ import { Idempotency } from './idempotency.js';
 import { ApiController, ExternalController } from './api.js';
 import { AuthService, attachPrincipal, checkCsrf, type AuthRequest } from './auth.js';
 import { RegistrationService } from './registrations.js';
+import { SeatingService } from './seating.js';
 import { FinanceService } from './finance.js';
 import { SupportService } from './support.js';
 import { AdmissionService } from './admissions.js';
@@ -71,6 +73,7 @@ class Errors implements ExceptionFilter {
     AuthService,
     RegistrationService,
     FinanceService,
+    SeatingService,
     SupportService,
     AdmissionService,
     FileService,
@@ -90,6 +93,7 @@ class Errors implements ExceptionFilter {
   ],
 })
 class AppModule {}
+await migrateCancelledRegistrations();
 const app = await NestFactory.create<NestExpressApplication>(AppModule, {
   logger: ['error', 'warn'],
 });

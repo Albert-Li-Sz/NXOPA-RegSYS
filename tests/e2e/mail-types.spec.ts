@@ -35,6 +35,7 @@ test('new ticket templates use ticket content and never include verification cod
     'href',
     /\/support$/,
   );
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
   await text.fill('自定义工单正文 {{message}}');
   await select.click();
   await page.getByRole('option', { name: '邮箱验证 / 注册验证码', exact: true }).click();

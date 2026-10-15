@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
+import { useEditSession } from '../composables/useEditSession';
+import EditActions from './EditActions.vue';
 import { api } from '../api';
 import type { Data } from '../types';
 const settings = ref<Data>(),
   busy = ref(false),
   error = ref('');
+const edit = useEditSession(settings);
 onMounted(async () => {
   try {
     settings.value = await api('/admin/github');
@@ -17,6 +20,7 @@ async function save() {
   busy.value = true;
   try {
     settings.value = await api('/admin/github', 'PUT', settings.value);
+    edit.finish();
     ElMessage.success('GitHub 登录设置已保存');
   } finally {
     busy.value = false;
@@ -31,7 +35,14 @@ async function save() {
       在 GitHub 创建 OAuth App，填写 Client ID 和 Client
       Secret，并使用下方回调地址。启用后登录页显示 GitHub 入口。
     </p>
-    <el-form label-position="top" @submit.prevent="save">
+    <EditActions :session="edit" />
+    <el-form
+      :key="String(edit.editing.value)"
+      label-position="top"
+      :disabled="!edit.editing.value"
+      :class="{ 'read-mode': !edit.editing.value }"
+      @submit.prevent="save"
+    >
       <el-form-item label="启用 GitHub 登录"><el-switch v-model="settings.enabled" /></el-form-item>
       <el-form-item label="Client ID" for="github-client-id"
         ><el-input id="github-client-id" v-model="settings.clientId"
@@ -60,7 +71,9 @@ async function save() {
       <p class="break-anywhere">
         当前回调地址：<code>{{ settings.callbackUrl || settings.effectiveCallbackUrl }}</code>
       </p>
-      <el-button type="primary" native-type="submit" :loading="busy">保存 GitHub 设置</el-button>
+      <el-button type="primary" v-if="edit.editing.value" native-type="submit" :loading="busy"
+        >保存 GitHub 设置</el-button
+      >
     </el-form>
   </div>
 </template>

@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, auth, date, money, label } from '../api';
+import FinanceList from '../components/FinanceList.vue';
 import MarkdownContent from '../components/MarkdownContent.vue';
 import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
@@ -9,7 +10,7 @@ import type { ContestView, RegistrationView } from '../types';
 const route = useRoute(),
   router = useRouter();
 const list = usePagedList<RegistrationView>('contest-detail', () =>
-  auth.user ? `/registrations?contestId=${route.params.id}` : '',
+  auth.user ? `/registrations?contestId=${route.params.id}&role=mine` : '',
 );
 const c = ref<ContestView>(),
   registrations = list.items,
@@ -25,7 +26,7 @@ onMounted(async () => {
 });
 let loaded = false;
 watch(tab, async (current) => {
-  if (auth.user && ['registrations', 'admissions', 'finance'].includes(current) && !loaded) {
+  if (auth.user && ['registrations', 'admissions'].includes(current) && !loaded) {
     await list.load();
     loaded = !list.error.value;
   }
@@ -42,7 +43,7 @@ async function create() {
   busy.value = true;
   try {
     const r = await api<RegistrationView>('/registrations', 'POST', { contestId: c.value!.id });
-    router.push(`/registrations/${r.id}`);
+    router.push(`/registrations/${r.id}?edit=1`);
   } finally {
     busy.value = false;
   }
@@ -55,15 +56,15 @@ async function create() {
     animated
   /><template v-else>
     <div class="crumb">
-      <router-link to="/contests">比赛列表</router-link><span>/</span><span>竞赛报名</span>
+      <router-link to="/contests">活动及竞赛列表</router-link><span>/</span><span>报名</span>
     </div>
     <h1 class="detail-title">{{ c.title }}</h1>
-    <p class="subtitle">比赛时间：{{ date(c.startsAt) }}</p>
+    <p class="subtitle">活动时间：{{ date(c.startsAt) }}</p>
     <el-tabs v-model="tab" style="margin-top: 20px">
       <el-tab-pane label="信息" name="info"
         ><div class="panel">
           <div class="card season-info">
-            <h3>竞赛信息</h3>
+            <h3>活动信息</h3>
             <div class="info-row">
               <span class="muted">当前赛季</span><span>{{ c.season }}</span>
             </div>
@@ -97,7 +98,7 @@ async function create() {
                 <div class="pre-line">{{ c.announcement || '暂无公告' }}</div>
               </div>
               <div class="card">
-                <h3>竞赛介绍</h3>
+                <h3>活动介绍</h3>
                 <MarkdownContent :content="c.description" :format="c.descriptionFormat" />
               </div>
             </div>
@@ -109,7 +110,7 @@ async function create() {
                 ><el-timeline-item type="danger" :timestamp="date(c.closesAt)"
                   >报名截止</el-timeline-item
                 ><el-timeline-item type="primary" :timestamp="date(c.startsAt)"
-                  >正式比赛</el-timeline-item
+                  >活动开始</el-timeline-item
                 ></el-timeline
               ><el-button
                 type="primary"
@@ -164,12 +165,21 @@ async function create() {
               >
             </div>
             <p class="muted">
-              {{ r.people.map((p) => p.name).join('、') }} · {{ label(r.review) }}
+              {{ r.people.map((p) => p.name).join('、') }} ·
+              {{
+                label(
+                  r.status === 'DRAFT'
+                    ? 'DRAFT'
+                    : r.status === 'CORRECTION'
+                      ? 'CORRECTION'
+                      : r.review,
+                )
+              }}
             </p>
           </div>
         </div></el-tab-pane
       >
-      <el-tab-pane label="准考证" name="admissions"
+      <el-tab-pane v-if="c.modules.admissions" label="准考证" name="admissions"
         ><div class="panel">
           <el-empty v-if="!registrations.length" description="报名后可在此查看准考证" />
           <p v-else class="notice">准考证按报名单位发放，请进入对应报名查看与下载。</p>
@@ -185,27 +195,11 @@ async function create() {
       >
       <el-tab-pane label="财务" name="finance"
         ><div class="panel">
-          <div v-if="c.policy.feeMode === 'FREE'" class="card">
-            <h3>免费竞赛</h3>
-            <p class="muted">本竞赛无需缴纳报名费用。</p>
-          </div>
-          <template v-else
-            ><div class="notice pre-line">
-              {{ c.policy.paymentInstructions || '请查看公告中的线下收款说明。' }}
-            </div>
-            <div class="actions">
-              <router-link
-                v-for="r in registrations"
-                :key="r.id"
-                :to="`/registrations/${r.id}?tab=finance`"
-                ><el-button
-                  >{{ r.teamName || r.people[0]?.name }} · 缴费记录</el-button
-                ></router-link
-              >
-            </div></template
-          >
-        </div></el-tab-pane
-      >
+          <p class="notice pre-line" v-if="c.policy.paymentInstructions">
+            {{ c.policy.paymentInstructions }}
+          </p>
+          <FinanceList :contest-id="c.id" :mine="true" /></div
+      ></el-tab-pane>
       <el-tab-pane label="工单" name="support"
         ><div class="card">
           <h3>遇到报名问题？</h3>
@@ -218,7 +212,7 @@ async function create() {
     </el-tabs>
     <el-alert v-if="list.error.value" :title="list.error.value" type="error" :closable="false" />
     <ListPagination
-      v-if="auth.user && ['registrations', 'admissions', 'finance'].includes(tab)"
+      v-if="auth.user && ['registrations', 'admissions'].includes(tab)"
       v-model:page="list.page.value"
       v-model:size="list.pageSize.value"
       :total="list.total.value"

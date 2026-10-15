@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PaginatedTable from '../components/PaginatedTable.vue';
+import PaginatedList from '../components/PaginatedList.vue';
 import { ref, onMounted, watch, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, auth, date, label, loadAuth } from '../api';
@@ -8,6 +10,8 @@ import {
   type AccountInvitationInput,
 } from '@contest-center/contracts';
 import type { Data, ContestView } from '../types';
+import { useEditSession, mayLeaveEdits } from '../composables/useEditSession';
+import EditActions from '../components/EditActions.vue';
 import PlatformBindings from '../components/PlatformBindings.vue';
 import MailSettings from '../components/MailSettings.vue';
 import GithubSettings from '../components/GithubSettings.vue';
@@ -33,6 +37,10 @@ const requestedTab = typeof route.query.tab === 'string' ? route.query.tab : all
 const userDetailId = ref('');
 const peopleView = ref<InstanceType<typeof StudentsView>>();
 const jobsPage = usePagedList('jobs', () => '/admin/jobs'),
+  contestsPage = usePagedList<ContestView>(
+    'managed-contests',
+    () => '/contests?all=true&managed=true',
+  ),
   usersPage = usePagedList('users', () => '/admin/users'),
   logsPage = usePagedList('audit', () => '/admin/audit'),
   invitationsPage = usePagedList('invitations', () => '/admin/invitations');
@@ -116,6 +124,7 @@ const tab = ref(allowedTabs.includes(requestedTab) ? requestedTab : allowedTabs[
   templates = ref<Data[]>([]),
   templateSource = ref(defaultTemplate),
   templateName = ref('全局准考证模板'),
+  templateVersion = ref(0),
   fields = ref<Data[]>([]),
   metrics = ref<Data>({}),
   fieldDialog = ref(false),
@@ -144,8 +153,9 @@ const jobKinds: Record<string, string> = {
 async function refresh() {
   loadError.value = '';
   try {
-    if (['contests', 'instances', 'users', 'tokens', 'audit'].includes(tab.value))
+    if (['instances', 'users', 'tokens', 'audit'].includes(tab.value))
       contests.value = await api('/contests?all=true');
+    if (tab.value === 'contests') await contestsPage.load();
     if (tab.value === 'jobs') {
       await jobsPage.load();
       if (auth.user?.isAdmin) metrics.value = await api('/admin/metrics');
@@ -166,6 +176,12 @@ async function refresh() {
         api('/admin/fields'),
       ]);
       effectivePublicUrl.value = site.value.publicUrl;
+      const currentTemplate = templates.value.find((t) => t.active && !t.contestId);
+      if (currentTemplate && !globalEdit.editing.value) {
+        templateName.value = currentTemplate.name;
+        templateSource.value = currentTemplate.source;
+        templateVersion.value = currentTemplate.version;
+      }
     }
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '管理数据加载失败';
@@ -283,14 +299,50 @@ async function revokeInvitation(id: string) {
 function contestName(id: string) {
   return contests.value.find((c) => c.id === id)?.title ?? id.slice(0, 8);
 }
+const instanceEdit = useEditSession(instance),
+  fieldEdit = useEditSession(field);
+watch(instanceDialog, (open) => {
+  if (open) instanceEdit.begin();
+  else instanceEdit.finish();
+});
+watch(fieldDialog, (open) => {
+  if (open) fieldEdit.begin();
+  else fieldEdit.finish();
+});
+async function closeInstance(done: () => void) {
+  if (await instanceEdit.mayLeave()) done();
+}
+async function closeField(done: () => void) {
+  if (await fieldEdit.mayLeave()) done();
+}
+const siteEdit = useEditSession(site);
+const globalTemplateModel = computed({
+  get: () => ({
+    name: templateName.value,
+    source: templateSource.value,
+    version: templateVersion.value,
+  }),
+  set: (value) => {
+    templateName.value = value.name;
+    templateSource.value = value.source;
+    templateVersion.value = value.version;
+  },
+});
+const globalEdit = useEditSession(globalTemplateModel);
+async function saveGlobalTemplate() {
+  await api('/admissions/templates', 'POST', globalTemplateModel.value);
+  globalEdit.finish();
+  await refresh();
+}
 async function saveSite() {
   await api('/admin/site', 'PUT', site.value);
+  siteEdit.finish();
   ElMessage.success('站点配置已保存');
   await refresh();
 }
 function editGlobalField(f?: Data) {
   field.value = f
-    ? JSON.parse(JSON.stringify(f.definition))
+    ? { ...JSON.parse(JSON.stringify(f.definition)), version: f.version }
     : {
         key: '',
         label: '',
@@ -351,7 +403,7 @@ async function webhook() {
   <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false"
     ><el-button text @click="refresh">重新加载</el-button></el-alert
   >
-  <el-tabs v-model="tab">
+  <el-tabs v-model="tab" :before-leave="mayLeaveEdits">
     <el-tab-pane v-for="item in tabs" :key="item.name" :label="item.label" :name="item.name" />
   </el-tabs>
   <div class="panel" v-if="tab === 'mail' && isSystemAdmin()"><MailSettings /></div>
@@ -369,13 +421,30 @@ async function webhook() {
   <IdentityReviews v-if="tab === 'identities' && auth.user?.isAdmin" />
   <AdminGrants v-if="tab === 'grants' && auth.user?.isAdmin" />
   <div class="panel" v-if="tab === 'contests'">
+    <div class="toolbar">
+      <el-input
+        v-model="contestsPage.filters.value.search"
+        placeholder="搜索活动或赛季"
+        clearable
+        style="max-width: 360px"
+      />
+    </div>
     <div class="actions" v-if="auth.user?.isAdmin">
       <router-link to="/admin/contests/new"
         ><el-button type="primary">创建竞赛</el-button></router-link
       >
     </div>
     <div class="card">
-      <el-table :data="managedContests()"
+      <p class="form-help">
+        报名人数按当前已提交报名的参加人数统计，团队按成员人数计，不含草稿、已撤回或已删除报名。
+      </p>
+      <el-alert
+        v-if="contestsPage.error.value"
+        :title="contestsPage.error.value"
+        type="error"
+        :closable="false"
+      />
+      <el-table :data="contestsPage.items.value" v-loading="contestsPage.loading.value"
         ><el-table-column label="竞赛名称" prop="title" min-width="280" /><el-table-column
           label="赛季"
           prop="season"
@@ -388,6 +457,13 @@ async function webhook() {
           ><template #default="{ row }">{{
             row.policy.mode === 'TEAM' ? '团队' : '个人'
           }}</template></el-table-column
+        ><el-table-column label="报名人数" min-width="160"
+          ><template #default="{ row }"
+            ><div>正式 {{ row.registrationCounts?.official ?? 0 }} 人</div>
+            <div class="muted">
+              非正式 {{ row.registrationCounts?.unofficial ?? 0 }} 人
+            </div></template
+          ></el-table-column
         ><el-table-column label="操作" width="200"
           ><template #default="{ row }"
             ><router-link :to="`/admin/contests/${row.id}`">编辑配置</router-link
@@ -399,6 +475,12 @@ async function webhook() {
           ></el-table-column
         ></el-table
       >
+      <ListPagination
+        v-model:page="contestsPage.page.value"
+        v-model:size="contestsPage.pageSize.value"
+        :total="contestsPage.total.value"
+        :loading="contestsPage.loading.value"
+      />
     </div>
   </div>
   <div class="panel" v-if="tab === 'jobs'">
@@ -685,7 +767,7 @@ async function webhook() {
     </div>
     <div class="card">
       <h3>平台实例</h3>
-      <el-table :data="instances"
+      <PaginatedTable page-key="admin-instances" :data="instances"
         ><el-table-column label="名称" prop="name" /><el-table-column label="类型"
           ><template #default="{ row }">{{
             row.type === 'HYDRO' ? 'Hydro 评测平台' : 'DOMjudge 评测平台'
@@ -697,7 +779,7 @@ async function webhook() {
               >编辑实例</el-button
             ></template
           ></el-table-column
-        ></el-table
+        ></PaginatedTable
       >
     </div>
     <PlatformBindings :contests="managedContests()" :instances="instances" />
@@ -713,7 +795,7 @@ async function webhook() {
       ><el-button text @click="secret = ''">隐藏</el-button>
     </div>
     <div class="card">
-      <el-table :data="tokens"
+      <PaginatedTable page-key="admin-tokens" :data="tokens"
         ><el-table-column label="名称" prop="name" /><el-table-column label="范围" min-width="200"
           ><template #default="{ row }">{{
             row.contestIds.map((id: string) => id.slice(0, 8)).join('、')
@@ -732,14 +814,19 @@ async function webhook() {
               >撤销</el-button
             ><span v-else>已撤销</span></template
           ></el-table-column
-        ></el-table
+        ></PaginatedTable
       >
     </div>
   </div>
   <div class="panel" v-if="tab === 'site'">
     <div class="card">
       <h3>站点设置</h3>
-      <el-form label-position="top"
+      <EditActions :session="siteEdit" />
+      <el-form
+        :key="String(siteEdit.editing.value)"
+        label-position="top"
+        :disabled="!siteEdit.editing.value"
+        :class="{ 'read-mode': !siteEdit.editing.value }"
         ><el-form-item label="站点名称"><el-input v-model="site.name" /></el-form-item
         ><el-form-item label="主色"><el-color-picker v-model="site.primaryColor" /></el-form-item
         ><el-form-item label="页脚"><el-input v-model="site.footer" /></el-form-item
@@ -754,51 +841,60 @@ async function webhook() {
           <p>验证邮箱、找回密码与邀请链接使用此地址。环境配置的可信管理入口继续可用。</p>
           <p class="break-anywhere">链接预览：{{ site.publicUrl }}/invite/示例邀请</p>
         </div>
-        <el-button type="primary" @click="saveSite">保存</el-button></el-form
+        <el-button v-if="siteEdit.editing.value" type="primary" @click="saveSite"
+          >保存</el-button
+        ></el-form
       >
     </div>
     <div class="card">
       <h3>全局准考证模板</h3>
-      <el-input v-model="templateName" style="margin-bottom: 15px" /><el-input
+      <EditActions :session="globalEdit" />
+      <el-input
+        :disabled="!globalEdit.editing.value"
+        v-model="templateName"
+        style="margin-bottom: 15px"
+      /><el-input
         v-model="templateSource"
+        :disabled="!globalEdit.editing.value"
         type="textarea"
         :rows="16"
         class="monospace"
       />
       <div class="actions">
-        <el-button
-          type="primary"
-          @click="
-            api('/admissions/templates', 'POST', {
-              name: templateName,
-              source: templateSource,
-            }).then(refresh)
-          "
+        <el-button v-if="globalEdit.editing.value" type="primary" @click="saveGlobalTemplate"
           >保存新版本</el-button
         >
       </div>
-      <div v-for="t in templates" :key="t.id">
-        {{ t.name }} v{{ t.version }} <el-tag v-if="t.active">当前</el-tag
-        ><el-button
-          text
-          @click="
-            templateSource = t.source;
-            templateName = t.name;
-          "
-          >载入</el-button
-        >
-      </div>
+      <PaginatedList
+        :items="templates"
+        page-key="global-template-versions"
+        :always="false"
+        v-slot="{ items }"
+      >
+        <div v-for="t in items" :key="t.id" class="template-version">
+          {{ t.name }} v{{ t.version }} <el-tag v-if="t.active">当前</el-tag
+          ><el-button
+            text
+            @click="
+              globalEdit.begin();
+              templateSource = t.source;
+              templateName = t.name;
+            "
+            >载入</el-button
+          >
+        </div>
+      </PaginatedList>
     </div>
     <div class="card">
       <h3>全局字段库</h3>
       <el-button type="primary" @click="editGlobalField()">添加全局字段</el-button>
       <p class="muted">竞赛可从字段库导入，并独立调整要求。</p>
-      <el-table :data="fields"
+      <PaginatedTable page-key="admin-fields" :data="fields"
         ><el-table-column label="键名" prop="key" /><el-table-column label="名称"
           ><template #default="{ row }">{{ row.definition.label }}</template></el-table-column
         ><el-table-column label="作用域"
           ><template #default="{ row }">{{ row.definition.scope }}</template></el-table-column
-        ></el-table
+        ></PaginatedTable
       >
     </div>
   </div>
@@ -869,7 +965,12 @@ async function webhook() {
   <el-dialog :model-value="!!detail" @close="detail = undefined" title="记录详情" width="720px">
     <pre class="record-detail">{{ JSON.stringify(detail, null, 2) }}</pre>
   </el-dialog>
-  <el-dialog v-model="instanceDialog" title="Hydro / DOMjudge 接入配置" width="580px">
+  <el-dialog
+    :before-close="closeInstance"
+    v-model="instanceDialog"
+    title="Hydro / DOMjudge 接入配置"
+    width="580px"
+  >
     <el-form label-position="top">
       <el-form-item label="名称" for="platform-name"
         ><el-input id="platform-name" v-model="instance.name"
@@ -1076,7 +1177,7 @@ async function webhook() {
       ><el-button type="primary" @click="createToken">签发</el-button></template
     ></el-dialog
   >
-  <el-dialog v-model="fieldDialog" title="全局字段" width="560px"
+  <el-dialog :before-close="closeField" v-model="fieldDialog" title="全局字段" width="560px"
     ><el-form label-position="top"
       ><el-form-item label="键名"><el-input v-model="field.key" /></el-form-item
       ><el-form-item label="字段名称"><el-input v-model="field.label" /></el-form-item

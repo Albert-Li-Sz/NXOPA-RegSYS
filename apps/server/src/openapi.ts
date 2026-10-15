@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import {
   contestSchema,
+  roomSchema,
+  seatingRequestSchema,
+  seatingClearSchema,
+  seatingPreviewSchema,
+  registrationDeletionSchema,
+  registrationCancellationSchema,
+  registrationDeletionReceiptSchema,
+  registrationActionsSchema,
   registrationSchema,
   fieldSchema,
   registrationEnvelopeSchema,
@@ -56,6 +64,11 @@ export function describeApi(document: OpenAPIObject) {
       pageSize: z.union([z.literal(20), z.literal(50), z.literal(100)]),
     }),
     ContestInput: contestSchema,
+    RoomInput: roomSchema,
+    SeatingRequest: seatingRequestSchema,
+    SeatingPreview: seatingPreviewSchema,
+    RegistrationDeletionReceipt: registrationDeletionReceiptSchema,
+    RegistrationActions: registrationActionsSchema,
     RegistrationInput: registrationSchema,
     FieldDefinition: fieldSchema,
     RegistrationEnvelopeV1: registrationEnvelopeSchema,
@@ -84,6 +97,13 @@ export function describeApi(document: OpenAPIObject) {
   for (const [name, s] of Object.entries(named))
     document.components.schemas[name] = schema(s) as never;
   const bodies: Record<string, z.ZodType | string> = {
+    'delete /api/v1/registrations/{id}': registrationDeletionSchema,
+    'post /api/v1/contests/{id}/rooms': roomSchema,
+    'put /api/v1/contests/{id}/rooms/{roomId}': roomSchema,
+    'delete /api/v1/contests/{id}/rooms/{roomId}': object({ version }),
+    'post /api/v1/contests/{id}/seating/preview': seatingRequestSchema,
+    'post /api/v1/contests/{id}/seating/commit': seatingRequestSchema,
+    'post /api/v1/contests/{id}/seating/clear': seatingClearSchema,
     'post /api/v1/auth/register': object({
       email: z.email(),
       username: text,
@@ -138,7 +158,7 @@ export function describeApi(document: OpenAPIObject) {
     'post /api/v1/registrations': object({ contestId: id }),
     'put /api/v1/registrations/{id}': 'RegistrationInput',
     'post /api/v1/registrations/{id}/submit': object({ version }),
-    'post /api/v1/registrations/{id}/cancel': object({ version }),
+    'post /api/v1/registrations/{id}/cancel': registrationCancellationSchema,
     'post /api/v1/registrations/{id}/withdraw': object({ version }),
     'post /api/v1/registrations/{id}/review': object({
       version,
@@ -204,6 +224,7 @@ export function describeApi(document: OpenAPIObject) {
     }),
     'post /api/v1/admissions/templates': object({
       contestId: id.optional(),
+      version: z.number().int().min(0).optional(),
       name: text,
       source: text,
     }),
@@ -362,6 +383,9 @@ export function describeApi(document: OpenAPIObject) {
           '/api/v1/admin/audit',
           '/api/v1/registrations',
           '/api/v1/support',
+          '/api/v1/contests',
+          '/api/v1/files',
+          '/api/v1/notifications/mail',
         ].includes(url) ||
           url.endsWith('/finance/{collection}') ||
           url.endsWith('/schools'))
@@ -395,6 +419,87 @@ export function describeApi(document: OpenAPIObject) {
           },
         };
       }
+      if (
+        (url === '/api/v1/registrations/{id}' && method === 'delete') ||
+        (url === '/api/v1/registrations/{id}/cancel' && method === 'post')
+      ) {
+        op.description =
+          'Permanently removes registration data, releases seats and invalidates admissions. Settlement data survives in an independent finance account; cancellation does not automatically refund. Creator may cancel; scoped registration managers may delete with a reason.';
+        op.responses[method === 'post' ? '201' : '200'] = {
+          description: 'Deletion receipt',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/RegistrationDeletionReceipt' },
+            },
+          },
+        };
+      }
+      if (url.endsWith('/seating/preview') || url.endsWith('/seating/commit')) {
+        op.description =
+          'ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation.';
+        op.responses['201'] = {
+          description: 'Allocation preview/result',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/SeatingPreview' } },
+          },
+        };
+      }
+      if (url.startsWith('/api/v1/finance/accounts'))
+        op.description =
+          'Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted.';
+      if (url === '/api/v1/registrations/review-queue') {
+        op.description =
+          'Scoped REGISTRATIONS permission required. Returns all submitted IDs matching the current list filters in review order, independent of page size; defaults to pending review.';
+        op.responses['200'] = {
+          description: 'Review queue',
+          content: { 'application/json': { schema: schema(object({ ids: z.array(id) })) } },
+        };
+      }
+      if (url === '/api/v1/contests' && method === 'get') {
+        op.parameters = [
+          ...(op.parameters ?? []).filter(
+            (p: any) => p.in !== 'query' || ['page', 'pageSize', 'search'].includes(p.name),
+          ),
+          ...['all', 'managed'].map((name) => ({
+            name,
+            in: 'query' as const,
+            required: false,
+            schema: { type: 'boolean' },
+          })),
+        ];
+        op.description =
+          '兼容原数组；传 page/pageSize 返回分页列表。managed=true 仅返回当前账号具有查看管理权限的活动，包含 registrationCounts.official/unofficial，按已提交及待补正报名中的有效成员人数统计，不含草稿、已撤回或删除报名，也不含指导老师。团队按成员人数计。';
+      }
+      if (url === '/api/v1/files' && method === 'get') {
+        op.parameters = [
+          ...(op.parameters ?? []).filter(
+            (p: any) => p.in !== 'query' || ['page', 'pageSize', 'search'].includes(p.name),
+          ),
+          ...['contestId', 'registrationId'].map((name) => ({
+            name,
+            in: 'query' as const,
+            required: false,
+            schema: { type: 'string', format: 'uuid' },
+          })),
+        ];
+        op.description =
+          '按账号、报名关联或 FILES 管理权限筛选附件。支持分页与名称搜索，权限条件同时作用于列表和总数。旧调用返回数组，个人附件旧调用最多 500 条；分页可读取更早记录。';
+      }
+      if (url === '/api/v1/notifications/mail' && method === 'get') {
+        op.parameters = [
+          ...(op.parameters ?? []).filter(
+            (p: any) => p.in !== 'query' || ['page', 'pageSize'].includes(p.name),
+          ),
+          {
+            name: 'resourceId',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ];
+        op.description =
+          '按创建时间与 ID 降序分页，合并邮件任务和未派发事件。必须有对应账号、报名、财务或工单资源的访问权限；其他收件人邮箱保持脱敏，重发操作独立校验。旧调用最多返回 200 条。';
+      }
       const body = bodies[`${method} ${url}`];
       if (url === '/api/v1/auth/sessions' && method === 'get') {
         op.parameters = [
@@ -403,11 +508,11 @@ export function describeApi(document: OpenAPIObject) {
             name: 'pageSize',
             in: 'query',
             required: false,
-            schema: { type: 'integer', enum: [20], default: 20 },
+            schema: { type: 'integer', enum: [20, 50, 100], default: 20 },
           },
         ];
         op.description =
-          '仅返回当前账号尚未过期的会话，每页固定 20 条。显式传入 page 或 pageSize 返回分页结果；旧调用返回最多 20 条的数组。';
+          '仅返回当前账号尚未过期的会话，默认每页 20 条，可选择 20、50、100 条。显式传入 page 或 pageSize 返回分页结果；旧调用返回最多 20 条的数组。';
         op.responses['200'] = {
           description: '当前账号的登录会话',
           content: {
@@ -420,8 +525,8 @@ export function describeApi(document: OpenAPIObject) {
                       {
                         type: 'object',
                         properties: {
-                          pageSize: { type: 'integer', enum: [20] },
-                          items: { type: 'array', maxItems: 20, items: {} },
+                          pageSize: { type: 'integer', enum: [20, 50, 100] },
+                          items: { type: 'array', maxItems: 100, items: {} },
                         },
                       },
                     ],

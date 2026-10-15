@@ -139,6 +139,7 @@ test('admin and contest configuration pages, financial and support views', async
   }
   await page.goto('/admin/contests/33333333-3333-4333-8333-333333333333');
   await page.getByRole('tab', { name: '报名字段' }).click();
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
   await page.getByRole('button', { name: '添加字段' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -238,6 +239,7 @@ test('administrator downloads the selected current admission as ZIP in browser',
   await row.locator('.el-checkbox').click();
   const pending = page.waitForEvent('download');
   await page.getByRole('button', { name: '下载准考证 ZIP', exact: true }).click();
+  await page.getByRole('button', { name: '确定', exact: true }).click();
   const download = await pending;
   expect(download.suggestedFilename()).toBe('admissions.zip');
   await download.saveAs('.runtime/reports/browser-admissions.zip');

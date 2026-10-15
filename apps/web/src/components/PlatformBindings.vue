@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import PaginatedTable from './PaginatedTable.vue';
 import { computed, ref, onMounted } from 'vue';
 import SchoolMappings from './SchoolMappings.vue';
 import { ElMessage } from 'element-plus';
+import { useEditSession } from '../composables/useEditSession';
 import { api, auth } from '../api';
 import type { ContestView, Data } from '../types';
 const props = defineProps<{
@@ -29,6 +31,24 @@ const defaults = () => ({
   enabled: true,
 });
 const binding = ref<Data>(defaults());
+const editSession = useEditSession(binding, true),
+  loadedContest = ref(contestId.value);
+async function editBinding(row: Data) {
+  if (!(await editSession.mayLeave())) return;
+  binding.value = { ...row, groupIds: [...row.groupIds] };
+  editSession.begin();
+}
+function cancelBinding() {
+  binding.value = defaults();
+  editSession.begin();
+}
+async function changeContest() {
+  if (!(await editSession.mayLeave())) {
+    contestId.value = loadedContest.value;
+    return;
+  }
+  await loadBindings();
+}
 const available = computed(() =>
   props.instances.filter(
     (i) => i.enabled && (auth.user?.isAdmin || i.allowedContestIds.includes(contestId.value)),
@@ -41,6 +61,8 @@ async function loadBindings() {
   const selected = contestId.value;
   bindings.value = [];
   binding.value = defaults();
+  loadedContest.value = selected;
+  editSession.begin();
   if (!selected) return;
   loading.value = true;
   try {
@@ -86,13 +108,13 @@ onMounted(() => {
           v-model="contestId"
           placeholder="选择要配置的竞赛"
           filterable
-          @change="loadBindings"
+          @change="changeContest"
           ><el-option v-for="c in contests" :key="c.id" :value="c.id" :label="c.title" /></el-select
       ></el-form-item>
     </el-form>
     <el-empty v-if="!contestId" description="选择竞赛后配置比赛绑定" :image-size="70" />
     <template v-else>
-      <el-table :data="bindings" v-loading="loading">
+      <PaginatedTable page-key="platformbindings-bindings" :data="bindings" v-loading="loading">
         <el-table-column label="平台" min-width="180"
           ><template #default="{ row }"
             >{{ row.instance.name }} ·
@@ -119,16 +141,14 @@ onMounted(() => {
               type="primary"
               @click="schoolBinding = row.id"
               >学校映射</el-button
-            ><el-button text @click="binding = { ...row, groupIds: [...row.groupIds] }"
-              >编辑绑定</el-button
-            ></template
+            ><el-button text @click="editBinding(row)">编辑绑定</el-button></template
           ></el-table-column
         >
-      </el-table>
+      </PaginatedTable>
       <div class="actions">
         <strong>{{ binding.id ? '编辑比赛绑定' : '新增比赛绑定' }}</strong
-        ><el-button v-if="binding.id" text type="primary" @click="binding = defaults()"
-          >新增绑定</el-button
+        ><el-button v-if="binding.id" text type="primary" @click="cancelBinding"
+          >取消修改</el-button
         >
       </div>
       <el-form label-position="top" @submit.prevent="save">

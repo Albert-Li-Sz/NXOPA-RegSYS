@@ -1,0 +1,198 @@
+{
+  "checkedAt": "2026-10-15T01:14:48.817956+00:00",
+  "branch": "codex/activity-workflows",
+  "baseCommit": "1627a87cc6612ff6a567f66e99be56c4b0591c34",
+  "workingTreeDirty": true,
+  "environment": "Local API and Vue server; full regression uses isolated PostgreSQL, Redis, Mailpit and XeLaTeX",
+  "defaultPageSize": 20,
+  "pageSizes": [20, 50, 100],
+  "counts": {
+    "unit": "active participants, team members counted individually",
+    "includedStatuses": ["SUBMITTED", "CORRECTION"],
+    "requiresRegistrationNumber": true,
+    "excludes": [
+      "DRAFT",
+      "CANCELLED",
+      "CANCEL_REQUESTED",
+      "deleted entries",
+      "inactive members",
+      "coaches"
+    ]
+  },
+  "coverage": [
+    "managed activities and public activity catalogue",
+    "registrations and public roster",
+    "user and teacher records, grants and identity reviews",
+    "attachments and mail delivery",
+    "sessions, jobs, audit and invitations",
+    "financial collections and independent financial accounts",
+    "rooms, seats, allocation candidates and previews",
+    "long dynamic forms, member and coach records",
+    "template versions and variables, review history",
+    "platform bindings, organization groups, credentials and remote revocation tasks",
+    "complete own identity review history beyond the former 20-record limit"
+  ],
+  "targeted": {
+    "command": "pnpm exec playwright test tests/e2e/pagination.spec.ts tests/e2e/browser-feedback.spec.ts tests/e2e/system-settings.spec.ts",
+    "passed": 14,
+    "newScenarios": 9,
+    "checks": [
+      "authorized activity pagination; official/unofficial headcounts, draft exclusion, cancellation updates and preference persistence",
+      "file name search, last-page deletion fallback and page-size persistence",
+      "global row identity and cross-page edit/cancel",
+      "all 22 answers retained across pages and submitted together",
+      "cross-page seating and server-side roster selections retained",
+      "502 attachments reachable without widening ownership",
+      "mail pagination ordering, total and resource authorization",
+      "PDF preview and download authorization",
+      "20/50/100 login sessions, persistence, revocation and ownership",
+      "complete own identity review history with 23 added records, page-size persistence and account isolation",
+      "23 added global template versions paginate correctly and retain page size after reload",
+      "public landing and login return path, SMTP editing and mail delivery, scoped administration"
+    ]
+  },
+  "fullRegression": {
+    "command": "PLATFORM_TEST_LATEX_IMAGE=ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.4.0 E2E_MAX_FAILURES=5 pnpm test:full",
+    "success": true,
+    "suites": [
+      {
+        "suite": "test:integration",
+        "success": true,
+        "elapsedMs": 10372,
+        "log": ".runtime/reports/full-test-integration.log"
+      },
+      {
+        "suite": "test:auth",
+        "success": true,
+        "elapsedMs": 4759,
+        "log": ".runtime/reports/full-test-auth.log"
+      },
+      {
+        "suite": "test:accounts",
+        "success": true,
+        "elapsedMs": 9510,
+        "log": ".runtime/reports/full-test-accounts.log"
+      },
+      {
+        "suite": "test:feishu",
+        "success": true,
+        "elapsedMs": 2608,
+        "log": ".runtime/reports/full-test-feishu.log"
+      },
+      {
+        "suite": "test:invitations",
+        "success": true,
+        "elapsedMs": 7548,
+        "log": ".runtime/reports/full-test-invitations.log"
+      },
+      {
+        "suite": "test:mail",
+        "success": true,
+        "elapsedMs": 9831,
+        "log": ".runtime/reports/full-test-mail.log"
+      },
+      {
+        "suite": "test:mail-failover",
+        "success": true,
+        "elapsedMs": 7287,
+        "log": ".runtime/reports/full-test-mail-failover.log"
+      },
+      {
+        "suite": "test:template-bugs",
+        "success": true,
+        "elapsedMs": 4271,
+        "log": ".runtime/reports/full-test-template-bugs.log"
+      },
+      {
+        "suite": "test:overview",
+        "success": true,
+        "elapsedMs": 999,
+        "log": ".runtime/reports/full-test-overview.log"
+      },
+      {
+        "suite": "test:enhancements",
+        "success": true,
+        "elapsedMs": 5988,
+        "log": ".runtime/reports/full-test-enhancements.log"
+      },
+      {
+        "suite": "test:admissions",
+        "success": true,
+        "elapsedMs": 5836,
+        "log": ".runtime/reports/full-test-admissions.log"
+      },
+      {
+        "suite": "test:activity-workflows",
+        "success": true,
+        "elapsedMs": 5778,
+        "log": ".runtime/reports/full-test-activity-workflows.log"
+      },
+      {
+        "suite": "test:workflow-upgrade",
+        "success": true,
+        "elapsedMs": 3122,
+        "log": ".runtime/reports/full-test-workflow-upgrade.log"
+      },
+      {
+        "suite": "test:bugs",
+        "success": true,
+        "elapsedMs": 3715,
+        "log": ".runtime/reports/full-test-bugs.log"
+      },
+      {
+        "suite": "test:permissions",
+        "success": true,
+        "elapsedMs": 976,
+        "log": ".runtime/reports/full-test-permissions.log"
+      },
+      {
+        "suite": "test:file-race",
+        "success": true,
+        "elapsedMs": 1540,
+        "log": ".runtime/reports/full-test-file-race.log"
+      },
+      {
+        "suite": "test:load",
+        "success": true,
+        "elapsedMs": 11972,
+        "log": ".runtime/reports/full-test-load.log"
+      },
+      {
+        "suite": "test:mcp",
+        "success": true,
+        "elapsedMs": 1473,
+        "log": ".runtime/reports/full-test-mcp.log"
+      },
+      {
+        "suite": "test:e2e",
+        "success": true,
+        "elapsedMs": 237349,
+        "log": ".runtime/reports/full-test-e2e.log"
+      }
+    ],
+    "browserScenarios": 52,
+    "checkedAt": "2026-10-15T01:13:04.395Z"
+  },
+  "engineering": {
+    "typecheck": true,
+    "unitTestsPassed": 13,
+    "build": true,
+    "format": true,
+    "diffCheck": true,
+    "openApiParametersChecked": true
+  },
+  "visual": {
+    "viewport": {
+      "width": 831,
+      "height": 883
+    },
+    "documentOverflow": false,
+    "screenshot": ".runtime/reports/pagination-activities.png"
+  },
+  "local": {
+    "web": "http://localhost:5173/admin/contests",
+    "api": "http://localhost:3000/api/v1/health",
+    "health": "ok"
+  },
+  "verificationScope": "Full regression: 19 suites and 52 browser scenarios. Final focused run: 14 browser checks, including the additional global-template pagination case and final list wrappers."
+}

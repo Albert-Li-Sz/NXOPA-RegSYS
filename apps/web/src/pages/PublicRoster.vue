@@ -9,28 +9,42 @@ const id = String(useRoute().params.id),
   rows = ref<Data[]>([]),
   total = ref(0),
   page = ref(1),
-  size = ref(20),
+  size = ref(
+    [20, 50, 100].includes(Number(localStorage.getItem('page-size:public-roster')))
+      ? Number(localStorage.getItem('page-size:public-roster'))
+      : 20,
+  ),
   search = ref(''),
   loading = ref(false),
   error = ref('');
+let sequence = 0;
 async function refresh() {
+  const current = ++sequence;
   loading.value = true;
   error.value = '';
   try {
     const data = await api(
       `/contests/${id}/public-teams?${new URLSearchParams({ page: String(page.value), pageSize: String(size.value), search: search.value })}`,
     );
+    if (current !== sequence) return;
     contest.value = data.contest;
     rows.value = data.items;
     total.value = data.total;
+    if (page.value > Math.max(1, Math.ceil(total.value / size.value)))
+      page.value = Math.max(1, Math.ceil(total.value / size.value));
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '名单加载失败';
+    if (current === sequence) error.value = e instanceof Error ? e.message : '名单加载失败';
   } finally {
-    loading.value = false;
+    if (current === sequence) loading.value = false;
   }
 }
 onMounted(refresh);
-watch([page, size], refresh);
+watch(page, refresh);
+watch(size, (value) => {
+  localStorage.setItem('page-size:public-roster', String(value));
+  if (page.value !== 1) page.value = 1;
+  else void refresh();
+});
 watch(search, () => {
   if (page.value !== 1) page.value = 1;
   else refresh();

@@ -4,6 +4,8 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, date } from '../api';
 import { canManage, ownUser } from '../permissions';
 import type { Data } from '../types';
+import { usePagedList } from '../composables/usePagedList';
+import ListPagination from './ListPagination.vue';
 const PdfPreview = defineAsyncComponent(() => import('./PdfPreview.vue'));
 const props = withDefaults(
   defineProps<{
@@ -14,9 +16,19 @@ const props = withDefaults(
   }>(),
   { canUpload: undefined },
 );
-const rows = ref<Data[]>([]),
+const list = usePagedList('file-library', () => {
+  const query = new URLSearchParams(
+    props.registrationId
+      ? { registrationId: props.registrationId }
+      : props.contestId
+        ? { contestId: props.contestId }
+        : {},
+  );
+  return `/files?${query}`;
+});
+const rows = list.items,
   busy = ref(false),
-  error = ref(''),
+  error = list.error,
   scope = ref('CONTEST_PUBLIC'),
   distributing = ref(false),
   selected = ref<string[]>([]),
@@ -82,19 +94,7 @@ async function preview(row: Data) {
   }
 }
 async function refresh() {
-  error.value = '';
-  try {
-    const query = new URLSearchParams(
-      props.registrationId
-        ? { registrationId: props.registrationId }
-        : props.contestId
-          ? { contestId: props.contestId }
-          : {},
-    );
-    rows.value = await api(`/files?${query}`);
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '文件加载失败';
-  }
+  await list.load();
 }
 async function upload(event: Event) {
   const input = event.target as HTMLInputElement,
@@ -162,14 +162,20 @@ onMounted(async () => {
   publicBase.value = (await api('/site')).publicUrl;
   await refresh();
 });
-watch(() => [props.contestId, props.registrationId], refresh);
+watch(
+  () => [props.contestId, props.registrationId],
+  () => {
+    if (list.page.value === 1) void refresh();
+    else list.page.value = 1;
+  },
+);
 watch(previewOpen, (open) => {
   if (!open) clearPreview();
 });
 onBeforeUnmount(clearPreview);
 </script>
 <template>
-  <div class="card file-library">
+  <div class="card file-library" data-pagination-key="files">
     <div class="member-heading">
       <h3>{{ title }}</h3>
       <el-button @click="refresh">刷新</el-button>
@@ -198,7 +204,13 @@ onBeforeUnmount(clearPreview);
       ><span v-if="busy">正在上传…</span>
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <el-table :data="rows" empty-text="暂无附件">
+    <el-input
+      v-model="list.filters.value.search"
+      placeholder="搜索文件名称"
+      clearable
+      style="max-width: 360px; margin-bottom: 16px"
+    />
+    <el-table :data="rows" v-loading="list.loading.value" empty-text="暂无附件">
       <el-table-column label="文件" min-width="200"
         ><template #default="{ row }"
           ><a v-if="isPdf(row)" :href="link(row)" @click.prevent="preview(row)">{{ row.name }}</a
@@ -241,6 +253,12 @@ onBeforeUnmount(clearPreview);
         ></el-table-column
       >
     </el-table>
+    <ListPagination
+      v-model:page="list.page.value"
+      v-model:size="list.pageSize.value"
+      :total="list.total.value"
+      :loading="list.loading.value"
+    />
   </div>
   <el-dialog
     v-model="previewOpen"

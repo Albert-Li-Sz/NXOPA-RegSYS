@@ -27,6 +27,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description 按创建时间与 ID 降序分页，合并邮件任务和未派发事件。必须有对应账号、报名、财务或工单资源的访问权限；其他收件人邮箱保持脱敏，重发操作独立校验。旧调用最多返回 200 条。 */
         get: operations["ApiController_mailDeliveryStatus"];
         put?: never;
         post?: never;
@@ -477,6 +478,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description 按账号、报名关联或 FILES 管理权限筛选附件。支持分页与名称搜索，权限条件同时作用于列表和总数。旧调用返回数组，个人附件旧调用最多 500 条；分页可读取更早记录。 */
         get: operations["ApiController_fileList"];
         put?: never;
         post: operations["ApiController_upload"];
@@ -845,7 +847,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description 仅返回当前账号尚未过期的会话，每页固定 20 条。显式传入 page 或 pageSize 返回分页结果；旧调用返回最多 20 条的数组。 */
+        /** @description 仅返回当前账号尚未过期的会话，默认每页 20 条，可选择 20、50、100 条。显式传入 page 或 pageSize 返回分页结果；旧调用返回最多 20 条的数组。 */
         get: operations["ApiController_sessions"];
         put?: never;
         post?: never;
@@ -958,6 +960,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description 兼容原数组；传 page/pageSize 返回分页列表。managed=true 仅返回当前账号具有查看管理权限的活动，包含 registrationCounts.official/unofficial，按已提交及待补正报名中的有效成员人数统计，不含草稿、已撤回或删除报名，也不含指导老师。团队按成员人数计。 */
         get: operations["ApiController_contests"];
         put?: never;
         post: operations["ApiController_createContest"];
@@ -983,6 +986,171 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/contests/{id}/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ApiController_rooms"];
+        put?: never;
+        post: operations["ApiController_createRoom"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contests/{id}/rooms/{roomId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["ApiController_saveRoom"];
+        post?: never;
+        delete: operations["ApiController_deleteRoom"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contests/{id}/seating/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. */
+        post: operations["ApiController_previewSeating"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contests/{id}/seating/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. */
+        post: operations["ApiController_commitSeating"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contests/{id}/seating/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ApiController_clearSeating"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/revocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ApiController_revocations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/revocations/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ApiController_completeRevocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. */
+        get: operations["ApiController_financeAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/accounts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. */
+        get: operations["ApiController_financeAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/registrations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ApiController_detail"];
+        put: operations["ApiController_save"];
+        post?: never;
+        /** @description Permanently removes registration data, releases seats and invalidates admissions. Settlement data survives in an independent finance account; cancellation does not automatically refund. Creator may cancel; scoped registration managers may delete with a reason. */
+        delete: operations["ApiController_removeRegistration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/registrations": {
         parameters: {
             query?: never;
@@ -994,6 +1162,23 @@ export interface paths {
         get: operations["ApiController_registrationsList"];
         put?: never;
         post: operations["ApiController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/registrations/review-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Scoped REGISTRATIONS permission required. Returns all submitted IDs matching the current list filters in review order, independent of page size; defaults to pending review. */
+        get: operations["ApiController_reviewQueue"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1025,22 +1210,6 @@ export interface paths {
         };
         get: operations["ApiController_export"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/registrations/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["ApiController_detail"];
-        put: operations["ApiController_save"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1106,6 +1275,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Permanently removes registration data, releases seats and invalidates admissions. Settlement data survives in an independent finance account; cancellation does not automatically refund. Creator may cancel; scoped registration managers may delete with a reason. */
         post: operations["ApiController_cancel"];
         delete?: never;
         options?: never;
@@ -2133,6 +2303,32 @@ export interface components {
         };
         ContestInput: {
             version?: number;
+            /**
+             * @default COMPETITION
+             * @enum {string}
+             */
+            kind: "ACTIVITY" | "COMPETITION";
+            confirmModuleChanges?: boolean;
+            /**
+             * @default {
+             *       "admissions": true,
+             *       "rooms": false,
+             *       "integrations": true
+             *     }
+             */
+            modules: {
+                /** @default true */
+                admissions: boolean;
+                /** @default false */
+                rooms: boolean;
+                /** @default true */
+                integrations: boolean;
+            };
+            /**
+             * @default REGISTRATION
+             * @enum {string}
+             */
+            seatingMode: "REGISTRATION" | "PERSON";
             title: string;
             season: string;
             description: string;
@@ -2253,8 +2449,79 @@ export interface components {
                 };
             }[];
         };
-        Value2___schema0: string | number | boolean | (null) | components["schemas"]["Value2___schema0"][] | {
-            [key: string]: components["schemas"]["Value2___schema0"];
+        RoomInput: {
+            version?: number;
+            name: string;
+            /** @default  */
+            location: string;
+            capacity: number;
+            /** @default 0 */
+            sortOrder: number;
+            /** @default true */
+            enabled: boolean;
+        };
+        SeatingRequest: {
+            registrationIds: string[];
+            /** @default false */
+            replace: boolean;
+            assignments?: {
+                /** Format: uuid */
+                registrationId: string;
+                /** Format: uuid */
+                personId?: string | null;
+                /** Format: uuid */
+                roomId: string;
+                seat: number;
+            }[];
+            seatingVersion?: number;
+            registrationVersions?: {
+                [key: string]: number;
+            };
+        };
+        SeatingPreview: {
+            seatingVersion: number;
+            registrationVersions: {
+                [key: string]: number;
+            };
+            errors: string[];
+            total: number;
+            assignments: {
+                /** Format: uuid */
+                registrationId: string;
+                /** Format: uuid */
+                personId?: string | null;
+                /** Format: uuid */
+                roomId: string;
+                seat: number;
+                unitKey: string;
+                roomName: string;
+                name?: string;
+                number: number | null;
+            }[];
+        };
+        RegistrationDeletionReceipt: {
+            /** @enum {boolean} */
+            deleted: true;
+            /** Format: uuid */
+            registrationId: string;
+            /** Format: uuid */
+            financeAccountId: string | null;
+        };
+        RegistrationActions: {
+            edit: boolean;
+            editOwnMember: boolean;
+            submit: boolean;
+            withdraw: boolean;
+            cancel: boolean;
+            delete: boolean;
+            review: boolean;
+            amendReview: boolean;
+            requestFinance: boolean;
+            credentials: boolean;
+            editReason: string;
+        };
+        Value7___schema0: string | number | boolean | (null) | components["schemas"]["Value7___schema0"][] | {
+            [key: string]: components["schemas"]["Value7___schema0"];
         };
         RegistrationInput: {
             version: number;
@@ -2273,7 +2540,7 @@ export interface components {
             } | null;
             /** @default {} */
             answers: {
-                [key: string]: components["schemas"]["Value2___schema0"];
+                [key: string]: components["schemas"]["Value7___schema0"];
             };
             people: {
                 /** Format: uuid */
@@ -2287,12 +2554,19 @@ export interface components {
                 captain: boolean;
                 /** @default {} */
                 answers: {
-                    [key: string]: components["schemas"]["Value2___schema0"];
+                    [key: string]: components["schemas"]["Value7___schema0"];
+                };
+            }[];
+            coaches?: {
+                /** Format: uuid */
+                id: string;
+                answers: {
+                    [key: string]: components["schemas"]["Value7___schema0"];
                 };
             }[];
         };
-        Value3___schema0: string | number | boolean | (null) | components["schemas"]["Value3___schema0"][] | {
-            [key: string]: components["schemas"]["Value3___schema0"];
+        Value8___schema0: string | number | boolean | (null) | components["schemas"]["Value8___schema0"][] | {
+            [key: string]: components["schemas"]["Value8___schema0"];
         };
         FieldDefinition: {
             key: string;
@@ -2318,15 +2592,15 @@ export interface components {
             max?: number;
             condition?: {
                 key: string;
-                equals?: components["schemas"]["Value3___schema0"];
+                equals?: components["schemas"]["Value8___schema0"];
                 includes?: string;
             };
         };
-        Value4___schema0: string | number | boolean | (null) | components["schemas"]["Value4___schema0"][] | {
-            [key: string]: components["schemas"]["Value4___schema0"];
+        Value9___schema0: string | number | boolean | (null) | components["schemas"]["Value9___schema0"][] | {
+            [key: string]: components["schemas"]["Value9___schema0"];
         };
-        Value4___schema1: string | number | boolean | (null) | components["schemas"]["Value4___schema1"][] | {
-            [key: string]: components["schemas"]["Value4___schema1"];
+        Value9___schema1: string | number | boolean | (null) | components["schemas"]["Value9___schema1"][] | {
+            [key: string]: components["schemas"]["Value9___schema1"];
         };
         RegistrationEnvelopeV1: {
             /** @enum {number} */
@@ -2361,7 +2635,7 @@ export interface components {
                 captain: boolean;
                 email?: string;
                 answers?: {
-                    [key: string]: components["schemas"]["Value4___schema0"];
+                    [key: string]: components["schemas"]["Value9___schema0"];
                 };
             }[];
             form?: {
@@ -2390,12 +2664,12 @@ export interface components {
                     max?: number;
                     condition?: {
                         key: string;
-                        equals?: components["schemas"]["Value4___schema1"];
+                        equals?: components["schemas"]["Value9___schema1"];
                         includes?: string;
                     };
                 }[];
                 answers: {
-                    [key: string]: components["schemas"]["Value4___schema0"];
+                    [key: string]: components["schemas"]["Value9___schema0"];
                 };
             };
             coaches?: {
@@ -2404,7 +2678,7 @@ export interface components {
                 name?: string;
                 email?: string;
                 answers: {
-                    [key: string]: components["schemas"]["Value4___schema0"];
+                    [key: string]: components["schemas"]["Value9___schema0"];
                 };
             }[];
             qualification?: {
@@ -2414,8 +2688,8 @@ export interface components {
                 netPaidCents?: number;
             };
         };
-        Value5___schema0: string | number | boolean | (null) | components["schemas"]["Value5___schema0"][] | {
-            [key: string]: components["schemas"]["Value5___schema0"];
+        Value10___schema0: string | number | boolean | (null) | components["schemas"]["Value10___schema0"][] | {
+            [key: string]: components["schemas"]["Value10___schema0"];
         };
         ProvisioningResultV1: {
             /** @enum {number} */
@@ -2429,7 +2703,7 @@ export interface components {
             username?: string;
             error?: string;
             verification?: {
-                [key: string]: components["schemas"]["Value5___schema0"];
+                [key: string]: components["schemas"]["Value10___schema0"];
             };
         };
         AccountInvitationInput: {
@@ -2533,8 +2807,8 @@ export interface components {
             message: string;
             statusCode?: number;
         };
-        Value62___schema0: string | number | boolean | (null) | components["schemas"]["Value62___schema0"][] | {
-            [key: string]: components["schemas"]["Value62___schema0"];
+        Value75___schema0: string | number | boolean | (null) | components["schemas"]["Value75___schema0"][] | {
+            [key: string]: components["schemas"]["Value75___schema0"];
         };
     };
     responses: never;
@@ -2693,18 +2967,25 @@ export interface operations {
     };
     ApiController_mailDeliveryStatus: {
         parameters: {
-            query?: never;
+            query: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                resourceId: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description 分页结果或兼容数组 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
             };
             /** @description Validation failed */
             400: {
@@ -5089,18 +5370,27 @@ export interface operations {
     };
     ApiController_fileList: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                contestId?: string;
+                registrationId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description 分页结果或兼容数组 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
             };
             /** @description Validation failed */
             400: {
@@ -7238,7 +7528,7 @@ export interface operations {
         parameters: {
             query?: {
                 page?: number;
-                pageSize?: 20;
+                pageSize?: 20 | 50 | 100;
             };
             header?: never;
             path?: never;
@@ -7254,7 +7544,7 @@ export interface operations {
                 content: {
                     "application/json": (components["schemas"]["PageResult"] & {
                         /** @enum {integer} */
-                        pageSize?: 20;
+                        pageSize?: 20 | 50 | 100;
                         items?: unknown[];
                     }) | unknown[];
                 };
@@ -7795,18 +8085,27 @@ export interface operations {
     };
     ApiController_contests: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                all?: boolean;
+                managed?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description 分页结果或兼容数组 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
             };
             /** @description Validation failed */
             400: {
@@ -8093,6 +8392,1140 @@ export interface operations {
             };
         };
     };
+    ApiController_rooms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_createRoom: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    version?: number;
+                    name: string;
+                    /** @default  */
+                    location: string;
+                    capacity: number;
+                    /** @default 0 */
+                    sortOrder: number;
+                    /** @default true */
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_saveRoom: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    version?: number;
+                    name: string;
+                    /** @default  */
+                    location: string;
+                    capacity: number;
+                    /** @default 0 */
+                    sortOrder: number;
+                    /** @default true */
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_deleteRoom: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    version: number;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_previewSeating: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    registrationIds: string[];
+                    /** @default false */
+                    replace: boolean;
+                    assignments?: {
+                        /** Format: uuid */
+                        registrationId: string;
+                        /** Format: uuid */
+                        personId?: string | null;
+                        /** Format: uuid */
+                        roomId: string;
+                        seat: number;
+                    }[];
+                    seatingVersion?: number;
+                    registrationVersions?: {
+                        [key: string]: number;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Allocation preview/result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingPreview"];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_commitSeating: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    registrationIds: string[];
+                    /** @default false */
+                    replace: boolean;
+                    assignments?: {
+                        /** Format: uuid */
+                        registrationId: string;
+                        /** Format: uuid */
+                        personId?: string | null;
+                        /** Format: uuid */
+                        roomId: string;
+                        seat: number;
+                    }[];
+                    seatingVersion?: number;
+                    registrationVersions?: {
+                        [key: string]: number;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Allocation preview/result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingPreview"];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_clearSeating: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    seatingVersion: number;
+                    /** Format: uuid */
+                    roomId?: string;
+                };
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_revocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_completeRevocation: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_financeAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_financeAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_save: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_removeRegistration: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    version: number;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Deletion receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationDeletionReceipt"];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     ApiController_registrationsList: {
         parameters: {
             query?: {
@@ -8258,6 +9691,82 @@ export interface operations {
             };
         };
     };
+    ApiController_reviewQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Review queue */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ids: string[];
+                    };
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     ApiController_summary: {
         parameters: {
             query?: never;
@@ -8337,156 +9846,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Authentication required */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Scope or role denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Record missing */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Version conflict or duplicate identity */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limit exceeded */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    ApiController_detail: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Authentication required */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Scope or role denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Record missing */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Version conflict or duplicate identity */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limit exceeded */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    ApiController_save: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": string;
-                /** @description Same actor, method, URL and body replay the encrypted saved result. */
-                "Idempotency-Key"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegistrationInput"];
-            };
-        };
         responses: {
             200: {
                 headers: {
@@ -8815,15 +10174,20 @@ export interface operations {
             content: {
                 "application/json": {
                     version: number;
+                    /** @default 用户取消报名 */
+                    reason: string;
                 };
             };
         };
         responses: {
+            /** @description Deletion receipt */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RegistrationDeletionReceipt"];
+                };
             };
             /** @description Validation failed */
             400: {
@@ -10633,6 +11997,7 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     contestId?: string;
+                    version?: number;
                     name: string;
                     source: string;
                 };
@@ -14489,7 +15854,7 @@ export interface operations {
                         username?: string;
                         error?: string;
                         verification?: {
-                            [key: string]: components["schemas"]["Value62___schema0"];
+                            [key: string]: components["schemas"]["Value75___schema0"];
                         };
                     };
                 };

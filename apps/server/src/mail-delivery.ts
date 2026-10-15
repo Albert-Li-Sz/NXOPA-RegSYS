@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto';
 import type { Principal } from '@contest-center/contracts';
 import { db, enqueue, audit } from './db.js';
 import { getRegistration, getSupportTicket, manages, owns } from './security.js';
+import { getFinance } from './finance-accounts.js';
 import { rateLimit } from './auth.js';
+import { pageOptions, type ListQuery } from './pagination.js';
 const authMail = (payload: any) =>
   String(payload.category ?? '').startsWith('AUTH_') ||
   payload.category === 'ACCOUNT_CLOSE' ||
@@ -20,6 +22,10 @@ export class MailDeliveryService {
         manages(u, registration.contestId, 'ADMISSIONS')
       );
     }
+    if (await db.financeAccount.count({ where: { id } })) {
+      const account = await getFinance(u, id);
+      return manages(u, account.contestId, 'FINANCE');
+    }
     const ticket = await db.supportTicket.findUnique({ where: { id } });
     if (ticket) {
       await getSupportTicket(u, ticket.id);
@@ -29,20 +35,15 @@ export class MailDeliveryService {
     if (identity && (owns(u, identity.userId) || u.isAdmin)) return u.isAdmin;
     throw new ForbiddenException('没有邮件状态的访问权限');
   }
-  async list(u: Principal, id: string) {
+  async list(u: Principal, id: string, query: ListQuery = {}) {
     const manager = await this.access(u, id);
-    const [jobs, events] = await Promise.all([
-      db.job.findMany({
-        where: { kind: 'MAIL', resourceId: id },
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      }),
-      db.outboxEvent.findMany({
-        where: { type: 'MAIL', resourceId: id, deliveredAt: null },
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      }),
-    ]);
+    const p = pageOptions(query);
+    const rows = await db.$queryRaw<any[]>`
+      SELECT * FROM (
+        SELECT id,state,payload,attempts,error,"createdAt",result FROM "Job" WHERE kind='MAIL' AND "resourceId"=${id}
+        UNION ALL
+        SELECT id,'OUTBOX' AS state,payload,0 AS attempts,NULL AS error,"createdAt",NULL AS result FROM "OutboxEvent" WHERE type='MAIL' AND "resourceId"=${id} AND "deliveredAt" IS NULL
+      ) AS notifications ORDER BY "createdAt" DESC,id DESC LIMIT ${p?.take ?? 200} OFFSET ${p?.skip ?? 0}`;
     const view = (item: any, state: string) => {
       const payload = item.payload as any;
       return {
@@ -59,7 +60,13 @@ export class MailDeliveryService {
         canRetry: state === 'FAILED' && !authMail(payload) && (manager || payload.to === u.email),
       };
     };
-    return [...events.map((x) => view(x, 'OUTBOX')), ...jobs.map((x) => view(x, x.state))];
+    const items = rows.map((x) => view(x, x.state));
+    if (!p) return items;
+    const counts = await Promise.all([
+      db.job.count({ where: { kind: 'MAIL', resourceId: id } }),
+      db.outboxEvent.count({ where: { type: 'MAIL', resourceId: id, deliveredAt: null } }),
+    ]);
+    return { items, total: counts[0] + counts[1], page: p.page, pageSize: p.pageSize };
   }
   async retry(u: Principal, id: string) {
     const job = await db.job.findUniqueOrThrow({ where: { id } });

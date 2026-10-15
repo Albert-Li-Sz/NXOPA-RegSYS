@@ -4,9 +4,9 @@ export const adminCenters = [
   {
     key: 'contests',
     to: '/admin/contests',
-    label: '竞赛中心',
-    description: '管理竞赛与报名配置',
-    tabs: [{ name: 'contests', label: '竞赛管理' }],
+    label: '活动及竞赛管理中心',
+    description: '管理活动、竞赛与报名流程',
+    tabs: [{ name: 'contests', label: '活动及竞赛管理' }],
   },
   {
     key: 'platforms',

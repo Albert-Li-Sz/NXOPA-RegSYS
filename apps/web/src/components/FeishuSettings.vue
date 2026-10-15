@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
+import { useEditSession } from '../composables/useEditSession';
+import EditActions from './EditActions.vue';
 import { api } from '../api';
 import type { Data } from '../types';
 const settings = ref<Data>(),
   busy = ref(false);
+const edit = useEditSession(settings);
 onMounted(async () => {
   settings.value = await api('/admin/feishu');
 });
@@ -12,6 +15,7 @@ async function save() {
   busy.value = true;
   try {
     settings.value = await api('/admin/feishu', 'PUT', settings.value);
+    edit.finish();
     ElMessage.success('飞书登录设置已保存');
   } finally {
     busy.value = false;
@@ -25,7 +29,14 @@ async function save() {
       在飞书开放平台创建应用，配置 App ID、App Secret 和重定向
       URL，按需开通用户邮箱信息权限。首次使用飞书注册仍需验证本站邮箱。
     </p>
-    <el-form label-position="top" @submit.prevent="save">
+    <EditActions :session="edit" />
+    <el-form
+      :key="String(edit.editing.value)"
+      label-position="top"
+      :disabled="!edit.editing.value"
+      :class="{ 'read-mode': !edit.editing.value }"
+      @submit.prevent="save"
+    >
       <el-form-item label="启用飞书登录"><el-switch v-model="settings.enabled" /></el-form-item>
       <el-form-item label="App ID" for="feishu-app-id"
         ><el-input id="feishu-app-id" v-model="settings.appId"
@@ -52,7 +63,8 @@ async function save() {
         当前回调地址：<code>{{ settings.callbackUrl || settings.effectiveCallbackUrl }}</code>
       </p>
       <div class="actions">
-        <el-button native-type="submit" type="primary" :loading="busy">保存飞书设置</el-button
+        <el-button v-if="edit.editing.value" native-type="submit" type="primary" :loading="busy"
+          >保存飞书设置</el-button
         ><a
           href="https://open.feishu.cn/document/common-capabilities/sso/api/obtain-oauth-code"
           target="_blank"

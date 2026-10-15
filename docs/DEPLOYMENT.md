@@ -97,6 +97,10 @@ Worker 从 PostgreSQL Outbox 派发任务，Redis 仅承载调度队列；数据
 
 ## 加密备份与恢复
 
+本次报名流程升级会永久清理历史 `CANCELLED`、`CANCEL_REQUESTED` 报名。必须先备份，再启动新版 API / Worker：数据库迁移先建立独立财务账户、迁移四类财务单据外键并核对余额，API / Worker 在接收请求和处理任务前执行可重试的历史清理，不补发历史取消通知。清理保留财务凭证及共享文件，移除旧资料快照、邀请、准考证与任务中的报名副本。
+
+升级后核对财务账户余额、凭证／账簿／退款／发票数量和财务附件可读性，再检查当前报名数及匿名累计计数。`pnpm test:workflow-upgrade` 会在独立数据库中建立 v0.4.0 数据、备份、执行迁移和重复清理，再实际恢复旧备份核对。永久清理后的回退必须恢复升级前数据库与文件备份，同时恢复对应代码／镜像；仅切回旧镜像不能恢复已删除报名。
+
 ```bash
 bash scripts/backup.sh /srv/contest-backups
 bash scripts/restore.sh /srv/contest-backups/contest-center-YYYYMMDDTHHMMSSZ.ccbak
@@ -118,4 +122,4 @@ bash scripts/restore.sh /srv/contest-backups/contest-center-YYYYMMDDTHHMMSSZ.ccb
 
 管理员在“管理中心 → GitHub 登录”配置 OAuth App 的 Client ID、Client Secret 与回调地址。回调默认使用请求站点地址加 `/api/v1/auth/github/callback`，需要与 GitHub 注册的地址一致；也可设置 `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`GITHUB_CALLBACK_URL` 作为初始配置。反向代理传递正确的 Host 与 X-Forwarded-Proto。密钥加密保存且不返回浏览器。
 
-新账号使用 GitHub 已验证邮箱，不自动合并同邮箱的本站账号；已有账号先登录再绑定。所有参赛账号均需完成五项资料。管理员在用户列表编辑标签并筛选；报名按首次正式提交从早到晚分配每个竞赛独立编号，补正和取消保留编号，CSV 同步导出。旧报名升级自动回填序号，旧账号缺失资料需要补填，原快照与附件保留。
+新账号使用 GitHub 已验证邮箱，不自动合并同邮箱的本站账号；已有账号先登录再绑定。所有参赛账号均需完成五项资料。管理员在用户列表编辑标签并筛选；报名按首次正式提交从早到晚分配每个竞赛独立编号，补正保留编号，删除后不重复使用原编号，CSV 同步导出。旧报名升级自动回填序号，旧账号缺失资料需要补填；已取消报名按上述升级规则清理。

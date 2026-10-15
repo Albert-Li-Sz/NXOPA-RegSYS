@@ -99,6 +99,7 @@ test('administrator adds and sorts backup SMTP servers and sends through the fir
 }) => {
   await login(page, 'admin');
   await page.goto('/admin?tab=mail');
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
   await page.locator('#mail-host').fill('127.0.0.1');
   await page.locator('#mail-port').fill('1');
   await page.locator('#mail-port').press('Tab');
@@ -129,6 +130,7 @@ test('administrator adds and sorts backup SMTP servers and sends through the fir
     page.locator('.smtp-fallback').first().locator('input[id$="-name"]').first(),
   ).toHaveValue('浏览器可用备用');
   await page.getByRole('button', { name: '保存邮件设置', exact: true }).click();
+  await expect(page.locator('#mail-port')).toBeDisabled();
   await page.getByRole('button', { name: '发送测试邮件', exact: true }).click();
   await expect(page.getByText(/测试邮件发送成功（浏览器可用备用）/)).toBeVisible({
     timeout: 30000,
@@ -153,6 +155,7 @@ test('mail template CSS preview matches delivery, invalid saves retain edits, an
   await page.getByRole('option', { name: '工单回复与状态', exact: true }).click();
   const html =
     '<!doctype html><html><head><style>#mail-preview{color:rgb(12, 34, 56)}</style></head><body><h1 id="mail-preview">{{message}}</h1></body></html>';
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
   await page.locator('#template-html').fill(html);
   await page.locator('#template-subject').fill('错误 {{unsupported}}');
   await page.getByRole('button', { name: '保存邮件模板', exact: true }).click();

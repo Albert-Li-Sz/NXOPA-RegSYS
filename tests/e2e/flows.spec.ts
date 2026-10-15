@@ -1,3 +1,4 @@
+import { editRegistration, approveRegistration } from './workflow-helpers.js';
 import { test, expect, type Page, type Browser } from '@playwright/test';
 import { Client } from '../integrations/client.js';
 import { db } from '../../apps/server/src/db.js';
@@ -51,9 +52,10 @@ async function create(page: Page, id: string) {
   await page.goto(`/contests/${id}`);
   await page.getByRole('button', { name: '立即报名', exact: true }).click();
   await expect(page).toHaveURL(/\/registrations\//);
-  return page.url().split('/').at(-1)!;
+  return new URL(page.url()).pathname.split('/').at(-1)!;
 }
 async function link(page: Page, name: string) {
+  await editRegistration(page);
   const input = page.locator('.copy-link input');
   const old = (await input.count()) ? await input.inputValue() : '';
   await page.getByRole('button', { name, exact: true }).click();
@@ -99,16 +101,19 @@ test('three invited members, required teacher confirmation, teacher submits, unl
     const invite = await link(owner.page, '邀请老师确认');
     await teacher.page.goto(invite);
     await teacher.page.getByRole('button', { name: '确认接受' }).click();
+    await expect(teacher.page).toHaveURL(new RegExp(`/registrations/${id}$`));
+    await editRegistration(teacher.page);
     await expect(teacher.page.locator('#team-name')).toBeEnabled();
     await teacher.page.locator('#team-english').fill('Teacher submitted team');
     await teacher.page.getByRole('button', { name: '提交报名', exact: true }).click();
     await expect(teacher.page.getByText('已提交', { exact: true })).toBeVisible();
     await manager.page.goto(`/registrations/${id}`);
-    await manager.page.getByRole('button', { name: '审核通过', exact: true }).click();
-    await expect(manager.page.getByText('已取得参赛资格', { exact: true })).toBeVisible();
+    await approveRegistration(manager.page);
+    await expect(manager.page.getByText('参加资格已确认', { exact: true })).toBeVisible();
     await owner.page.getByRole('button', { name: '刷新状态' }).click();
+    await editRegistration(owner.page);
     await owner.page.getByRole('button', { name: '解除关联', exact: true }).click();
-    await expect(owner.page.getByText('暂未取得参赛资格', { exact: true })).toBeVisible();
+    await expect(owner.page.getByText('参加资格待完成', { exact: true })).toBeVisible();
     await teacher.page.reload();
     await expect(
       teacher.page.getByText('没有此报名的访问权限', { exact: true }).first(),
@@ -155,8 +160,8 @@ test('manual team, optional teacher, review first, receipt and partial/full conf
     await owner.page.getByRole('button', { name: '提交报名', exact: true }).click();
     await expect(owner.page.getByText('已提交', { exact: true })).toBeVisible();
     await manager.page.goto(`/registrations/${id}`);
-    await manager.page.getByRole('button', { name: '审核通过', exact: true }).click();
-    await expect(manager.page.getByText('暂未取得参赛资格', { exact: true })).toBeVisible();
+    await approveRegistration(manager.page);
+    await expect(manager.page.getByText('参加资格待完成', { exact: true })).toBeVisible();
     for (const amount of [10, 20]) {
       await owner.page.goto(`/registrations/${id}?tab=finance`);
       await owner.page.getByRole('button', { name: '上传收款凭证', exact: true }).click();
@@ -183,7 +188,7 @@ test('manual team, optional teacher, review first, receipt and partial/full conf
       await manager.page.getByRole('button', { name: '核账', exact: true }).click();
       await prompt(manager.page, String(amount));
       await expect(
-        manager.page.getByText(amount === 20 ? '已取得参赛资格' : '暂未取得参赛资格', {
+        manager.page.getByText(amount === 20 ? '参加资格已确认' : '参加资格待完成', {
           exact: true,
         }),
       ).toBeVisible();
@@ -211,8 +216,19 @@ test('payment first blocks review until actual receipt confirmation', async ({ b
     await owner.page.getByRole('button', { name: '提交报名', exact: true }).click();
     await expect(owner.page.getByText('已提交', { exact: true })).toBeVisible();
     await manager.page.goto(`/registrations/${id}`);
-    await manager.page.getByRole('button', { name: '审核通过', exact: true }).click();
-    await expect(manager.page.getByText('此竞赛需要先确认足额到账', { exact: true })).toBeVisible();
+    await manager.page.getByRole('button', { name: '审核报名', exact: true }).click();
+    await expect(
+      manager.page.getByRole('dialog').getByRole('button', { name: '确认审核', exact: true }),
+    ).toBeDisabled();
+    await expect(
+      manager.page.getByText('此活动要求先确认足额到账；目前可退回补正或拒绝，暂不能审核通过', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await manager.page
+      .getByRole('dialog')
+      .getByRole('button', { name: '关闭', exact: true })
+      .click();
     await owner.page.goto(`/registrations/${id}?tab=finance`);
     await owner.page.getByRole('button', { name: '上传收款凭证', exact: true }).click();
     const dialog = owner.page.getByRole('dialog');
@@ -237,10 +253,10 @@ test('payment first blocks review until actual receipt confirmation', async ({ b
     await manager.page.goto(`/registrations/${id}?tab=finance`);
     await manager.page.getByRole('button', { name: '核账', exact: true }).click();
     await prompt(manager.page, '20');
-    await expect(manager.page.getByText('暂未取得参赛资格', { exact: true })).toBeVisible();
+    await expect(manager.page.getByText('参加资格待完成', { exact: true })).toBeVisible();
     await manager.page.getByRole('tab', { name: '报名资料', exact: true }).click();
-    await manager.page.getByRole('button', { name: '审核通过', exact: true }).click();
-    await expect(manager.page.getByText('已取得参赛资格', { exact: true })).toBeVisible();
+    await approveRegistration(manager.page);
+    await expect(manager.page.getByText('参加资格已确认', { exact: true })).toBeVisible();
   } finally {
     await owner.context.close();
     await manager.context.close();

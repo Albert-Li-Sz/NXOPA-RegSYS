@@ -24,7 +24,9 @@ import {
   manages,
   canRead,
   ownerIds,
+  checkVersion,
 } from './security.js';
+import { modulesFor } from './workflow.js';
 import { config } from './config.js';
 import { renderTemplate } from './templates.js';
 
@@ -137,6 +139,7 @@ export class AdmissionService {
     });
     const result = [];
     for (const registration of registrations) {
+      if (!modulesFor(registration.contest).admissions) continue;
       const template = await activeTemplate(registration.contestId);
       for (const document of registration.admissions)
         if (
@@ -166,12 +169,18 @@ export class AdmissionService {
     const b = z
       .object({
         contestId: z.string().uuid().optional(),
+        version: z.number().int().min(0).optional(),
         name: z.string().min(1).max(100),
         source: z.string().min(20).max(100000),
       })
       .parse(body);
-    if (b.contestId) requireManager(u, b.contestId, 'ADMISSIONS');
-    else requireAdmin(u);
+    if (b.contestId) {
+      requireManager(u, b.contestId, 'ADMISSIONS');
+      if (
+        !modulesFor(await db.contest.findUniqueOrThrow({ where: { id: b.contestId } })).admissions
+      )
+        throw new BadRequestException('此活动未启用准考证');
+    } else requireAdmin(u);
     renderTemplate(b.source, {});
     return db.$transaction(async (tx) => {
       await lock(tx, `template:${b.contestId ?? 'global'}`);
@@ -179,6 +188,7 @@ export class AdmissionService {
         where: { contestId: b.contestId ?? null },
         orderBy: { version: 'desc' },
       });
+      if (b.version !== undefined) checkVersion(last?.version ?? 0, b.version);
       await tx.admissionDocument.updateMany({
         where: b.contestId
           ? { registration: { contestId: b.contestId } }
@@ -209,8 +219,13 @@ export class AdmissionService {
     const b = z
       .object({ contestId: z.string().uuid().optional(), source: z.string().max(100000) })
       .parse(body);
-    if (b.contestId) requireManager(u, b.contestId, 'ADMISSIONS');
-    else requireAdmin(u);
+    if (b.contestId) {
+      requireManager(u, b.contestId, 'ADMISSIONS');
+      if (
+        !modulesFor(await db.contest.findUniqueOrThrow({ where: { id: b.contestId } })).admissions
+      )
+        throw new BadRequestException('此活动未启用准考证');
+    } else requireAdmin(u);
     const source = renderTemplate(b.source, {
       contest: { title: '示例程序设计竞赛', startsAt: '2026/10/18 09:00' },
       participant: { name: '示例选手', answers: { school: '示例大学' }, assets: {} },
@@ -258,18 +273,54 @@ export class AdmissionService {
     for (const [index, id] of b.registrationIds.entries()) {
       const r = await getRegistration(u, id);
       requireManager(u, r.contestId, 'ADMISSIONS');
+      if (!modulesFor(r.contest).admissions) throw new BadRequestException('此活动未启用准考证');
       if (!r.eligible) {
         results.push({ registrationId: id, error: '尚未取得参赛资格' });
         continue;
       }
       const assignment = b.seats?.find((s) => s.registrationId === id);
-      const room = assignment?.room ?? b.room;
-      const seat =
+      let room = assignment?.room ?? b.room;
+      let seat =
         assignment?.seat ??
         (b.incrementSeats && /^\d+$/.test(b.seat) ? String(Number(b.seat) + index) : b.seat);
-      const location = assignment?.location ?? (b.location || r.contest.location);
+      let location = assignment?.location ?? (b.location || r.contest.location);
       const a = await db.$transaction(async (tx) => {
         await lock(tx, id);
+        await lock(tx, `seating:${r.contestId}`);
+        const currentContest = await tx.contest.findUniqueOrThrow({ where: { id: r.contestId } });
+        if (!modulesFor(currentContest).admissions)
+          throw new BadRequestException('此活动已关闭准考证');
+        if (currentContest.version !== r.contest.version)
+          throw new BadRequestException('活动配置已改变，请刷新后重新生成');
+        const seats = await tx.seatAssignment.findMany({
+          where: { registrationId: id },
+          include: { room: true },
+          orderBy: { seat: 'asc' },
+        });
+        if (modulesFor(r.contest).rooms) {
+          const expected =
+            r.contest.seatingMode === 'PERSON' ? r.people.filter((p) => p.active).length : 1;
+          if (
+            seats.length !== expected ||
+            seats.some(
+              (a) =>
+                !a.room.enabled ||
+                (a.personId && !r.people.some((p) => p.id === a.personId && p.active)),
+            )
+          )
+            throw new BadRequestException('请先完成此报名的有效排考');
+          room = [...new Set(seats.map((a) => a.room.name))].join('、');
+          location = [...new Set(seats.map((a) => a.room.location || r.contest.location))].join(
+            '、',
+          );
+          seat = seats
+            .map((a) =>
+              a.personId
+                ? `${r.people.find((p) => p.id === a.personId)?.name}: ${a.seat}`
+                : String(a.seat),
+            )
+            .join('；');
+        }
         const current = await tx.registration.findUniqueOrThrow({ where: { id } });
         if (!current.eligible || current.version !== r.version)
           throw new BadRequestException('报名资料已改变');
@@ -305,6 +356,21 @@ export class AdmissionService {
           (assignment?.number && document.number !== assignment.number) ||
           ['FAILED', 'STALE'].includes(document.state)
         ) {
+          if (document.storageKey)
+            await enqueue(
+              tx,
+              'OBJECT_DELETE',
+              document.id,
+              `replaced-document:${document.id}:${document.version}`,
+              {
+                storageRef: {
+                  storageKey: document.storageKey,
+                  storageBackend: document.storageBackend,
+                  storageConfigId: document.storageConfigId,
+                  sha256: document.sha256,
+                },
+              },
+            );
           document = await tx.admissionDocument.update({
             where: { id: document.id },
             data: {
@@ -338,6 +404,7 @@ export class AdmissionService {
       const r = await getRegistration(u, a.registrationId);
       requireManager(u, r.contestId, 'ADMISSIONS');
       if (
+        !modulesFor(r.contest).admissions ||
         !r.eligible ||
         r.version !== a.registrationVersion ||
         (await activeTemplate(r.contestId, tx))?.id !== a.templateId ||
@@ -388,8 +455,9 @@ export class AdmissionService {
   async downloadLocation(u: Principal, id: string) {
     const a = await db.admissionDocument.findUniqueOrThrow({ where: { id } });
     const r = await getRegistration(u, a.registrationId);
-    const manager = manages(u, r.contestId);
+    const manager = manages(u, r.contestId, 'ADMISSIONS');
     if (
+      !modulesFor(r.contest).admissions ||
       !a.storageKey ||
       !['READY', 'RELEASED'].includes(a.state) ||
       !r.eligible ||

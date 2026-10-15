@@ -447,6 +447,7 @@ try {
     ).catch(() => undefined);
     await db.invitation.deleteMany({ where: { id: { in: invitationIds } } });
     await db.registration.deleteMany({ where: { id: { in: registrationIds } } });
+    await db.financeAccount.deleteMany({ where: { contestId: { in: contestIds } } });
     await db.contest.deleteMany({ where: { id: { in: contestIds } } });
     await db.emailToken.deleteMany({ where: { userId: { in: userIds } } });
     await db.adminGrant.deleteMany({ where: { userId: { in: userIds } } });

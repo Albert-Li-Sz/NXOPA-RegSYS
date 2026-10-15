@@ -28,7 +28,11 @@ JSON 请求上限 5 MiB，附件上限 10 MiB。竞赛后台统计与导出使�
 
 ### 分页与筛选
 
-列表显式传入 `page` 或 `pageSize` 时返回共享 `PageResult<T>`：`{items,total,page,pageSize}`。`page` 从 1 开始，`pageSize` 只接受 20／50／100，默认 20。审计、任务、用户、授权邀请、报名、工单和财务历史均支持后端分页；权限与搜索／状态／时间条件同时作用于总数和列表。报名按每个竞赛的首次提交编号升序排列，草稿放在末尾，再按创建时间和 ID 排序。
+列表显式传入 `page` 或 `pageSize` 时返回共享 `PageResult<T>`：`{items,total,page,pageSize}`。`page` 从 1 开始，`pageSize` 只接受 20／50／100，默认 20。活动、附件、邮件通知、登录会话、审计、任务、用户、授权邀请、报名、工单和财务历史均支持后端分页；权限与搜索／状态／时间条件同时作用于总数和列表。报名按每个竞赛的首次提交编号升序排列，草稿放在末尾，再按创建时间和 ID 排序。
+
+管理活动列表使用 `GET /contests?all=true&managed=true&page=1&pageSize=20`，仅返回当前管理员有查看权限的活动；`search` 匹配活动标题和赛季。每项额外返回 `registrationCounts: {official,unofficial}`，按有效成员人数而非报名单数统计，范围为有报名编号的已提交或待补正记录，不含草稿、撤回和删除记录。
+
+`GET /files` 接受 `search`（文件名）、`contestId` 或 `registrationId`，分页总数保持原附件权限范围。`GET /notifications/mail?resourceId=…` 按创建时间及 ID 降序合并任务与未派发事件，分页和重发继续检查资源权限，不开放其他用户的通知。
 
 ```text
 GET /api/v1/admin/audit?page=2&pageSize=50&search=<对象ID>&status=REVIEW
@@ -39,6 +43,37 @@ GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
 时间筛选为带时区 ISO `from`／`to`。状态键按列表使用 `status`、`review`、`kind`；完整参数见 OpenAPI。报名可使用 `eligible`、`participationType`、`search`、`tag`，统计与 CSV 接收同样筛选。`GET /registrations/:id?history=false` 返回财务合计但不附带历史数组，历史分别从 `finance/vouchers`、`finance/ledger`、`finance/refunds`、`finance/invoices` 读取。
 
 未显式分页的旧调用继续返回原数组；报名 `cursor=<上一页最后一项ID>` 按报名列表相同顺序、最多 500 条，用于导出和既有集成。CSV 遍历全部筛选报名，采用 UTF-8 BOM 并转义公式前缀。
+
+### 永久删除、独立财务与审核
+
+`POST /registrations/:id/cancel` 保留原路径，正文为 `{version}`，仅创建者可用；`DELETE /registrations/:id` 正文为 `{version,reason}`，需要该活动的 REGISTRATIONS 权限且原因非空。两者返回 `{deleted:true,registrationId,financeAccountId}`，没有财务数据时 `financeAccountId` 为 `null`。删除后旧报名详情返回 404；旧幂等请求不会重放报名资料快照。
+
+`GET /finance/accounts?role=mine` 返回当前账号的独立财务账户；管理员按 `contestId` 查询需要 FINANCE 权限，均支持分页与活动标题搜索。`GET /finance/accounts/:id` 返回余额、财务策略、单据和 `canEdit/canManage`。账户 ID 沿用原报名 UUID，因此旧 `/registrations/:id/finance/{collection}` 和 `/finance/:id/{vouchers,refunds,invoices}` 接口继续解析；删除后仅创建者与 FINANCE 管理员可访问，报名管理员权限不等同于财务权限。删除不自动退款，不允许向已经删除的报名新增收款凭证，既有待核凭证可继续处理。
+
+报名详情补充 `displayState`、`actions`、审核历史和最近提交修订。`actions` 包含编辑、本人资料、提交、撤回、取消、管理员删除、首次审核 `review`、修改已有审核 `amendReview`、报名方财务申请 `requestFinance`、查看平台凭据 `credentials`，另有 `editReason`；写接口仍重新检查版本与权限。管理编辑不授予代提交、撤回提交或代申请财务的权限；管理员同时是该报名创建者或关联老师时，按其报名方身份保留相应操作。撤回仅用于待审核且未到账报名。个人入口查询显式使用 `role=mine`，不会因管理员身份扩大范围。`review=DRAFT|CORRECTION` 分别筛选草稿与补正，`review=PENDING` 仅包含已提交待审报名。搜索包含活动标题、队名和姓名。
+
+`GET /registrations/review-queue?contestId=…` 沿用当前列表筛选并返回全部匹配已提交报名的 `{ids}`，不受分页限制，默认待审核；仅 REGISTRATIONS 管理员可用。首次审核支持连续处理，已经审核的记录使用独立“修改审核”入口，不进入连续审核操作。审核正文仍为 `{version,decision,reason,participationType?}`，退回、拒绝及修改已有审核必须有原因，PAYMENT_FIRST 只阻止未付清时通过。尚未修改资料的补正记录可直接改为通过或拒绝；报名方已修改但尚未重新提交的资料不能被审核。版本冲突返回 409；客户端保留意见供刷新核对。
+
+独立财务账户的 `canEdit` 表示报名方申请权限，`canManage` 表示 FINANCE 处理权限；管理员不能仅凭管理授权代替报名方上传缴费凭证、申请退款或开票。报名删除后申请权限仅保留给创建者。账簿项补充 `reversed`，已冲正的收款不再展示重复冲正操作；分页、筛选后的记录同样按完整账簿判断。未发放的 READY 准考证需要 ADMISSIONS 权限才能下载，VIEW 权限不能提前下载。
+
+### 活动预设与排考
+
+活动配置新增 `kind: ACTIVITY|COMPETITION`、`modules: {admissions,rooms,integrations}` 和 `seatingMode: REGISTRATION|PERSON`。新通用活动缺省关闭三个模块，人工审核、免费、个人报名且不关联老师；修改已有活动时保留明确提交的原配置。关闭已启用模块需提交 `confirmModuleChanges:true`，后端同步禁止相关操作，保留排考和字段数据，使相关准考证及本地账号交付失效。
+
+| 方法与路径                                 | 用途                                           |
+| ------------------------------------------ | ---------------------------------------------- |
+| GET `/contests/:id/rooms`                  | 考场、座位及 `seatingVersion`                  |
+| POST `/contests/:id/rooms`                 | 新增名称、地点、容量、顺序及启用状态           |
+| PUT / DELETE `/contests/:id/rooms/:roomId` | 带考场 `version` 更新或删除                    |
+| POST `/contests/:id/seating/preview`       | 按报名 ID 预览自动或明确座位，不写入           |
+| POST `/contests/:id/seating/commit`        | 同一请求加预览返回的版本，事务内再次校验并写入 |
+| POST `/contests/:id/seating/clear`         | 带 `seatingVersion`，可选 `roomId` 清空        |
+
+以上需要 ADMISSIONS 权限及启用考场。排考请求包含 `registrationIds`、可选 `replace`（默认保留已有座位），手工安排附加 `assignments: [{registrationId,personId?,roomId,seat}]`。提交必须带预览的 `seatingVersion`、`registrationVersions`；容量、重复、跨活动、非资格报名和资料变化会整批拒绝。数据库具有考场／座号及报名／排考单位唯一约束。
+
+`GET /integrations/revocations?contestId=…` 查询远端撤权待办，`POST /integrations/revocations/:id/complete` 由管理员实际处理远端后标记完成并审计，两者需要 INTEGRATIONS 权限。待办仅保存平台目标和远端编号，不保留报名快照或账号密码。
+
+`GET /automation/v1/finance` 的 `registrations` 与 `receivableCents` 仅计算当前报名；`netReceivedCents` 汇总包括已删除报名在内的独立财务余额，`financialAccounts` 为独立账户数。调用仍需 `finance:read` 和竞赛范围。
 
 ### 公网地址、竞赛与发票
 
@@ -190,7 +225,7 @@ X-ContestCenter-Signature: sha256=<hex HMAC>
 
 用户列表接受 `tag`；报名列表、统计和 CSV 接受 `tag` 并检查管理员管理范围。最多 20 个标签，每个不超过 40 字。
 
-报名新增 `number: number|null`，每个竞赛从 1 开始按首次成功提交分配，`submittedAt` 保留首次提交时间。草稿不编号，并发提交不重号；重新提交、补正和取消不重新编号。历史已提交报名按首次提交的审计时间自动回填，计数器接续最大编号；CSV 首列为报名编号。
+报名新增 `number: number|null`，每个竞赛从 1 开始按首次成功提交分配，`submittedAt` 保留首次提交时间。草稿不编号，并发提交不重号；重新提交、补正不重新编号，永久删除后不重复使用原编号。历史已提交报名按首次提交的审计时间自动回填，计数器接续最大编号；CSV 首列为报名编号。
 
 ## V0.3 账号、授权、存储和邮件
 
@@ -200,6 +235,8 @@ GET / POST `/auth/identity`、GET `/admin/identities`、POST `/admin/identities/
 
 GET / PUT `/admin/storage`、POST `/admin/storage/test`、POST `/admin/storage/migrate` 配置、实测和迁移存储。POST `/files` 的 purpose 可为 PRIVATE / PERSONAL / AVATAR / TEAM / CONTEST_PUBLIC / CONTEST_PRIVATE，结合 registrationId / contestId / ticketId；GET `/files` 查询，DELETE `/files/:id` 删除，POST `/contests/:id/files/distribute` 分发指定 registrationIds。公开文件 GET `/files/public/:id`，私有文件下载仍校验会话及授权。附件页面中的 PDF 预览通过相同接口读取，使用临时 Blob URL 和 PDF.js 在页面内展示，支持翻页、缩放和加密文档密码输入，不生成额外公开链接，关闭预览后释放临时 URL 和阅读器资源。PDF.js 所需字体、CMap、WASM 和许可随前端构建一并打包。
 
-GET `/auth/sessions?page=1&pageSize=20` 返回当前账号尚未过期的登录会话及总数，每页固定 20 条，其他 pageSize 返回 400。旧调用不传分页参数时返回最多 20 条的数组。会话撤销后，页面刷新当前页；最后一页为空时自动回到前一页。
+GET `/auth/sessions?page=1&pageSize=20` 返回当前账号尚未过期的登录会话及总数，默认每页 20 条，支持 20／50／100，其他 pageSize 返回 400。旧调用不传分页参数时返回最多 20 条的数组。会话撤销后，页面刷新当前页；最后一页为空时自动回到前一页。
+
+GET `/auth/identity` 保留状态、实名资料和 `requests` 数组结构，返回当前账号的完整审核历史，按创建时间和 ID 降序排列；不再截取最近 20 条。个人中心对该数组使用 20／50／100 项分页，不会包含其他账号的审核记录。
 
 GET `/contests/:id/public-teams` 与 `/export` 不要求登录，按竞赛 publicRosterEnabled、publicRosterReviews 筛选并仅输出公示字段。PUT `/registrations/:id/public-rank` 配置排名。GET `/admin/mail/templates`、PUT `/admin/mail/templates/:key` 设置邮件完整格式；GET `/notifications/mail?resourceId=UUID` 查看投递状态，POST `/notifications/mail/:id/retry` 重发失败业务邮件，均验证资源访问权限。详细操作见 [平台功能说明](PLATFORM_GUIDE.md)。

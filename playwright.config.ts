@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 export default defineConfig({
   testDir: 'tests/e2e',
+  outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? 'test-results',
   timeout: 60000,
   workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],

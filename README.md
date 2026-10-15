@@ -1,10 +1,10 @@
 # 南晓开放原子社在线报名系统 · Contest Center
 
-可自托管的中文竞赛报名系统，采用 Vue 3、Element Plus、NestJS、Prisma 7、PostgreSQL、Redis/BullMQ 和隔离的 XeLaTeX 编译容器。支持个人与团队报名、指导老师、审核、线下财务、工单、准考证、Hydro / DOMjudge 联动，以及联合注册 API 和只读 MCP。
+可自托管的中文活动及竞赛报名系统，采用 Vue 3、Element Plus、NestJS、Prisma 7、PostgreSQL、Redis/BullMQ 和隔离的 XeLaTeX 编译容器。支持通用活动与竞赛预设、个人与团队报名、指导老师、弹窗审核、独立财务、多考场排考、工单、准考证、Hydro / DOMjudge 联动，以及联合注册 API 和只读 MCP。
 
 - [Docker Compose 安装包与步骤](deploy/README.md)
 - [存储、邮件、个人中心与三种管理员授权](docs/PLATFORM_GUIDE.md)
-- [V0.4.0 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.4.0)
+- [V0.5.0 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.5.0)
 - [部署与日常维护](docs/DEPLOYMENT.md)
 - [在线配置教程（GitHub Pages）](https://albert-li-sz.github.io/NXOPA-RegSYS/)
 - [带截图的配置教程（PDF）](output/pdf/configuration-guide.pdf)、[LaTeX 源码](docs/CONFIGURATION_GUIDE.tex)、[源码与截图打包](output/pdf/configuration-guide-source.zip)
@@ -20,7 +20,7 @@
 
 推荐使用根目录的单一一键安装入口 `install.sh`。宿主机需要 Docker Compose、Bash 和 OpenSSL，Node.js / pnpm 随镜像安装。
 
-从 V0.4.0 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
+从 V0.5.0 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
 
 ```bash
 # 安装：交互选择镜像版本、域名或端口，再创建管理员
@@ -67,6 +67,8 @@ pnpm test:bugs
 pnpm test:integration
 pnpm test:enhancements
 pnpm test:admissions
+pnpm test:activity-workflows
+pnpm test:workflow-upgrade
 pnpm test:e2e
 pnpm test:auth
 pnpm test:mail
@@ -75,6 +77,8 @@ pnpm test:load
 ```
 
 额外的 `test:oj`、`test:boundaries`、`test:deployment` 及其依赖和执行顺序见验收报告。浏览器测试优先使用本机 Chrome；其他环境先运行 `pnpm exec playwright install chromium`。
+
+`pnpm test:full` 在独立数据库和附件目录中执行十九组完整回归。报名流程升级会永久清理历史取消记录，更新前必须备份，具体见[升级与恢复说明](docs/DEPLOYMENT.md#加密备份与恢复)。
 
 ## 编译配置教程
 

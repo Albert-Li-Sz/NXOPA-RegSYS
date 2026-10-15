@@ -1,9 +1,15 @@
 <script setup lang="ts">
+import PaginatedTable from '../components/PaginatedTable.vue';
+import PaginatedList from '../components/PaginatedList.vue';
 import { ref, shallowRef, computed, onMounted, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, auth, money, date, label, upload } from '../api';
 import type { RegistrationView, PersonView, Data } from '../types';
+import { useEditSession, mayLeaveEdits } from '../composables/useEditSession';
+import EditActions from '../components/EditActions.vue';
+import RegistrationReadout from '../components/RegistrationReadout.vue';
+import RegistrationReview from '../components/RegistrationReview.vue';
 import FileLibrary from '../components/FileLibrary.vue';
 import MailDelivery from '../components/MailDelivery.vue';
 import { canManage, ownUser } from '../permissions';
@@ -21,6 +27,7 @@ const route = useRoute(),
     organization: { name: string; shortName: string; country: string; icpcId: string };
     answers: Data;
     people: PersonView[];
+    coaches: Data[];
   }>({
     teamName: '',
     teamEnglishName: '',
@@ -28,6 +35,7 @@ const route = useRoute(),
     organization: { name: '', shortName: '', country: 'CHN', icpcId: '' },
     answers: {},
     people: [],
+    coaches: [],
   }),
   tab = ref(String(route.query.tab ?? 'registration')),
   busy = ref(false),
@@ -35,6 +43,11 @@ const route = useRoute(),
   link = ref(''),
   credentials = ref<Data[]>([]),
   bindings = ref<Data[]>([]);
+const edit = useEditSession(form),
+  router = useRouter(),
+  reviewOpen = ref(false);
+const rank = ref<{ rank: number | null }>({ rank: null }),
+  rankEdit = useEditSession(rank);
 const invoiceTotal = computed(() => r.value?.invoiceIssuedCents ?? 0);
 const invoiceApplication = ref(false),
   invoiceDetail = ref<Data>();
@@ -75,29 +88,59 @@ const editor = computed(
 const policy = computed(() =>
   r.value ? policySchema.parse(r.value.policySnapshot ?? r.value.contest.policy) : undefined,
 );
-const platformProfiles = computed(() => [
-  ...new Set([
-    ...(policy.value?.platformProfiles ?? []),
-    ...((r.value ? policySchema.parse(r.value.contest.policy).platformProfiles : []) ?? []),
-  ]),
-]);
+const platformProfiles = computed(() =>
+  !r.value?.contest.modules.integrations
+    ? []
+    : [
+        ...new Set([
+          ...(policy.value?.platformProfiles ?? []),
+          ...((r.value ? policySchema.parse(r.value.contest.policy).platformProfiles : []) ?? []),
+        ]),
+      ],
+);
 const invoicePolicy = computed(() =>
   r.value ? policySchema.parse(r.value.contest.policy) : undefined,
 );
-const canSave = computed(
-  () => editor.value && !['CANCELLED', 'CANCEL_REQUESTED'].includes(r.value?.status ?? ''),
+const canSave = computed(() => edit.editing.value && !!r.value?.actions.edit);
+const savingDraft = computed(() => r.value?.status === 'DRAFT' && r.value.actions.requestFinance);
+const canUploadVoucher = computed(
+  () =>
+    !!r.value &&
+    r.value.actions.requestFinance &&
+    r.value.status === 'SUBMITTED' &&
+    r.value.feeCents > 0 &&
+    r.value.review !== 'REJECTED' &&
+    (policy.value?.paymentSequence !== 'REVIEW_FIRST' ||
+      !(policy.value.manualReview || r.value.participationType === 'UNOFFICIAL') ||
+      r.value.review === 'APPROVED'),
 );
 async function saveRank() {
   await api(`/registrations/${r.value!.id}/public-rank`, 'PUT', {
-    rank: r.value!.publicRank || null,
+    rank: rank.value.rank || null,
+    expectedRank: r.value!.publicRank,
   });
+  rankEdit.finish();
+  await refresh();
   ElMessage.success('排名已保存');
+}
+async function reload() {
+  if (!(await edit.mayLeave()) || !(await rankEdit.mayLeave())) return;
+  edit.finish();
+  rankEdit.finish();
+  await refresh();
+}
+async function openReview() {
+  if (!(await edit.mayLeave())) return;
+  edit.finish();
+  await refresh();
+  reviewOpen.value = true;
 }
 async function refresh() {
   try {
     loadError.value = '';
     r.value = await api(`/registrations/${route.params.id}?history=false`);
     const x = r.value!;
+    if (!rankEdit.editing.value) rank.value = { rank: x.publicRank };
     form.value = JSON.parse(
       JSON.stringify({
         teamName: x.teamName,
@@ -106,17 +149,28 @@ async function refresh() {
         organization: x.organization ?? { name: '', shortName: '', country: 'CHN', icpcId: '' },
         answers: { registration: {}, team: {}, ...x.answers },
         people: x.people,
+        coaches: x.coaches,
       }),
     );
     if (integrationManager.value)
       bindings.value = await api(`/integrations/bindings?contestId=${x.contestId}`);
     if (tab.value === 'finance') await loadFinance();
   } catch (e) {
+    if (route.query.tab === 'finance') {
+      try {
+        await api(`/finance/accounts/${route.params.id}`);
+        await router.replace(`/finance/${route.params.id}`);
+        return;
+      } catch {}
+    }
     loadError.value = e instanceof Error ? e.message : '报名暂时无法加载';
     r.value = undefined;
   }
 }
-onMounted(refresh);
+onMounted(async () => {
+  await refresh();
+  if (route.query.edit === '1' && r.value?.actions.edit) edit.begin();
+});
 async function action(path: string, body: Data = {}) {
   busy.value = true;
   try {
@@ -128,6 +182,7 @@ async function action(path: string, body: Data = {}) {
   }
 }
 async function save() {
+  const wasDraft = savingDraft.value;
   busy.value = true;
   try {
     await api(`/registrations/${r.value!.id}`, 'PUT', {
@@ -136,63 +191,85 @@ async function save() {
       version: r.value!.version,
     });
     await refresh();
-    ElMessage.success('报名草稿已保存');
+    edit.finish();
+    ElMessage.success(wasDraft ? '报名草稿已保存' : '报名修改已保存');
   } finally {
     busy.value = false;
   }
 }
 async function submit() {
-  await save();
+  if (edit.editing.value) await save();
   await action(`/registrations/${r.value!.id}/submit`, { version: r.value!.version });
   ElMessage.success('报名已提交');
 }
-async function review(decision: string) {
-  let reason = '';
-  if (decision !== 'APPROVED') {
-    const answer = await ElMessageBox.prompt('请填写审核意见', '审核报名', {
-      inputType: 'textarea',
-    });
-    reason = answer.value;
-  }
-  await action(`/registrations/${r.value!.id}/review`, {
-    version: r.value!.version,
-    decision,
-    reason,
-    participationType: form.value.participationType,
-  });
-}
 async function cancel() {
-  await ElMessageBox.confirm('确认取消此报名？已收款的报名将进入退款处理流程。', '取消报名');
-  await action(`/registrations/${r.value!.id}/cancel`, { version: r.value!.version });
+  await ElMessageBox.confirm(
+    '报名资料、成员关联及准考证将永久删除；已付款的财务单据独立保留，可继续申请退款。确认取消？',
+    '永久取消报名',
+    { type: 'warning', confirmButtonText: '永久取消' },
+  );
+  const result = await api(`/registrations/${r.value!.id}/cancel`, 'POST', {
+    version: r.value!.version,
+  });
+  edit.finish();
+  rankEdit.finish();
+  await router.push(result.financeAccountId ? `/registrations?tab=finance` : '/registrations');
+}
+async function removeRegistration() {
+  const { value } = await ElMessageBox.prompt(
+    '报名资料及准考证将永久删除，财务独立保留。请填写删除原因。',
+    '删除报名',
+    {
+      inputType: 'textarea',
+      inputValidator: (value: string) => !!value.trim() || '请填写删除原因',
+      type: 'warning',
+      confirmButtonText: '永久删除',
+    },
+  );
+  await api(`/registrations/${r.value!.id}`, 'DELETE', {
+    version: r.value!.version,
+    reason: value,
+  });
+  edit.finish();
+  rankEdit.finish();
+  await router.push(`/admin/contests/${r.value!.contestId}?tab=registrations`);
 }
 async function invite(kind: string) {
+  if (edit.dirty.value) await save();
   const result = await action(`/registrations/${r.value!.id}/invites`, { kind });
   link.value = result.url;
+  edit.begin();
 }
 async function copy() {
   await navigator.clipboard.writeText(link.value);
   ElMessage.success('链接已复制');
 }
 async function removeCoach(id: string) {
+  if (edit.dirty.value) await save();
   await api(`/registrations/${r.value!.id}/coaches/${id}`, 'DELETE', { version: r.value!.version });
   await refresh();
+  edit.begin();
 }
 function addPerson() {
   form.value.people.push({ name: '', email: '', captain: false, confirmed: true, answers: {} });
 }
-const voucher = ref<Data>({
-    amount: 0,
-    channel: '银行转账',
-    payer: '',
-    reference: '',
-    paidAt: new Date().toISOString(),
-    attachmentId: '',
-  }),
+const newVoucher = () => ({
+  amount: 0,
+  channel: '银行转账',
+  payer: '',
+  reference: '',
+  paidAt: new Date().toISOString(),
+  attachmentId: '',
+});
+const voucher = ref<Data>(newVoucher()),
   voucherDialog = ref(false);
 async function attach(e: Event, model: Data) {
-  const file = (e.target as HTMLInputElement).files?.[0];
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
   if (file) {
-    const f = await upload(file, r.value!.id);
+    model.attachmentId = '';
+    const f = await upload(file);
+    if (input.files?.[0] !== file) return;
     model.attachmentId = f.id;
     ElMessage.success('文件已上传');
   }
@@ -203,6 +280,7 @@ async function sendVoucher() {
     amountCents: Math.round(voucher.value.amount * 100),
   });
   voucherDialog.value = false;
+  voucher.value = newVoucher();
 }
 async function financialRequest(type: 'refunds' | 'invoices') {
   if (type === 'invoices') {
@@ -223,6 +301,11 @@ async function financialRequest(type: 'refunds' | 'invoices') {
 const invoiceFile = ref<Data>({}),
   invoiceDialog = ref(false),
   selectedInvoice = ref('');
+function openInvoice(id: string) {
+  invoiceFile.value = {};
+  selectedInvoice.value = id;
+  invoiceDialog.value = true;
+}
 async function issue() {
   await action(`/finance/invoices/${selectedInvoice.value}/review`, {
     decision: 'ISSUED',
@@ -253,9 +336,13 @@ async function reverse(id: string) {
   await action(`/finance/ledger/${id}/reverse`, { reason: value });
 }
 async function generate() {
-  const { value } = await ElMessageBox.prompt('填写考场 / 座位，例如 A101 / 12', '生成准考证');
-  const [room, seat] = value.split('/').map((x) => x.trim());
-  await action('/admissions/generate', { registrationIds: [r.value!.id], room, seat });
+  if (r.value!.contest.modules.rooms) {
+    await action('/admissions/generate', { registrationIds: [r.value!.id] });
+  } else {
+    const { value } = await ElMessageBox.prompt('填写考场 / 座位，例如 A101 / 12', '生成准考证');
+    const [room, seat] = value.split('/').map((x) => x.trim());
+    await action('/admissions/generate', { registrationIds: [r.value!.id], room, seat });
+  }
   ElMessage.success('生成任务已入队，请刷新查看结果');
 }
 async function memberSave(id: string, index: number) {
@@ -265,6 +352,7 @@ async function memberSave(id: string, index: number) {
     answers: form.value.people[index].answers,
   });
   await refresh();
+  edit.finish();
 }
 </script>
 <template>
@@ -277,9 +365,10 @@ async function memberSave(id: string, index: number) {
   <div v-else-if="!r" class="loading"><el-skeleton :rows="8" animated /></div>
   <template v-else
     ><div class="crumb">
-      <router-link to="/">比赛列表</router-link><span>／</span
+      <router-link to="/contests">活动及竞赛列表</router-link><span>／</span
       ><router-link :to="`/contests/${r.contestId}`">{{ r.contest.title }}</router-link
-      ><span>／</span><span>我的报名</span>
+      ><span>／</span
+      ><span>{{ ownUser(r.ownerId) ? '我的报名' : manager ? '报名管理' : '报名详情' }}</span>
     </div>
     <div v-if="r.number && r.submittedAt" class="notice">
       报名编号：#{{ r.number }} · 首次提交：{{ date(r.submittedAt) }}
@@ -292,26 +381,30 @@ async function memberSave(id: string, index: number) {
     <div class="toolbar">
       <el-tag>{{ label(r.status) }}</el-tag
       ><el-tag
+        v-if="r.status === 'SUBMITTED'"
         :type="r.review === 'APPROVED' ? 'success' : r.review === 'REJECTED' ? 'danger' : 'warning'"
         >{{ label(r.review) }}</el-tag
-      ><el-tag :type="r.participationType === 'UNOFFICIAL' ? 'warning' : 'info'">{{
-        r.participationType === 'UNOFFICIAL' ? '非正式参赛' : '正式参赛'
-      }}</el-tag
+      ><el-tag
+        v-if="policy?.allowUnofficial"
+        :type="r.participationType === 'UNOFFICIAL' ? 'warning' : 'info'"
+        >{{ r.participationType === 'UNOFFICIAL' ? '非正式参赛' : '正式参赛' }}</el-tag
       ><el-tag :type="r.eligible ? 'success' : 'info'">{{
-        r.eligible ? '已取得参赛资格' : '暂未取得参赛资格'
+        r.eligible ? '参加资格已确认' : '参加资格待完成'
       }}</el-tag
-      ><el-button text @click="refresh">刷新状态</el-button>
+      ><el-button text @click="reload">刷新状态</el-button>
     </div>
     <div v-if="r.formUpdated" class="notice">报名表单已更新，请检查新增字段并填写后再提交。</div>
     <div v-if="r.reviewReason" class="notice">审核意见：{{ r.reviewReason }}</div>
-    <el-tabs v-model="tab"
+    <el-tabs v-model="tab" :before-leave="mayLeaveEdits"
       ><el-tab-pane label="报名资料" name="registration" /><el-tab-pane
+        v-if="r.contest.modules.admissions"
         label="准考证"
         name="admissions" /><el-tab-pane label="财务" name="finance" /><el-tab-pane
+        v-if="r.contest.modules.integrations"
         label="比赛账号"
-        name="accounts" /><el-tab-pane label="队伍附件" name="files" /><el-tab-pane
-        label="邮件通知"
-        name="mail"
+        name="accounts" /><el-tab-pane
+        :label="policy?.mode === 'TEAM' ? '队伍附件' : '报名附件'"
+        name="files" /><el-tab-pane label="邮件通知" name="mail"
     /></el-tabs>
     <FileLibrary
       v-if="tab === 'files'"
@@ -327,7 +420,7 @@ async function memberSave(id: string, index: number) {
     <div class="panel" v-if="tab === 'registration'">
       <div class="stats">
         <div class="stat">
-          <span>参赛人数</span>
+          <span>参加人数</span>
           <div class="value">{{ r.people.length }}</div>
           <span class="hint">{{ policy?.minMembers }}–{{ policy?.maxMembers }} 人</span>
         </div>
@@ -353,7 +446,19 @@ async function memberSave(id: string, index: number) {
           <span class="hint">以实际核账为准</span>
         </div>
       </div>
-      <el-form label-position="top"
+      <EditActions
+        :session="edit"
+        :allow="r.actions.edit || r.actions.editOwnMember"
+        label="编辑报名资料"
+      />
+      <el-alert
+        v-if="!r.actions.edit && !r.actions.editOwnMember"
+        :title="r.actions.editReason"
+        type="info"
+        :closable="false"
+      />
+      <RegistrationReadout v-if="!edit.editing.value" :registration="r" />
+      <el-form v-else label-position="top"
         ><el-alert
           v-if="platformProfiles.length && !r.organization"
           title="评测平台基础信息待补充"
@@ -431,47 +536,69 @@ async function memberSave(id: string, index: number) {
             :disabled="!canSave"
           />
         </div>
-        <div v-for="(person, index) in form.people" :key="person.id || index" class="card">
-          <div class="member-heading">
-            <h3>
-              {{ policy?.mode === 'TEAM' ? `成员 ${index + 1}` : '参赛者信息' }}
-              <el-tag v-if="person.captain" size="small">队长</el-tag>
-            </h3>
-            <el-button
-              v-if="!person.captain && canSave"
-              text
-              type="danger"
-              @click="form.people.splice(index, 1)"
-              >移除成员</el-button
+        <PaginatedList
+          :items="form.people"
+          page-key="registration-members"
+          :always="false"
+          v-slot="{ entries }"
+        >
+          <div v-for="{ row: person, index } in entries" :key="person.id || index" class="card">
+            <div class="member-heading">
+              <h3>
+                {{ policy?.mode === 'TEAM' ? `成员 ${index + 1}` : '报名人信息' }}
+                <el-tag v-if="person.captain && policy?.mode === 'TEAM'" size="small">队长</el-tag>
+              </h3>
+              <el-button
+                v-if="!person.captain && canSave"
+                text
+                type="danger"
+                @click="form.people.splice(index, 1)"
+                >移除成员</el-button
+              >
+            </div>
+            <div class="form-grid">
+              <el-form-item label="姓名" required :for="`person-${index}-name`"
+                ><el-input
+                  :id="`person-${index}-name`"
+                  v-model="person.name"
+                  :disabled="
+                    !canSave &&
+                    !(
+                      edit.editing.value &&
+                      r.actions.editOwnMember &&
+                      person.userId === auth.user?.id
+                    )
+                  " /></el-form-item
+              ><el-form-item label="邮箱" :for="`person-${index}-email`"
+                ><el-input
+                  :id="`person-${index}-email`"
+                  v-model="person.email"
+                  :disabled="!!person.userId || !canSave"
+              /></el-form-item>
+            </div>
+            <DynamicFields
+              :fields="r.fields"
+              scope="PERSON"
+              :answers="person.answers"
+              :prefix="`member-${index}`"
+              :registration-id="r.id"
+              :disabled="
+                !canSave &&
+                !(edit.editing.value && r.actions.editOwnMember && person.userId === auth.user?.id)
+              "
+            /><el-button
+              v-if="
+                edit.editing.value &&
+                r.actions.editOwnMember &&
+                !editor &&
+                person.userId === auth.user?.id
+              "
+              type="primary"
+              @click="memberSave(person.id!, index)"
+              >保存我的信息</el-button
             >
           </div>
-          <div class="form-grid">
-            <el-form-item label="姓名" required :for="`person-${index}-name`"
-              ><el-input
-                :id="`person-${index}-name`"
-                v-model="person.name"
-                :disabled="!canSave && person.userId !== auth.user?.id" /></el-form-item
-            ><el-form-item label="邮箱" :for="`person-${index}-email`"
-              ><el-input
-                :id="`person-${index}-email`"
-                v-model="person.email"
-                :disabled="!!person.userId || !canSave"
-            /></el-form-item>
-          </div>
-          <DynamicFields
-            :fields="r.fields"
-            scope="PERSON"
-            :answers="person.answers"
-            :prefix="`member-${index}`"
-            :registration-id="r.id"
-            :disabled="!canSave && person.userId !== auth.user?.id"
-          /><el-button
-            v-if="!editor && person.userId === auth.user?.id"
-            type="primary"
-            @click="memberSave(person.id!, index)"
-            >保存我的信息</el-button
-          >
-        </div>
+        </PaginatedList>
         <div
           class="actions"
           v-if="
@@ -498,33 +625,31 @@ async function memberSave(id: string, index: number) {
             "
             :image-size="55"
           />
-          <div v-for="coach in r.coaches" :key="coach.id">
-            <div class="member-heading">
-              <span
-                >{{ coach.user?.name || coach.name || '指导老师' }} · {{ coach.user?.email }}</span
-              ><el-button v-if="editor" text type="danger" @click="removeCoach(coach.id)"
-                >解除关联</el-button
-              >
+          <PaginatedList
+            :items="form.coaches"
+            page-key="registration-coaches"
+            :always="false"
+            v-slot="{ items }"
+          >
+            <div v-for="coach in items" :key="coach.id">
+              <div class="member-heading">
+                <span
+                  >{{ coach.user?.name || coach.name || '指导老师' }} ·
+                  {{ coach.user?.email }}</span
+                ><el-button v-if="canSave" text type="danger" @click="removeCoach(coach.id)"
+                  >解除关联</el-button
+                >
+              </div>
+              <DynamicFields
+                :fields="r.fields"
+                scope="COACH"
+                :answers="coach.answers"
+                :prefix="coach.id"
+                :registration-id="r.id"
+                :disabled="!canSave"
+              />
             </div>
-            <DynamicFields
-              :fields="r.fields"
-              scope="COACH"
-              :answers="coach.answers"
-              :prefix="coach.id"
-              :registration-id="r.id"
-              :disabled="!canSave"
-            /><el-button
-              v-if="canSave && r.fields.some((f) => f.scope === 'COACH')"
-              size="small"
-              @click="
-                api(`/registrations/${r.id}/coaches/${coach.id}`, 'PUT', {
-                  version: r.version,
-                  answers: coach.answers,
-                }).then(refresh)
-              "
-              >保存老师信息</el-button
-            >
-          </div>
+          </PaginatedList>
           <p class="form-help">
             也可使用老师提供的关联链接。老师确认关联后可以代填和提交，解除后立即失去访问权限。
           </p>
@@ -537,34 +662,59 @@ async function memberSave(id: string, index: number) {
           <p class="form-help">受邀者登录并确认后关联生效，有效期 7 天。</p>
         </div>
         <div v-if="canSave" class="actions">
-          <el-button type="primary" :loading="busy" @click="submit">提交报名</el-button
-          ><el-button :loading="busy" @click="save">保存草稿</el-button
-          ><el-button
-            v-if="r.status === 'SUBMITTED'"
-            @click="action(`/registrations/${r.id}/withdraw`, { version: r.version })"
-            >撤回为草稿</el-button
-          ><el-button text type="danger" @click="cancel">取消报名</el-button>
+          <el-button v-if="r.actions.submit" type="primary" :loading="busy" @click="submit"
+            >提交报名</el-button
+          >
+          <el-button
+            :type="r.actions.submit ? 'default' : 'primary'"
+            :loading="busy"
+            @click="save"
+            >{{ savingDraft ? '保存草稿' : '保存修改' }}</el-button
+          >
         </div>
       </el-form>
-      <div v-if="manager" class="card">
-        <h3>队伍公示排名</h3>
-        <el-input-number v-model="r.publicRank" :min="1" aria-label="网络赛排名" /><el-button
-          @click="saveRank"
-          >保存排名</el-button
+      <div class="toolbar">
+        <el-button
+          v-if="!edit.editing.value && r.actions.submit"
+          type="primary"
+          :loading="busy"
+          @click="submit"
+          >提交报名</el-button
         >
-        <p class="form-help">留空表示未设置排名。</p>
+        <el-button
+          v-if="!edit.editing.value && r.actions.withdraw"
+          @click="action(`/registrations/${r.id}/withdraw`, { version: r.version })"
+          >撤回为草稿</el-button
+        >
+        <el-button v-if="r.actions.review" type="primary" @click="openReview">审核报名</el-button>
+        <el-button v-if="r.actions.amendReview" type="primary" @click="openReview"
+          >修改审核</el-button
+        >
+        <el-button v-if="r.actions.cancel" type="danger" plain @click="cancel">取消报名</el-button>
+        <el-button v-if="r.actions.delete" type="danger" @click="removeRegistration"
+          >删除报名</el-button
+        >
       </div>
-      <div v-if="manager && r.status === 'SUBMITTED'" class="card">
-        <h3>竞赛管理员审核</h3>
-        <div class="actions">
-          <el-button type="success" @click="review('APPROVED')">审核通过</el-button
-          ><el-button type="warning" @click="review('CORRECTION')">要求补正</el-button
-          ><el-button type="danger" @click="review('REJECTED')">审核拒绝</el-button>
-        </div>
+      <div v-if="manager" class="card">
+        <h3>公示排名</h3>
+        <EditActions :session="rankEdit" /><template v-if="rankEdit.editing.value"
+          ><el-input-number v-model="rank.rank" :min="1" aria-label="网络赛排名" /><el-button
+            @click="saveRank"
+            >保存排名</el-button
+          ></template
+        >
+        <p v-else>{{ r.publicRank || '未设置排名' }}</p>
       </div>
-      <el-button v-if="manager && r.status === 'CANCEL_REQUESTED'" type="danger" @click="cancel"
-        >管理员完成取消</el-button
-      ><router-link :to="`/support?registrationId=${r.id}&contestId=${r.contestId}`"
+      <RegistrationReview
+        v-model="reviewOpen"
+        :registration-id="r.id"
+        @reviewed="refresh"
+        @next="
+          reviewOpen = false;
+          refresh();
+        "
+      />
+      <router-link :to="`/support?registrationId=${r.id}&contestId=${r.contestId}`"
         ><el-button text type="primary">对此报名提起工单</el-button></router-link
       >
     </div>
@@ -601,11 +751,16 @@ async function memberSave(id: string, index: number) {
                 : '先缴费并核账，再审核资料'
             }}。上传凭证后须等待管理员确认实际到账。
           </p>
-          <div v-if="editor" class="actions">
-            <el-button type="primary" @click="voucherDialog = true">上传收款凭证</el-button
-            ><el-button v-if="policy?.refundsEnabled" @click="financialRequest('refunds')"
+          <div v-if="r.actions.requestFinance" class="actions">
+            <el-button v-if="canUploadVoucher" type="primary" @click="voucherDialog = true"
+              >上传收款凭证</el-button
+            ><el-button
+              v-if="policy?.refundsEnabled && r.netPaidCents > 0"
+              @click="financialRequest('refunds')"
               >申请退款</el-button
-            ><el-button v-if="invoicePolicy?.invoicesEnabled" @click="financialRequest('invoices')"
+            ><el-button
+              v-if="invoicePolicy?.invoicesEnabled && r.netPaidCents > r.invoiceReservedCents"
+              @click="financialRequest('invoices')"
               >申请开票</el-button
             >
           </div>
@@ -724,7 +879,12 @@ async function memberSave(id: string, index: number) {
             v-if="financeManager"
             label="操作"
             ><template #default="{ row }"
-              ><el-button v-if="row.kind === 'PAYMENT'" text type="danger" @click="reverse(row.id)"
+              ><span v-if="row.reversed" class="muted">已冲正</span
+              ><el-button
+                v-else-if="row.kind === 'PAYMENT'"
+                text
+                type="danger"
+                @click="reverse(row.id)"
                 >冲正</el-button
               ></template
             ></el-table-column
@@ -881,10 +1041,7 @@ async function memberSave(id: string, index: number) {
                 v-if="financeManager && row.status === 'REQUESTED'"
                 text
                 type="primary"
-                @click="
-                  selectedInvoice = row.id;
-                  invoiceDialog = true;
-                "
+                @click="openInvoice(row.id)"
                 >上传发票</el-button
               ><el-button
                 v-if="financeManager && row.status === 'ISSUED'"
@@ -909,20 +1066,26 @@ async function memberSave(id: string, index: number) {
         />
       </div>
     </div>
-    <div v-if="tab === 'admissions'" class="panel">
+    <div v-if="tab === 'admissions' && r.contest.modules.admissions" class="panel">
       <div class="notice">
         {{
           policy?.mode === 'TEAM' ? '全队共用一张准考证' : '个人报名一人一张准考证'
         }}。资料或资格变更后，原准考证会失效。
       </div>
       <div v-if="admissionManager" class="actions">
-        <el-button type="primary" @click="generate">生成准考证</el-button
+        <el-button type="primary" :disabled="!r.eligible" @click="generate">{{
+          r.contest.modules.rooms ? '按排考生成准考证' : '生成准考证'
+        }}</el-button
+        ><router-link
+          v-if="r.contest.modules.rooms"
+          :to="`/admin/contests/${r.contestId}?tab=rooms`"
+          ><el-button>考场与座位</el-button></router-link
         ><router-link :to="`/admin/contests/${r.contestId}?tab=templates`"
           ><el-button>配置模板</el-button></router-link
         >
       </div>
       <div class="card">
-        <el-table :data="r.admissions"
+        <PaginatedTable page-key="registration-r-admissions" :data="r.admissions"
           ><el-table-column label="准考证号" prop="number" min-width="220" /><el-table-column
             label="考场"
             prop="room"
@@ -943,44 +1106,59 @@ async function memberSave(id: string, index: number) {
                 >下载 PDF</a
               ></template
             ></el-table-column
-          ></el-table
+          ></PaginatedTable
         >
       </div>
     </div>
-    <div v-if="tab === 'accounts'" class="panel">
+    <div v-if="tab === 'accounts' && r.contest.modules.integrations" class="panel">
       <div class="notice">比赛账号与本站账号分别管理。请妥善保存比赛账号。</div>
       <div v-if="integrationManager" class="actions">
-        <el-button
-          v-for="b in bindings"
-          :key="b.id"
-          @click="action(`/integrations/registrations/${r.id}/sync`, { bindingId: b.id })"
-          >同步比赛账号{{
-            bindings.length > 1 ? `（评测平台 ${bindings.indexOf(b) + 1}）` : ''
-          }}</el-button
+        <PaginatedList
+          :items="bindings"
+          page-key="registration-bindings"
+          :always="false"
+          v-slot="{ items }"
+          ><div class="actions">
+            <el-button
+              v-for="b in items"
+              :key="b.id"
+              @click="action(`/integrations/registrations/${r.id}/sync`, { bindingId: b.id })"
+              >同步比赛账号{{
+                bindings.length > 1 ? `（评测平台 ${bindings.indexOf(b) + 1}）` : ''
+              }}</el-button
+            >
+          </div></PaginatedList
         >
       </div>
       <div class="card">
-        <el-table :data="r.mappings"
+        <PaginatedTable page-key="registration-r-mappings" :data="r.mappings"
           ><el-table-column label="账号" prop="username" min-width="200" /><el-table-column
             label="同步状态"
             ><template #default="{ row }">{{ label(row.state) }}</template></el-table-column
           ><el-table-column label="远端队伍" prop="remoteTeamId" /><el-table-column
             label="远端用户"
             prop="remoteUserId"
-        /></el-table>
+        /></PaginatedTable>
         <div class="actions">
           <el-button
+            v-if="r.actions.credentials"
             type="primary"
-            :disabled="!r.eligible && !integrationManager"
             @click="
               api(`/integrations/registrations/${r.id}/credentials`).then((v) => (credentials = v))
             "
             >查看获授权的比赛账号</el-button
           >
         </div>
-        <div v-for="c in credentials" :key="c.id" class="notice">
-          用户名：{{ c.username }}<br />密码：<code>{{ c.password }}</code>
-        </div>
+        <PaginatedList
+          :items="credentials"
+          page-key="registration-credentials"
+          :always="false"
+          v-slot="{ items }"
+        >
+          <div v-for="c in items" :key="c.id" class="notice">
+            用户名：{{ c.username }}<br />密码：<code>{{ c.password }}</code>
+          </div>
+        </PaginatedList>
         <p v-if="r.mappings.some((m) => m.state === 'REVOKED_LOCALLY')" class="error-state">
           本站已撤销资格。当前平台不支持自动停用，管理员需要在评测系统中手动处理原账号。
         </p>
@@ -1059,9 +1237,13 @@ async function memberSave(id: string, index: number) {
         ></template
       ></el-dialog
     >
-    <el-dialog v-model="invoiceDialog" title="上传实际发票" width="450px"
-      ><input type="file" accept=".pdf,.png,.jpg" @change="attach($event, invoiceFile)" /><template
-        #footer
+    <el-dialog v-model="invoiceDialog" title="上传实际发票" width="450px" destroy-on-close
+      ><input
+        :key="selectedInvoice"
+        type="file"
+        accept=".pdf,.png,.jpg"
+        @change="attach($event, invoiceFile)"
+      /><template #footer
         ><el-button type="primary" :disabled="!invoiceFile.attachmentId" @click="issue"
           >确认上传</el-button
         ></template

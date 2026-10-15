@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PaginatedTable from '../components/PaginatedTable.vue';
+import PaginatedList from '../components/PaginatedList.vue';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -10,9 +12,12 @@ import {
 } from '@contest-center/contracts';
 import { api, auth, loadAuth, date, label } from '../api';
 import type { Data, FieldDefinition } from '../types';
+import { useEditSession, mayLeaveEdits } from '../composables/useEditSession';
+import EditActions from '../components/EditActions.vue';
 import DynamicFields from '../components/DynamicFields.vue';
 import MailDelivery from '../components/MailDelivery.vue';
 import { usePagedList } from '../composables/usePagedList';
+import ListPagination from '../components/ListPagination.vue';
 const route = useRoute(),
   router = useRouter();
 const tab = ref(String(route.query.tab || 'overview')),
@@ -25,14 +30,16 @@ const tab = ref(String(route.query.tab || 'overview')),
   github = ref({ enabled: false, linked: false }),
   feishu = ref({ enabled: false, linked: false }),
   closure = reactive({ confirmation: '', password: '', code: '' });
+const edit = useEditSession(profile);
 const {
   page: sessionsPage,
+  pageSize: sessionsPageSize,
   items: sessions,
   total: sessionsTotal,
   loading: sessionsLoading,
   error: sessionsError,
   load: loadSessions,
-} = usePagedList('login-sessions', () => '/auth/sessions', { fixedPageSize: 20 });
+} = usePagedList('login-sessions', () => '/auth/sessions');
 const teacher = computed(() => auth.user?.kind === 'TEACHER');
 const identityState = computed(() =>
   requests.value.some((request) => request.status === 'PENDING')
@@ -129,8 +136,10 @@ async function save() {
       name: profile.name,
       email: profile.email,
       profile: profile.profile,
+      avatarAttachmentId: profile.avatarAttachmentId,
     });
     await refresh();
+    edit.finish();
     ElMessage.success('资料已保存');
     const next = String(route.query.next || '');
     if (auth.user?.profileComplete && /^\/(?!\/)[^\\\r\n]*$/.test(next)) await router.push(next);
@@ -157,14 +166,8 @@ async function avatar(event: Event) {
     const data = new FormData();
     data.append('file', file);
     const uploaded = await api('/files?purpose=AVATAR', 'POST', data);
-    await api('/auth/profile', 'PUT', {
-      version: auth.user!.version,
-      name: auth.user!.name,
-      profile: auth.user!.profile,
-      avatarAttachmentId: uploaded.id,
-    });
-    await refresh();
-    ElMessage.success('头像已更新');
+    profile.avatarAttachmentId = uploaded.id;
+    ElMessage.success('头像已选择，保存资料后生效');
   } finally {
     input.value = '';
     busy.value = false;
@@ -249,7 +252,7 @@ const contestName = (id: string | null) =>
       type="warning"
       :closable="false"
     />
-    <el-tabs v-model="tab" class="profile-tabs">
+    <el-tabs v-model="tab" :before-leave="mayLeaveEdits" class="profile-tabs">
       <el-tab-pane label="总览" name="overview">
         <div class="profile-layout">
           <div class="card">
@@ -264,7 +267,13 @@ const contestName = (id: string | null) =>
               type="warning"
               :closable="false"
             />
-            <el-form label-position="top" @submit.prevent="save"
+            <EditActions :session="edit" />
+            <el-form
+              :key="String(edit.editing.value)"
+              label-position="top"
+              :disabled="!edit.editing.value"
+              :class="{ 'read-mode': !edit.editing.value }"
+              @submit.prevent="save"
               ><div class="form-grid">
                 <el-form-item label="姓名" for="profile-name"
                   ><el-input id="profile-name" v-model="profile.name" :disabled="locked"
@@ -279,16 +288,17 @@ const contestName = (id: string | null) =>
                     maxlength="100"
                 /></el-form-item>
                 <el-form-item label="头像"
-                  ><label class="file-upload-label"
+                  ><label v-if="edit.editing.value" class="file-upload-label"
                     >上传头像<input
                       type="file"
                       accept="image/png,image/jpeg"
-                      :disabled="busy"
+                      :disabled="busy || !edit.editing.value"
                       @change="avatar" /></label
                   ><span class="form-help">PNG / JPEG，最多 5 MB</span></el-form-item
                 >
               </div>
               <DynamicFields
+                :disabled="!edit.editing.value"
                 :fields="overviewFields"
                 scope="PERSON"
                 :answers="profile.profile"
@@ -308,7 +318,11 @@ const contestName = (id: string | null) =>
                   >变更实名信息，提交管理员审核</el-button
                 >
               </div>
-              <el-button type="primary" native-type="submit" :loading="busy"
+              <el-button
+                v-if="edit.editing.value"
+                type="primary"
+                native-type="submit"
+                :loading="busy"
                 >保存资料</el-button
               ></el-form
             >
@@ -351,16 +365,12 @@ const contestName = (id: string | null) =>
               ></el-table-column
             ></el-table
           >
-          <div class="list-pagination">
-            <span class="form-help">每页 20 条</span>
-            <el-pagination
-              v-model:current-page="sessionsPage"
-              :page-size="20"
-              :total="sessionsTotal"
-              :disabled="sessionsLoading"
-              layout="total, prev, pager, next"
-            />
-          </div>
+          <ListPagination
+            v-model:page="sessionsPage"
+            v-model:size="sessionsPageSize"
+            :total="sessionsTotal"
+            :loading="sessionsLoading"
+          />
         </div>
       </el-tab-pane>
       <el-tab-pane label="实名认证" name="identity" lazy>
@@ -388,31 +398,38 @@ const contestName = (id: string | null) =>
         </div>
         <div class="card">
           <h3>审核记录</h3>
-          <el-table :data="requests"
+          <PaginatedTable page-key="profilecenter-requests" :data="requests"
             ><el-table-column label="时间" width="180"
               ><template #default="{ row }">{{ date(row.createdAt) }}</template></el-table-column
             ><el-table-column label="状态" width="110"
               ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
             ><el-table-column label="审核意见" prop="reason" min-width="180"
-          /></el-table>
+          /></PaginatedTable>
         </div>
       </el-tab-pane>
       <el-tab-pane v-if="auth.user.grants?.length" label="管理信息" name="management" lazy>
         <div class="card">
           <h3>我的管理授权</h3>
           <p class="form-help">学生与教师均可接受管理授权。授权到期或撤回后，管理权限立即失效。</p>
-          <div v-for="grant in auth.user.grants" :key="grant.id" class="grant-card">
-            <div class="member-heading">
-              <strong>{{ levelLabel(grant.level) }} · {{ contestName(grant.contestId) }}</strong
-              ><el-button text type="danger" @click="resign(grant)">卸任</el-button>
+          <PaginatedList
+            :items="auth.user.grants"
+            page-key="my-grants"
+            :always="false"
+            v-slot="{ items }"
+          >
+            <div v-for="grant in items" :key="grant.id" class="grant-card">
+              <div class="member-heading">
+                <strong>{{ levelLabel(grant.level) }} · {{ contestName(grant.contestId) }}</strong
+                ><el-button text type="danger" @click="resign(grant)">卸任</el-button>
+              </div>
+              <p>期限：{{ grant.expiresAt ? date(grant.expiresAt) : '永久授权' }}</p>
+              <div class="tag-list">
+                <el-tag v-for="permission in grant.permissions" :key="permission" type="info">{{
+                  permissionLabel(permission)
+                }}</el-tag>
+              </div>
             </div>
-            <p>期限：{{ grant.expiresAt ? date(grant.expiresAt) : '永久授权' }}</p>
-            <div class="tag-list">
-              <el-tag v-for="permission in grant.permissions" :key="permission" type="info">{{
-                permissionLabel(permission)
-              }}</el-tag>
-            </div>
-          </div>
+          </PaginatedList>
         </div>
       </el-tab-pane>
       <el-tab-pane label="设置" name="settings" lazy>

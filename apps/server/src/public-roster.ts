@@ -117,10 +117,20 @@ export class PublicRosterService {
     );
   }
   async rank(u: Principal, id: string, body: unknown) {
-    const b = z.object({ rank: z.number().int().positive().nullable() }).parse(body);
+    const b = z
+      .object({
+        rank: z.number().int().positive().nullable(),
+        expectedRank: z.number().int().nullable().optional(),
+      })
+      .parse(body);
     const registration = await db.registration.findUniqueOrThrow({ where: { id } });
     requireManager(u, registration.contestId, 'REGISTRATIONS');
-    await db.registration.update({ where: { id }, data: { publicRank: b.rank } });
+    const changed = await db.registration.updateMany({
+      where: { id, ...(b.expectedRank !== undefined ? { publicRank: b.expectedRank } : {}) },
+      data: { publicRank: b.rank },
+    });
+    if (!changed.count)
+      throw new (await import('@nestjs/common')).ConflictException('排名已被更新，请刷新后重试');
     await audit(db, u.id, 'PUBLIC_RANK_SET', id, { rank: b.rank });
     return { ok: true };
   }

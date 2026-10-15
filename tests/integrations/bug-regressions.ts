@@ -142,23 +142,18 @@ try {
         r = await alice.api(`/registrations/${r.id}`);
       }
       assert.equal(r.eligible, true);
-      const count = await db.outboxEvent.count({
-        where: { resourceId: r.id, type: 'ELIGIBILITY' },
+      const oldId = r.id;
+      const receipt = await alice.api(`/registrations/${r.id}/cancel`, 'POST', {
+        version: r.version,
       });
-      r = await alice.api(`/registrations/${r.id}/cancel`, 'POST', { version: r.version });
-      assert.equal(r.eligible, false);
-      assert.equal(r.status, feeCents ? 'CANCEL_REQUESTED' : 'CANCELLED');
-      assert.equal(
-        await db.outboxEvent.count({ where: { resourceId: r.id, type: 'ELIGIBILITY' } }),
-        count + 1,
-        'Cancelling an eligible registration must notify platform mappings and webhooks',
-      );
-      const event = await db.outboxEvent.findFirstOrThrow({
-        where: { resourceId: r.id, type: 'ELIGIBILITY' },
-        orderBy: { createdAt: 'desc' },
+      assert.equal(receipt.deleted, true);
+      assert.equal((await alice.raw(`/api/v1/registrations/${oldId}`)).status, 404);
+      const removed = await db.outboxEvent.findFirstOrThrow({
+        where: { resourceId: oldId, type: 'REGISTRATION_REMOVED' },
       });
-      assert.equal((event.payload as any).eligible, false);
-      assert.equal((event.payload as any).version, r.version);
+      assert.equal((removed.payload as any).deleted, true);
+      if (feeCents)
+        assert.equal((await alice.api(`/finance/accounts/${oldId}`)).netPaidCents, feeCents);
     }
   });
 

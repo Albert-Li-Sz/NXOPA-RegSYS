@@ -9,6 +9,8 @@ import {
   authenticationMailCategories,
   type MailTemplateContext,
 } from '@contest-center/contracts';
+import { useEditSession } from '../composables/useEditSession';
+import EditActions from './EditActions.vue';
 import { api, auth } from '../api';
 import type { Data } from '../types';
 const templates = ref<Data[]>([]),
@@ -18,6 +20,7 @@ const templates = ref<Data[]>([]),
   saveError = ref(''),
   testing = ref(false),
   testResult = ref('');
+const edit = useEditSession(templates);
 let alive = true;
 onBeforeUnmount(() => {
   alive = false;
@@ -68,6 +71,9 @@ async function save() {
     const index = templates.value.findIndex((row) => row.key === target.key);
     templates.value[index] = result;
     originals.value[target.key] = JSON.stringify(result);
+    edit.checkpoint(templates.value.map((row) => JSON.parse(originals.value[row.key]!)));
+    if (!templates.value.some((row) => JSON.stringify(row) !== originals.value[row.key]))
+      edit.finish();
     ElMessage.success('邮件模板已保存');
   } catch (e) {
     saveError.value = e instanceof Error ? e.message : '邮件模板保存失败';
@@ -135,10 +141,12 @@ onMounted(async () => {
         :value="template.key"
         :label="template.label"
     /></el-select>
+    <EditActions :session="edit" />
     <el-form
       v-if="current"
       label-position="top"
-      :disabled="busy"
+      :disabled="busy || !edit.editing.value"
+      :class="{ 'read-mode': !edit.editing.value }"
       style="margin-top: 20px"
       @submit.prevent="save"
     >
@@ -165,22 +173,30 @@ onMounted(async () => {
           class="code-input"
       /></el-form-item>
       <div class="actions">
-        <el-button type="primary" native-type="submit" :loading="busy" :disabled="!dirty || testing"
+        <el-button
+          v-if="edit.editing.value"
+          type="primary"
+          native-type="submit"
+          :loading="busy"
+          :disabled="!dirty || testing"
           >保存邮件模板</el-button
         >
-        <el-button :disabled="busy || !dirty" @click="discard">撤销当前修改</el-button>
-        <el-button :disabled="busy" @click="defaults">恢复默认格式</el-button>
-        <el-button
-          :disabled="busy || dirty || !current.enabled"
-          :loading="testing"
-          @click="testMail"
-          >发送模板测试邮件</el-button
+        <el-button v-if="edit.editing.value" :disabled="busy || !dirty" @click="discard"
+          >撤销当前修改</el-button
+        >
+        <el-button v-if="edit.editing.value" :disabled="busy" @click="defaults"
+          >恢复默认格式</el-button
         >
         <span class="form-help">{{
           dirty ? '当前模板有未保存修改；切换类型会保留草稿。' : '当前模板已保存'
         }}</span>
       </div>
     </el-form>
+    <div v-if="current" class="toolbar">
+      <el-button :disabled="busy || dirty || !current.enabled" :loading="testing" @click="testMail"
+        >发送模板测试邮件</el-button
+      >
+    </div>
     <el-alert v-if="saveError" :title="saveError" type="error" :closable="false" />
     <el-alert v-if="testResult" :title="testResult" type="info" :closable="false" />
   </div>

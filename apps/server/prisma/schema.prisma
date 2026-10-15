@@ -144,6 +144,12 @@ model ExternalIdentity {
   @@unique([providerId,subject])
 }
 model Contest {
+  kind String @default("COMPETITION")
+  modules Json @default("{\"admissions\":true,\"rooms\":false,\"integrations\":true}")
+  seatingMode String @default("REGISTRATION")
+  seatingVersion Int @default(1)
+  deletedSubmittedCount Int @default(0)
+  deletedCancelledCount Int @default(0)
   id String @id @default(uuid()) @db.Uuid
   title String
   season String
@@ -169,6 +175,8 @@ model Contest {
   forms FormVersion[]
   registrations Registration[]
   bindings PlatformBinding[]
+  rooms ExamRoom[]
+  financeAccounts FinanceAccount[]
   @@index([published,archived,opensAt,closesAt])
 }
 model FieldDefinition {
@@ -216,10 +224,7 @@ model Registration {
   people RegistrationPerson[]
   coaches RegistrationCoach[]
   revisions RegistrationRevision[]
-  vouchers PaymentVoucher[]
-  ledger LedgerEntry[]
-  refunds Refund[]
-  invoices InvoiceRequest[]
+  seats SeatAssignment[]
   admissions AdmissionDocument[]
   mappings AccountMapping[]
   @@index([contestId,status,review,eligible])
@@ -337,7 +342,7 @@ model MailTemplate {
 model PaymentVoucher {
   id String @id @default(uuid()) @db.Uuid
   registrationId String @db.Uuid
-  registration Registration @relation(fields:[registrationId],references:[id])
+  account FinanceAccount @relation(fields:[registrationId],references:[id])
   amountCents Int
   channel String
   reference String?
@@ -352,7 +357,7 @@ model PaymentVoucher {
 model LedgerEntry {
   id String @id @default(uuid()) @db.Uuid
   registrationId String @db.Uuid
-  registration Registration @relation(fields:[registrationId],references:[id])
+  account FinanceAccount @relation(fields:[registrationId],references:[id])
   contestId String @db.Uuid
   kind String
   amountCents Int
@@ -366,7 +371,7 @@ model LedgerEntry {
 model Refund {
   id String @id @default(uuid()) @db.Uuid
   registrationId String @db.Uuid
-  registration Registration @relation(fields:[registrationId],references:[id])
+  account FinanceAccount @relation(fields:[registrationId],references:[id])
   amountCents Int
   reason String
   status String @default("REQUESTED")
@@ -379,7 +384,7 @@ model Refund {
 model InvoiceRequest {
   id String @id @default(uuid()) @db.Uuid
   registrationId String @db.Uuid
-  registration Registration @relation(fields:[registrationId],references:[id])
+  account FinanceAccount @relation(fields:[registrationId],references:[id])
   amountCents Int
   title String
   taxId String
@@ -412,6 +417,7 @@ model SupportTicket {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   messages SupportMessage[]
+  @@index([createdAt,id])
 }
 model SupportMessage {
   id String @id @default(uuid()) @db.Uuid
@@ -531,6 +537,7 @@ model Job {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([state,updatedAt])
+  @@index([createdAt,id])
 }
 model OutboxEvent {
   id String @id @default(uuid()) @db.Uuid
@@ -568,10 +575,74 @@ model AuditEvent {
   details Json
   createdAt DateTime @default(now())
   @@index([resourceId,createdAt])
+  @@index([createdAt,id])
 }
 model IdempotencyRecord {
+  resourceType String?
+  resourceId String?
   id String @id
+  @@index([resourceId])
   requestHash String
   result Json
   createdAt DateTime @default(now())
+}
+
+/// The id stays equal to the source registration id so existing finance links remain valid.
+model FinanceAccount {
+  id String @id @db.Uuid
+  contestId String @db.Uuid
+  contest Contest @relation(fields:[contestId],references:[id])
+  ownerId String @db.Uuid
+  number Int?
+  feeCents Int @default(0)
+  netPaidCents Int @default(0)
+  policySnapshot Json
+  cancelledAt DateTime?
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  vouchers PaymentVoucher[]
+  ledger LedgerEntry[]
+  refunds Refund[]
+  invoices InvoiceRequest[]
+  @@index([ownerId,cancelledAt])
+  @@index([contestId,createdAt,id])
+}
+model ExamRoom {
+  id String @id @default(uuid()) @db.Uuid
+  contestId String @db.Uuid
+  contest Contest @relation(fields:[contestId],references:[id],onDelete:Cascade)
+  name String
+  location String @default("")
+  capacity Int
+  sortOrder Int @default(0)
+  enabled Boolean @default(true)
+  version Int @default(1)
+  seats SeatAssignment[]
+  @@unique([contestId,name])
+}
+model SeatAssignment {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id],onDelete:Cascade)
+  roomId String @db.Uuid
+  room ExamRoom @relation(fields:[roomId],references:[id])
+  unitKey String
+  personId String? @db.Uuid
+  seat Int
+  @@unique([roomId,seat])
+  @@unique([registrationId,unitKey])
+}
+model RemoteRevocation {
+  target Json @default("{}")
+  id String @id @default(uuid()) @db.Uuid
+  contestId String @db.Uuid
+  bindingId String @db.Uuid
+  registrationId String @db.Uuid
+  remoteUserId String?
+  remoteTeamId String?
+  state String @default("PENDING")
+  handledBy String?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  @@index([contestId,state])
 }

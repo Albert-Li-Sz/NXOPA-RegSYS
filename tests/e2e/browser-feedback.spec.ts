@@ -132,7 +132,7 @@ test('PDF attachments preview in place, retain downloads and cannot be read by u
   );
   await dialog.getByRole('button', { name: '关闭', exact: true }).click();
 });
-test('login sessions are fixed at 20 per page, scoped to the user and return to the previous page after revocation', async ({
+test('login sessions default to 20, support configurable page sizes and remain scoped after revocation', async ({
   page,
   request,
 }) => {
@@ -165,9 +165,9 @@ test('login sessions are fixed at 20 per page, scoped to the user and return to 
   const card = page.locator('.login-sessions'),
     rows = card.locator('.el-table__body-wrapper tbody tr.el-table__row');
   await expect(rows).toHaveCount(20);
-  await expect(card).toContainText('每页 20 条');
+  await expect(card).toContainText('20条/页');
   await expect(card.locator('.el-pagination__total')).toContainText('41');
-  await expect(card.locator('.el-select')).toHaveCount(0);
+  await expect(card.locator('.el-select')).toHaveCount(1);
   const first = await (await page.request.get('/api/v1/auth/sessions?page=1&pageSize=20')).json();
   expect(first.items).toHaveLength(20);
   expect(first.total).toBe(41);
@@ -185,7 +185,21 @@ test('login sessions are fixed at 20 per page, scoped to the user and return to 
   ).toBe(false);
   const legacy = await (await page.request.get('/api/v1/auth/sessions')).json();
   expect(legacy).toHaveLength(20);
-  expect((await page.request.get('/api/v1/auth/sessions?page=1&pageSize=50')).status()).toBe(400);
+  const expanded = await (
+    await page.request.get('/api/v1/auth/sessions?page=1&pageSize=50')
+  ).json();
+  expect(expanded.items).toHaveLength(41);
+  expect(expanded.pageSize).toBe(50);
+  expect((await page.request.get('/api/v1/auth/sessions?page=1&pageSize=7')).status()).toBe(400);
+  await card.locator('.el-select__wrapper').click();
+  await page.getByRole('option', { name: /^50\s*条/ }).click();
+  await expect(rows).toHaveCount(41);
+  await page.reload();
+  await expect(card).toContainText('50条/页');
+  await expect(rows).toHaveCount(41);
+  await card.locator('.el-select__wrapper').click();
+  await page.getByRole('option', { name: /^20\s*条/ }).click();
+  await expect(rows).toHaveCount(20);
   expect((await request.get('/api/v1/auth/sessions?page=1')).status()).toBe(401);
   await card.locator('.btn-next').click();
   await expect(card.locator('.el-pager li.is-active')).toHaveText('2');

@@ -11,6 +11,9 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import {
   contestSchema,
+  registrationCancellationSchema,
+  registrationDeletionSchema,
+  registrationReviewPhase,
   policySchema,
   fieldsSchema,
   registrationSchema,
@@ -41,15 +44,25 @@ import {
 import {
   canRead,
   canEdit,
+  canActForApplicant,
   ownerIds,
   requireAdmin,
   requireManager,
   manages,
   getRegistration,
   checkVersion,
+  owns,
   opaqueToken,
   sha,
 } from './security.js';
+import { ensureFinance } from './finance-accounts.js';
+import { removeRegistration, recordRemoteRevocation } from './registration-removal.js';
+import {
+  registrationActions,
+  registrationDisplayState,
+  editingWindow,
+  modulesFor,
+} from './workflow.js';
 import { config } from './config.js';
 import { publicLink } from './site-settings.js';
 import { paginated, dateFilter, pageOptions, type ListQuery } from './pagination.js';
@@ -108,6 +121,7 @@ function registrationFilters(query: ListQuery) {
       ? {
           OR: [
             { teamName: { contains: query.search, mode: 'insensitive' as const } },
+            { contest: { title: { contains: query.search, mode: 'insensitive' as const } } },
             {
               people: { some: { name: { contains: query.search, mode: 'insensitive' as const } } },
             },
@@ -115,7 +129,13 @@ function registrationFilters(query: ListQuery) {
         }
       : {}),
     ...(query.status ? { status: query.status } : {}),
-    ...(query.review ? { review: query.review } : {}),
+    ...(query.review === 'DRAFT'
+      ? { status: 'DRAFT' }
+      : query.review === 'CORRECTION'
+        ? { status: 'CORRECTION' }
+        : query.review
+          ? { status: 'SUBMITTED', review: query.review }
+          : {}),
     ...(query.participationType
       ? { participationType: participationSchema.parse(query.participationType) }
       : {}),
@@ -160,13 +180,7 @@ export async function dirty(tx: Tx, r: Registration, u: Principal, reason: strin
   await audit(tx, u.id, reason, r.id);
 }
 function windowOpen(r: Registration) {
-  const correction =
-    r.status === 'CORRECTION' &&
-    new Date() < new Date(r.contest.correctionUntil ?? r.contest.closesAt);
-  if (contestStatus(r.contest) !== 'OPEN' && !correction)
-    throw new BadRequestException('报名或补正时间已结束');
-  if (['CANCELLED', 'CANCEL_REQUESTED'].includes(r.status))
-    throw new BadRequestException('此报名已取消或正在取消');
+  if (!editingWindow(r)) throw new BadRequestException('报名或补正时间已结束，或活动已归档');
 }
 export class RegistrationService {
   async statistics(u: Principal, contestId: string, query: ListQuery = {}) {
@@ -189,27 +203,82 @@ export class RegistrationService {
       { total: 0, pending: 0, approved: 0, rejected: 0, eligible: 0 },
     );
   }
-  async contests(u?: Principal, all = false) {
-    const rows = await db.contest.findMany({
-      where:
-        all && u?.isAdmin
-          ? {}
-          : all && u
-            ? { OR: [{ id: { in: u.contestIds } }, { published: true, archived: false }] }
-            : { published: true, archived: false },
-      orderBy: [{ opensAt: 'desc' }],
-      include: {
-        forms: { orderBy: { version: 'desc' }, take: 1 },
-        _count: { select: { registrations: true } },
-      },
-    });
-    return rows.map((c) => ({
-      ...c,
-      policy: policySchema.parse(c.policy),
-      status: contestStatus(c),
-      fields: c.forms[0]?.fields ?? [],
-      forms: undefined,
-    }));
+  async contests(u?: Principal, all = false, query: ListQuery = {}) {
+    const managed = query.managed === 'true';
+    if (managed && !u) throw new ForbiddenException('请先登录管理账号');
+    const access = managed
+      ? u!.isAdmin
+        ? {}
+        : { id: { in: u!.contestIds.filter((id) => manages(u!, id)) } }
+      : all && u?.isAdmin
+        ? {}
+        : all && u
+          ? { OR: [{ id: { in: u.contestIds } }, { published: true, archived: false }] }
+          : { published: true, archived: false };
+    const where = {
+      AND: [
+        access,
+        ...(query.search
+          ? [
+              {
+                OR: ['title', 'season'].map((key) => ({
+                  [key]: { contains: query.search, mode: 'insensitive' as const },
+                })),
+              },
+            ]
+          : []),
+      ],
+    };
+    const find = async (options: { skip?: number; take?: number } = {}) => {
+      const rows = await db.contest.findMany({
+        where,
+        ...options,
+        orderBy: [{ opensAt: 'desc' }, { id: 'desc' }],
+        include: {
+          forms: { orderBy: { version: 'desc' }, take: 1 },
+          _count: { select: { registrations: true } },
+        },
+      });
+      const ids = rows.map((c) => c.id);
+      const countPeople = (participationType: 'OFFICIAL' | 'UNOFFICIAL') =>
+        db.registrationPerson.groupBy({
+          by: ['contestId'],
+          where: {
+            contestId: { in: ids },
+            active: true,
+            registration: {
+              status: { in: ['SUBMITTED', 'CORRECTION'] },
+              number: { not: null },
+              participationType,
+            },
+          },
+          _count: { _all: true },
+        });
+      const [official, unofficial] =
+        managed && ids.length
+          ? await Promise.all([countPeople('OFFICIAL'), countPeople('UNOFFICIAL')])
+          : [[], []];
+      const counts = (items: typeof official) =>
+        new Map(items.map((row) => [row.contestId, row._count._all]));
+      const officialCounts = counts(official),
+        unofficialCounts = counts(unofficial);
+      return rows.map((c) => ({
+        ...c,
+        policy: policySchema.parse(c.policy),
+        status: contestStatus(c),
+        fields: c.forms[0]?.fields ?? [],
+        forms: undefined,
+        ...(managed
+          ? {
+              registrationCounts: {
+                official: officialCounts.get(c.id) ?? 0,
+                unofficial: unofficialCounts.get(c.id) ?? 0,
+              },
+            }
+          : {}),
+      }));
+    };
+    return pageOptions(query) ? paginated(query, find, () => db.contest.count({ where })) : find();
   }
   async contest(id: string, u?: Principal) {
     const c = await db.contest.findUnique({
@@ -228,6 +297,19 @@ export class RegistrationService {
   }
   async saveContest(u: Principal, id: string | undefined, body: unknown) {
     const b = contestSchema.parse(body);
+    if (!id && b.kind === 'ACTIVITY') {
+      const provided = body as {
+        modules?: Partial<typeof b.modules>;
+        policy?: Partial<ContestPolicy>;
+      };
+      b.modules = {
+        admissions: provided.modules?.admissions ?? false,
+        rooms: provided.modules?.rooms ?? false,
+        integrations: provided.modules?.integrations ?? false,
+      };
+      b.policy.coachMode = provided.policy?.coachMode ?? 'DISABLED';
+      if (b.policy.coachMode === 'DISABLED') b.policy.maxCoaches = 0;
+    }
     if (id) requireManager(u, id, 'CONTEST');
     else requireAdmin(u);
     return db.$transaction(async (tx) => {
@@ -235,9 +317,50 @@ export class RegistrationService {
         await lock(tx, id);
         const c = await tx.contest.findUniqueOrThrow({ where: { id } });
         checkVersion(c.version, b.version);
+        await lock(tx, `seating:${id}`);
+        if (
+          c.title !== b.title ||
+          c.location !== b.location ||
+          c.startsAt.toISOString() !== new Date(b.startsAt).toISOString()
+        )
+          await tx.admissionDocument.updateMany({
+            where: { registration: { contestId: id } },
+            data: { state: 'STALE', releasedAt: null, version: { increment: 1 } },
+          });
+        if (
+          c.seatingMode !== b.seatingMode &&
+          (await tx.seatAssignment.count({ where: { registration: { contestId: id } } }))
+        )
+          throw new BadRequestException('请先清空现有排考，再更改排考单位');
+        const previousModules = modulesFor(c);
+        const disabled = (['admissions', 'rooms', 'integrations'] as const).filter(
+          (key) => previousModules[key] && !b.modules[key],
+        );
+        if (disabled.length && !b.confirmModuleChanges)
+          throw new BadRequestException(
+            '关闭功能会使相关准考证或本地平台权限失效，请明确确认后保存',
+          );
+        if (disabled.includes('admissions') || disabled.includes('rooms'))
+          await tx.admissionDocument.updateMany({
+            where: { registration: { contestId: id } },
+            data: { state: 'STALE', releasedAt: null, version: { increment: 1 } },
+          });
+        if (disabled.includes('integrations')) {
+          const mappings = await tx.accountMapping.findMany({
+            where: { registration: { contestId: id } },
+          });
+          for (const m of mappings) await recordRemoteRevocation(tx, m, id);
+          await tx.accountMapping.updateMany({
+            where: { registration: { contestId: id } },
+            data: { state: 'REVOKED_LOCALLY' },
+          });
+        }
       }
-      const fields = mergePlatformFields(b.fields, b.policy.platformProfiles);
-      const { fields: _, version: __, policy: p, ...data } = b;
+      const fields = mergePlatformFields(
+        b.fields,
+        b.modules.integrations ? b.policy.platformProfiles : [],
+      );
+      const { fields: _, version: __, confirmModuleChanges: ___, policy: p, ...data } = b;
       const dates = {
         startsAt: new Date(b.startsAt),
         opensAt: new Date(b.opensAt),
@@ -253,6 +376,7 @@ export class RegistrationService {
               policy: json(p),
               version: { increment: 1 },
               formVersion: { increment: 1 },
+              seatingVersion: { increment: 1 },
             },
           })
         : await tx.contest.create({ data: { ...data, ...dates, policy: json(p) } });
@@ -296,6 +420,17 @@ export class RegistrationService {
       () => db.registration.count({ where: filtered }),
       Math.min(500, Math.max(1, take)),
     );
+  }
+  async reviewQueue(u: Principal, contestId: string, query: ListQuery = {}) {
+    requireManager(u, contestId, 'REGISTRATIONS');
+    const filter = { ...query, review: query.review || 'PENDING' };
+    const where = { AND: [await filteredAccess(u, filter, contestId), { status: 'SUBMITTED' }] };
+    const rows = await db.registration.findMany({
+      where,
+      select: { id: true },
+      orderBy: [{ number: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }],
+    });
+    return { ids: rows.map((r) => r.id) };
   }
   async summary(u: Principal, query: ListQuery = {}) {
     const groups = await db.registration.groupBy({
@@ -380,8 +515,34 @@ export class RegistrationService {
       where: { registrationId: id, status: 'ISSUED' },
       _sum: { amountCents: true },
     });
+    const reviews = manages(u, r.contestId, 'REGISTRATIONS')
+      ? await db.auditEvent.findMany({
+          where: { resourceId: id, action: 'REVIEW' },
+          orderBy: { createdAt: 'desc' },
+        })
+      : [];
+    const revisions = manages(u, r.contestId, 'REGISTRATIONS')
+      ? await db.registrationRevision.findMany({
+          where: { registrationId: id, reason: 'SUBMIT' },
+          orderBy: { version: 'desc' },
+          take: 2,
+        })
+      : [];
+    const reviewers = reviews.length
+      ? await db.user.findMany({
+          where: { id: { in: reviews.map((review) => review.actorId) } },
+          select: { id: true, name: true },
+        })
+      : [];
     return {
       ...r,
+      actions: registrationActions(u, r),
+      displayState: registrationDisplayState(r),
+      reviews: reviews.map((review) => ({
+        ...review,
+        reviewerName: reviewers.find((u) => u.id === review.actorId)?.name || '管理员',
+      })),
+      revisions,
       invoiceIssuedCents: issued._sum.amountCents ?? 0,
       invoiceReservedCents: invoicesTotal._sum.amountCents ?? 0,
       latestFormVersion: forms?.version,
@@ -424,6 +585,7 @@ export class RegistrationService {
         },
         include: registrationInclude,
       });
+      await ensureFinance(tx, r);
       await audit(tx, u.id, 'REGISTRATION_CREATE', r.id);
       return r;
     });
@@ -450,6 +612,13 @@ export class RegistrationService {
       )
         throw new BadRequestException('需要保留队长');
       const existing = new Map(r.people.map((x) => [x.id, x]));
+      const coaches = new Map(r.coaches.map((x) => [x.id, x]));
+      if (
+        b.coaches &&
+        (new Set(b.coaches.map((x) => x.id)).size !== b.coaches.length ||
+          b.coaches.some((x) => !coaches.has(x.id)))
+      )
+        throw new BadRequestException('指导老师不属于此报名或存在重复');
       for (const x of b.people) {
         const old = x.id ? existing.get(x.id) : undefined;
         if (x.id && !old) throw new BadRequestException('成员不属于此报名');
@@ -464,6 +633,8 @@ export class RegistrationService {
         r.participationType === participationType &&
         (b.organization === undefined || isDeepStrictEqual(r.organization, b.organization)) &&
         isDeepStrictEqual(r.answers, b.answers) &&
+        (!b.coaches ||
+          b.coaches.every((x) => isDeepStrictEqual(coaches.get(x.id)!.answers, x.answers))) &&
         r.people.length === b.people.length &&
         b.people.every((x) => {
           const old = x.id ? existing.get(x.id) : undefined;
@@ -510,6 +681,11 @@ export class RegistrationService {
           answers: json(b.answers),
         },
       });
+      for (const coach of b.coaches ?? [])
+        await tx.registrationCoach.update({
+          where: { id: coach.id },
+          data: { answers: json(coach.answers) },
+        });
       await dirty(tx, r, u, 'REGISTRATION_EDIT');
       return loaded(tx, id);
     });
@@ -520,9 +696,11 @@ export class RegistrationService {
     return db.$transaction(async (tx) => {
       await lock(tx, id);
       let r = await loaded(tx, id);
-      if (!canEdit(u, r)) throw new ForbiddenException();
+      if (!canActForApplicant(u, r))
+        throw new ForbiddenException('仅报名创建者或关联老师可提交报名；管理员请保存修改');
       checkVersion(r.version, version);
       windowOpen(r);
+      if (r.status === 'SUBMITTED') return r;
       const participants = await tx.user.findMany({
         where: {
           id: {
@@ -551,7 +729,7 @@ export class RegistrationService {
       if (p.mode === 'TEAM' && !r.teamName.trim()) throw new BadRequestException('请填写队名');
       if (r.participationType === 'UNOFFICIAL' && !p.allowUnofficial)
         throw new BadRequestException('此竞赛未开放非正式报名');
-      if (p.platformProfiles.length) {
+      if (p.platformProfiles.length && modulesFor(r.contest).integrations) {
         if (!r.organization) throw new BadRequestException('请填写代表学校／单位信息');
         organizationSchema.parse(r.organization);
         if (r.people.some((x) => !x.email))
@@ -637,6 +815,7 @@ export class RegistrationService {
           version: { increment: 1 },
         },
       });
+      await ensureFinance(tx, await loaded(tx, id));
       if (delta)
         await tx.ledgerEntry.create({
           data: {
@@ -681,11 +860,26 @@ export class RegistrationService {
         throw new BadRequestException(`请填写${f.label}`);
       if (['file', 'photo'].includes(f.type) && values[f.key]) {
         const file = await tx.attachment.findUnique({ where: { id: String(values[f.key]) } });
-        if (!file || (file.registrationId !== r.id && file.ownerId !== u.id))
+        if (
+          !file ||
+          file.deletedAt ||
+          file.public ||
+          (file.contestId && file.contestId !== r.contestId) ||
+          (file.registrationId !== r.id && !owns(u, file.ownerId))
+        )
           throw new ForbiddenException('附件不属于此报名');
         if (f.type === 'photo' && !file.mime.startsWith('image/'))
           throw new BadRequestException('照片需要图片文件');
-        await tx.attachment.update({ where: { id: file.id }, data: { registrationId: r.id } });
+        if (!file.registrationId && file.purpose === 'PRIVATE')
+          await tx.attachment.update({
+            where: { id: file.id },
+            data: { registrationId: r.id, contestId: r.contestId },
+          });
+        await tx.teamFile.upsert({
+          where: { attachmentId_registrationId: { attachmentId: file.id, registrationId: r.id } },
+          create: { attachmentId: file.id, registrationId: r.id, assignedBy: u.id },
+          update: {},
+        });
       }
     }
   }
@@ -704,10 +898,26 @@ export class RegistrationService {
       requireManager(u, r.contestId, 'REGISTRATIONS');
       checkVersion(r.version, b.version);
       const p = policy(r);
-      if (r.status !== 'SUBMITTED') throw new BadRequestException('当前报名不能审核');
-      if (p.paymentSequence === 'PAYMENT_FIRST' && r.netPaidCents < r.feeCents)
+      const phase = registrationReviewPhase(r);
+      if (!phase) throw new BadRequestException('当前报名不能审核，请等待报名者提交资料');
+      if (
+        b.decision === 'CORRECTION' &&
+        new Date() >= new Date(r.contest.correctionUntil ?? r.contest.closesAt)
+      )
+        throw new BadRequestException('补正时间已结束，请先延长活动补正截止时间');
+      if (
+        b.decision === r.review &&
+        b.reason === r.reviewReason &&
+        (!b.participationType || b.participationType === r.participationType)
+      )
+        return r;
+      if (
+        b.decision === 'APPROVED' &&
+        p.paymentSequence === 'PAYMENT_FIRST' &&
+        r.netPaidCents < r.feeCents
+      )
         throw new BadRequestException('此竞赛需要先确认足额到账');
-      if (b.decision !== 'APPROVED' && !b.reason.trim())
+      if ((b.decision !== 'APPROVED' || phase === 'AMEND') && !b.reason.trim())
         throw new BadRequestException('请填写审核意见');
       if (b.participationType === 'UNOFFICIAL' && !p.allowUnofficial)
         throw new BadRequestException('此竞赛未开放非正式报名');
@@ -748,6 +958,10 @@ export class RegistrationService {
           version: { increment: 1 },
         },
       });
+      await tx.admissionDocument.updateMany({
+        where: { registrationId: id },
+        data: { state: 'STALE', releasedAt: null },
+      });
       await audit(tx, u.id, 'REVIEW', id, b);
       await event(tx, 'NOTIFY', id, { message: `报名审核：${b.decision}。${b.reason}` });
       const current = await refresh(tx, id);
@@ -757,34 +971,45 @@ export class RegistrationService {
     });
   }
   async cancel(u: Principal, id: string, body: unknown) {
-    const { version } = z.object({ version: z.number().int() }).parse(body);
-    return db.$transaction(async (tx) => {
-      await lock(tx, id);
-      const r = await loaded(tx, id);
-      if (!canEdit(u, r)) throw new ForbiddenException();
-      checkVersion(r.version, version);
-      const status =
-        r.netPaidCents > 0 && !manages(u, r.contestId) ? 'CANCEL_REQUESTED' : 'CANCELLED';
-      await tx.registration.update({
-        where: { id },
-        data: { status, version: { increment: 1 } },
-      });
-      await tx.registrationPerson.updateMany({
-        where: { registrationId: id },
-        data: { active: status !== 'CANCELLED' },
-      });
-      await audit(tx, u.id, 'CANCEL', id);
-      return refresh(tx, id);
-    });
+    const { version, reason } = registrationCancellationSchema.parse(body);
+    return db.$transaction(
+      async (tx) => {
+        await lock(tx, id);
+        const r = await loaded(tx, id);
+        if (!owns(u, r.ownerId))
+          throw new ForbiddenException('仅报名创建者可取消；管理员请使用删除操作');
+        checkVersion(r.version, version);
+        return removeRegistration(tx, r, u.id, reason);
+      },
+      { timeout: 120000 },
+    );
+  }
+  async remove(u: Principal, id: string, body: unknown) {
+    const b = registrationDeletionSchema.parse(body);
+    return db.$transaction(
+      async (tx) => {
+        await lock(tx, id);
+        const r = await loaded(tx, id);
+        requireManager(u, r.contestId, 'REGISTRATIONS');
+        checkVersion(r.version, b.version);
+        return removeRegistration(tx, r, u.id, b.reason);
+      },
+      { timeout: 120000 },
+    );
   }
   async withdraw(u: Principal, id: string, body: unknown) {
     const { version } = z.object({ version: z.number().int() }).parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, id);
       const r = await loaded(tx, id);
-      if (!canEdit(u, r)) throw new ForbiddenException();
+      if (!canActForApplicant(u, r))
+        throw new ForbiddenException('仅报名创建者或关联老师可撤回提交');
       checkVersion(r.version, version);
       windowOpen(r);
+      if (registrationReviewPhase(r) !== 'INITIAL')
+        throw new BadRequestException(
+          '仅待审核报名可撤回；已审核报名请修改资料后重新提交或取消报名',
+        );
       if (r.netPaidCents > 0) throw new BadRequestException('已到账报名需要取消 / 退款');
       await tx.registration.update({
         where: { id },
@@ -937,6 +1162,7 @@ export class RegistrationService {
       checkVersion(r.version, version);
       await tx.registrationCoach.deleteMany({ where: { registrationId: id, id: coachId } });
       await dirty(tx, r, u, 'COACH_REMOVE');
+      windowOpen(r);
       return refresh(tx, id);
     });
   }
@@ -973,6 +1199,9 @@ export class RegistrationService {
       if (!canEdit(u, r)) throw new ForbiddenException();
       checkVersion(r.version, b.version);
       windowOpen(r);
+      const coach = r.coaches.find((c) => c.id === coachId);
+      if (!coach) throw new BadRequestException('指导老师不属于此报名');
+      if (isDeepStrictEqual(coach.answers, b.answers)) return r;
       await tx.registrationCoach.update({
         where: { id: coachId, registrationId: id },
         data: { answers: json(b.answers) },

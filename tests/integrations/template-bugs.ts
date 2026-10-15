@@ -18,6 +18,7 @@ try {
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.locator('.user-menu')).toBeVisible();
   await page.goto((process.env.WEB_URL ?? 'http://localhost:5173') + '/admin?tab=mail-templates');
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
   const selector = page.locator('.el-select').first();
   await selector.click();
   await page.getByRole('option', { name: '报名反馈', exact: true }).click();

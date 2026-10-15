@@ -83,6 +83,7 @@ test('administrator saves SMTP in Chinese, tests delivery, and sees saved values
   await expect(page.getByRole('heading', { name: '系统邮件设置' })).toBeVisible();
   await expect(page.locator('#mail-host')).toHaveValue('localhost');
   await expect(page.getByRole('button', { name: '检测连接', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
   await page.locator('#mail-from-name').fill('浏览器配置邮件验收');
   await expect(page.getByRole('button', { name: '检测连接', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: '发送测试邮件', exact: true })).toBeDisabled();
@@ -105,12 +106,16 @@ test('contest administrators cannot open system mail configuration; sync action 
 }) => {
   await page.goto('/admin?tab=mail');
   await signIn(page, 'manager');
-  await expect(page.getByRole('heading', { name: '竞赛中心', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: '活动及竞赛管理中心', exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole('tab', { name: '邮件设置', exact: true })).toHaveCount(0);
   await expect(page.locator('#mail-host')).toHaveCount(0);
   await page.getByRole('link', { name: '外接平台中心', exact: true }).click();
   await expect(page.getByRole('heading', { name: '比赛绑定与报名同步' })).toBeVisible();
-  const registration = await db.registration.findFirstOrThrow({ where: { status: 'SUBMITTED' } });
+  const registration = await db.registration.findFirstOrThrow({
+    where: { status: 'SUBMITTED', contest: { modules: { path: ['integrations'], equals: true } } },
+  });
   const admin = await new Client().login('admin');
   const instance = await admin.api('/integrations/instances', 'POST', {
     name: '中文同步按钮回归',

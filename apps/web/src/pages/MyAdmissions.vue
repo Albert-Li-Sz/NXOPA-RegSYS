@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { api, date } from '../api';
 import type { Data } from '../types';
+import PaginatedList from '../components/PaginatedList.vue';
 const rows = ref<Data[]>([]),
   loading = ref(true),
   error = ref('');
@@ -27,14 +28,16 @@ onMounted(async () => {
     :rows="5"
     animated
   /><el-empty v-else-if="!rows.length" description="暂无已发放的准考证" />
-  <div v-for="row in rows" :key="row.id" class="card member-heading">
-    <div>
-      <h3>{{ row.contestTitle }}</h3>
-      <p class="muted">{{ row.name }} · {{ date(row.createdAt) }}</p>
-      <router-link :to="`/registrations/${row.registrationId}`">查看报名</router-link>
+  <PaginatedList :items="rows" page-key="my-admissions" v-slot="{ items }">
+    <div v-for="row in items" :key="row.id" class="card member-heading">
+      <div>
+        <h3>{{ row.contestTitle }}</h3>
+        <p class="muted">{{ row.name }} · {{ date(row.createdAt) }}</p>
+        <router-link :to="`/registrations/${row.registrationId}`">查看报名</router-link>
+      </div>
+      <a :href="`/api/v1/admissions/${row.id}/download`" target="_blank" rel="noopener"
+        ><el-button type="primary" plain>查看 / 下载</el-button></a
+      >
     </div>
-    <a :href="`/api/v1/admissions/${row.id}/download`" target="_blank" rel="noopener"
-      ><el-button type="primary" plain>查看 / 下载</el-button></a
-    >
-  </div>
+  </PaginatedList>
 </template>

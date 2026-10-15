@@ -21,6 +21,7 @@ import type { Response, Request } from 'express';
 import archiver from 'archiver';
 import { AuthService, user, csrf, type AuthRequest } from './auth.js';
 import { RegistrationService } from './registrations.js';
+import { SeatingService } from './seating.js';
 import { FinanceService } from './finance.js';
 import { SupportService } from './support.js';
 import { AdmissionService } from './admissions.js';
@@ -46,7 +47,7 @@ import { StorageService } from './storage.js';
 import { MailTemplateService } from './mail-templates.js';
 import { PublicRosterService } from './public-roster.js';
 import { MailDeliveryService } from './mail-delivery.js';
-import { db, registrationInclude, json, lock } from './db.js';
+import { db, registrationInclude, json, lock, audit } from './db.js';
 import { requireManager, requireAdmin } from './security.js';
 import { redis } from './auth.js';
 
@@ -57,6 +58,7 @@ export class ApiController {
     @Inject(AuthService) private auth: AuthService,
     @Inject(RegistrationService) private registrations: RegistrationService,
     @Inject(FinanceService) private finance: FinanceService,
+    @Inject(SeatingService) private seating: SeatingService,
     @Inject(SupportService) private support: SupportService,
     @Inject(AdmissionService) private admissions: AdmissionService,
     @Inject(FileService) private files: FileService,
@@ -80,8 +82,9 @@ export class ApiController {
   @Get('notifications/mail') mailDeliveryStatus(
     @Req() r: AuthRequest,
     @Query('resourceId') id: string,
+    @Query() query: Record<string, string>,
   ) {
-    return this.mailDelivery.list(user(r), z.string().uuid().parse(id));
+    return this.mailDelivery.list(user(r), z.string().uuid().parse(id), query);
   }
   @Post('notifications/mail/:id/retry') mailDeliveryRetry(
     @Req() r: AuthRequest,
@@ -224,12 +227,8 @@ export class ApiController {
   ) {
     return this.publicRoster.rank(user(r), id, b);
   }
-  @Get('files') fileList(
-    @Req() r: AuthRequest,
-    @Query('contestId') contestId?: string,
-    @Query('registrationId') registrationId?: string,
-  ) {
-    return this.files.list(user(r), { contestId, registrationId });
+  @Get('files') fileList(@Req() r: AuthRequest, @Query() query: Record<string, string>) {
+    return this.files.list(user(r), query);
   }
   @Delete('files/:id') fileRemove(@Req() r: AuthRequest, @Param('id') id: string) {
     return this.files.remove(user(r), id);
@@ -358,8 +357,8 @@ export class ApiController {
   @Put('auth/profile') profile(@Body() b: unknown, @Req() r: AuthRequest) {
     return this.auth.profile(r, b);
   }
-  @Get('contests') contests(@Req() r: AuthRequest, @Query('all') all?: string) {
-    return this.registrations.contests(r.principal, all === 'true');
+  @Get('contests') contests(@Req() r: AuthRequest, @Query() query: Record<string, string>) {
+    return this.registrations.contests(r.principal, query.all === 'true', query);
   }
   @Get('contests/:id') contest(@Req() r: AuthRequest, @Param('id') id: string) {
     return this.registrations.contest(id, r.principal);
@@ -374,6 +373,96 @@ export class ApiController {
   ) {
     return this.registrations.saveContest(user(r), id, b);
   }
+  @Get('contests/:id/rooms') rooms(@Req() r: AuthRequest, @Param('id') id: string) {
+    return this.seating.view(user(r), id);
+  }
+  @Post('contests/:id/rooms') createRoom(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.seating.save(user(r), id, undefined, b);
+  }
+  @Put('contests/:id/rooms/:roomId') saveRoom(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Param('roomId') roomId: string,
+    @Body() b: unknown,
+  ) {
+    return this.seating.save(user(r), id, roomId, b);
+  }
+  @Delete('contests/:id/rooms/:roomId') deleteRoom(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Param('roomId') roomId: string,
+    @Body() b: unknown,
+  ) {
+    return this.seating.remove(user(r), id, roomId, b);
+  }
+  @Post('contests/:id/seating/preview') previewSeating(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.seating.plan(user(r), id, b);
+  }
+  @Post('contests/:id/seating/commit') commitSeating(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.seating.plan(user(r), id, b, true);
+  }
+  @Post('contests/:id/seating/clear') clearSeating(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.seating.clear(user(r), id, b);
+  }
+  @Get('integrations/revocations') revocations(
+    @Req() r: AuthRequest,
+    @Query('contestId') id: string,
+  ) {
+    requireManager(user(r), id, 'INTEGRATIONS');
+    return db.remoteRevocation.findMany({
+      where: { contestId: id },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+  @Post('integrations/revocations/:id/complete') async completeRevocation(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return db.$transaction(async (tx) => {
+      await lock(tx, `revocation:${id}`);
+      const item = await tx.remoteRevocation.findUniqueOrThrow({ where: { id } });
+      requireManager(user(r), item.contestId, 'INTEGRATIONS');
+      if (item.state === 'COMPLETED') return item;
+      const result = await tx.remoteRevocation.update({
+        where: { id },
+        data: { state: 'COMPLETED', handledBy: user(r).id, completedAt: new Date() },
+      });
+      await audit(tx, user(r).id, 'REMOTE_REVOCATION_COMPLETE', id, { contestId: item.contestId });
+      return result;
+    });
+  }
+  @Get('finance/accounts') financeAccounts(
+    @Req() r: AuthRequest,
+    @Query() q: Record<string, string>,
+  ) {
+    return this.finance.accounts(user(r), q);
+  }
+  @Get('finance/accounts/:id') financeAccount(@Req() r: AuthRequest, @Param('id') id: string) {
+    return this.finance.account(user(r), id);
+  }
+  @Delete('registrations/:id') removeRegistration(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.registrations.remove(user(r), id, b);
+  }
   @Get('registrations') registrationsList(
     @Req() r: AuthRequest,
     @Query('contestId') id?: string,
@@ -384,6 +473,13 @@ export class ApiController {
   }
   @Post('registrations') create(@Req() r: AuthRequest, @Body() b: unknown) {
     return this.registrations.create(user(r), b);
+  }
+  @Get('registrations/review-queue') reviewQueue(
+    @Req() r: AuthRequest,
+    @Query('contestId') id: string,
+    @Query() q: Record<string, string>,
+  ) {
+    return this.registrations.reviewQueue(user(r), z.string().uuid().parse(id), q);
   }
   @Get('registrations/summary') summary(
     @Req() r: AuthRequest,
@@ -901,17 +997,27 @@ export class ExternalController {
   @Get('automation/v1/finance') async finance(@Req() r: Request, @Query('contestId') id: string) {
     const t = await apiPrincipal(r, 'finance:read');
     apiContest(t, id);
-    const data = await db.registration.aggregate({
-      where: { contestId: id },
-      _sum: { feeCents: true, netPaidCents: true },
-      _count: true,
+    return db.$transaction(async (tx) => {
+      const [active, historical] = await Promise.all([
+        tx.registration.aggregate({
+          where: { contestId: id },
+          _sum: { feeCents: true },
+          _count: true,
+        }),
+        tx.financeAccount.aggregate({
+          where: { contestId: id },
+          _sum: { netPaidCents: true },
+          _count: true,
+        }),
+      ]);
+      return {
+        contestId: id,
+        registrations: active._count,
+        financialAccounts: historical._count,
+        receivableCents: active._sum.feeCents ?? 0,
+        netReceivedCents: historical._sum.netPaidCents ?? 0,
+      };
     });
-    return {
-      contestId: id,
-      registrations: data._count,
-      receivableCents: data._sum.feeCents ?? 0,
-      netReceivedCents: data._sum.netPaidCents ?? 0,
-    };
   }
   @Get('automation/v1/support/:id') async ticket(@Req() r: Request, @Param('id') id: string) {
     const t = await apiPrincipal(r, 'support:read');

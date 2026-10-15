@@ -6,6 +6,7 @@ import {
   type CallHandler,
 } from '@nestjs/common';
 import { defer, lastValueFrom } from 'rxjs';
+import { getFinance } from './finance-accounts.js';
 import { db, atomicRequest, lock, json } from './db.js';
 import {
   sha,
@@ -42,6 +43,11 @@ export class Idempotency implements NestInterceptor {
           if (existing.requestHash !== fingerprint)
             throw new ConflictException('此幂等键已用于不同请求');
           const [, , , module, resource, resourceId] = req.path.split('/');
+          const savedResult = existing.result as Record<string, unknown>;
+          const decoded = savedResult.encrypted
+            ? JSON.parse(decrypt(String(savedResult.encrypted)))
+            : existing.result;
+          if ((decoded as any)?.deleted) return decoded;
           if (module === 'registrations' && resource) await getRegistration(actor, resource);
           if (module === 'admin') requireAdmin(actor);
           if (module === 'contests') {
@@ -57,7 +63,7 @@ export class Idempotency implements NestInterceptor {
             if (req.body.contestId) requireManager(actor, req.body.contestId);
             else if (req.body.registrationIds)
               for (const registrationId of req.body.registrationIds) {
-                const r = await getRegistration(actor, registrationId);
+                const r = await getFinance(actor, registrationId);
                 requireManager(actor, r.contestId);
               }
             else requireAdmin(actor);
@@ -78,7 +84,7 @@ export class Idempotency implements NestInterceptor {
               if (record) registrationId = record.registrationId;
             }
             if (registrationId && /^[0-9a-f-]{36}$/.test(registrationId))
-              await getRegistration(actor, registrationId);
+              await getFinance(actor, registrationId);
           }
           if (module === 'support' && resource) {
             const t = await db.supportTicket.findUniqueOrThrow({ where: { id: resource } });
@@ -99,6 +105,14 @@ export class Idempotency implements NestInterceptor {
           data: {
             id,
             requestHash: fingerprint,
+            resourceType: req.path.includes('/finance/')
+              ? 'FINANCE'
+              : req.path.includes('/registrations')
+                ? 'REGISTRATION'
+                : 'OTHER',
+            resourceId:
+              req.path.match(/\/registrations\/([0-9a-f-]{36})(?:\/|$)/)?.[1] ??
+              ((result as any)?.contestId && (result as any)?.id ? (result as any).id : null),
             result: json({ encrypted: encrypt(JSON.stringify(result ?? { ok: true })) }),
           },
         });

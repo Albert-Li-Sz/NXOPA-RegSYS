@@ -12,6 +12,9 @@ export interface Principal extends Omit<SharedPrincipal, 'profile'> {
 }
 export type Data = Record<string, any>;
 export interface ContestView {
+  kind: 'ACTIVITY' | 'COMPETITION';
+  modules: { admissions: boolean; rooms: boolean; integrations: boolean };
+  seatingMode: 'REGISTRATION' | 'PERSON';
   id: string;
   title: string;
   season: string;
@@ -33,6 +36,7 @@ export interface ContestView {
   formVersion: number;
   fields: FieldDefinition[];
   status: 'OPEN' | 'CLOSED' | 'UPCOMING';
+  registrationCounts?: { official: number; unofficial: number };
 }
 export interface PersonView {
   active?: boolean;
@@ -45,6 +49,22 @@ export interface PersonView {
   answers: Data;
 }
 export interface RegistrationView {
+  actions: {
+    edit: boolean;
+    editOwnMember: boolean;
+    submit: boolean;
+    withdraw: boolean;
+    cancel: boolean;
+    delete: boolean;
+    review: boolean;
+    amendReview: boolean;
+    requestFinance: boolean;
+    credentials: boolean;
+    editReason: string;
+  };
+  displayState: string;
+  reviews: Data[];
+  revisions: Data[];
   number: number | null;
   submittedAt: string | null;
   id: string;

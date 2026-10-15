@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useLocalPagination } from '../composables/useLocalPagination';
+import ListPagination from '../components/ListPagination.vue';
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { api, date } from '../api';
@@ -60,6 +62,10 @@ const metrics = computed(() => [
     color: 'amber',
   },
 ]);
+const activityPage = useLocalPagination<Data>(
+  'overview-activities',
+  () => data.value?.activities ?? [],
+);
 async function load() {
   const current = ++sequence;
   loading.value = true;
@@ -213,7 +219,7 @@ onBeforeUnmount(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="activity in data?.activities ?? []" :key="activity.id">
+            <tr v-for="activity in activityPage.items.value" :key="activity.id">
               <td>
                 <router-link :to="`/contests/${activity.id}`">{{ activity.title }}</router-link
                 ><small>{{ activity.season }} · {{ date(activity.startsAt) }}</small>
@@ -237,6 +243,11 @@ onBeforeUnmount(() => {
           </tbody>
         </table>
       </div>
+      <ListPagination
+        v-model:page="activityPage.page.value"
+        v-model:size="activityPage.pageSize.value"
+        :total="activityPage.total.value"
+      />
     </section>
     <p class="overview-note">
       仅展示您可查看的活动汇总数据。参与人次按各活动累计，同一用户参加多场活动会分别计数。

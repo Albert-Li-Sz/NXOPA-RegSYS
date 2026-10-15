@@ -67,8 +67,7 @@ export class PeopleService {
       data: identitySnapshot(u.kind ?? 'STUDENT', u.name, u.profile),
       requests: await db.identityRequest.findMany({
         where: { userId: u.id },
-        orderBy: { createdAt: 'desc' },
-        take: 20,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
     };
   }

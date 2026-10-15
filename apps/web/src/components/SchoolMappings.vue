@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import PaginatedTable from './PaginatedTable.vue';
+import { ref, onMounted, computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import { api } from '../api';
 import type { Data } from '../types';
 import { usePagedList } from '../composables/usePagedList';
+import { useEditSession } from '../composables/useEditSession';
 import ListPagination from './ListPagination.vue';
 const props = defineProps<{ bindingId: string }>();
 const list = usePagedList(
@@ -16,6 +18,20 @@ const organizations = ref<Data[]>([]),
   mode = ref('existing'),
   busy = ref(false),
   error = ref('');
+const editModel = computed({
+  get: () => ({ record: editing.value, mode: mode.value }),
+  set: (value) => {
+    editing.value = value.record;
+    mode.value = value.mode;
+  },
+});
+const editSession = useEditSession(editModel);
+async function beforeClose(done: () => void) {
+  if (!busy.value && (await editSession.mayLeave())) {
+    editSession.finish();
+    done();
+  }
+}
 async function load() {
   await list.load();
   try {
@@ -30,6 +46,7 @@ onMounted(load);
 function edit(row: Data) {
   editing.value = { ...row, remoteId: row.remoteId ?? '' };
   mode.value = row.remoteId ? 'existing' : 'create';
+  editSession.begin();
 }
 async function save() {
   if (!editing.value) return;
@@ -40,6 +57,7 @@ async function save() {
       remoteId: mode.value === 'existing' ? editing.value.remoteId : undefined,
       create: mode.value === 'create',
     });
+    editSession.finish();
     editing.value = undefined;
     ElMessage.success('学校映射已确认，等待中的同步将继续');
     await load();
@@ -94,12 +112,13 @@ async function save() {
     :total="list.total.value"
   />
   <h3>目标比赛允许的分组</h3>
-  <el-table :data="groups"
+  <PaginatedTable page-key="schoolmappings-groups" :data="groups"
     ><el-table-column prop="id" label="分组编号" /><el-table-column
       prop="name"
       label="名称" /><el-table-column prop="sortorder" label="排名顺序"
-  /></el-table>
+  /></PaginatedTable>
   <el-dialog
+    :before-close="beforeClose"
     :model-value="!!editing"
     @close="editing = undefined"
     title="确认学校映射"

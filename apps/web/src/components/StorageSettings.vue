@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { onMounted, onScopeDispose, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { useEditSession } from '../composables/useEditSession';
+import EditActions from './EditActions.vue';
 import { api, label } from '../api';
 import type { Data } from '../types';
 const form = ref<Data>({ mode: 'LOCAL', version: 0 }),
   busy = ref(false),
   job = ref<Data>(),
   error = ref('');
+const edit = useEditSession(form);
 let timer: ReturnType<typeof setTimeout> | undefined;
 async function load() {
   try {
@@ -32,6 +35,7 @@ async function save() {
   try {
     await api('/admin/storage', 'PUT', form.value);
     await load();
+    edit.finish();
     ElMessage.success('存储配置已保存');
   } finally {
     busy.value = false;
@@ -72,7 +76,13 @@ onScopeDispose(() => clearTimeout(timer));
       内置 MinIO 和第三方 S3 均使用私有桶。系统负责校验访问权限，公开竞赛材料通过系统生成链接。
     </p>
     <el-alert v-if="error" :title="error" type="warning" :closable="false" />
-    <el-form label-position="top" @submit.prevent="save"
+    <EditActions :session="edit" />
+    <el-form
+      :key="String(edit.editing.value)"
+      label-position="top"
+      :disabled="!edit.editing.value"
+      :class="{ 'read-mode': !edit.editing.value }"
+      @submit.prevent="save"
       ><el-form-item label="存储方式"
         ><el-radio-group v-model="form.mode"
           ><el-radio-button value="S3">S3 / MinIO</el-radio-button
@@ -107,10 +117,12 @@ onScopeDispose(() => clearTimeout(timer));
           /><el-switch v-model="form.createBucket" active-text="桶不存在时创建" /></div
       ></template>
       <div class="toolbar">
-        <el-button type="primary" native-type="submit" :loading="busy">保存存储配置</el-button
-        ><el-button :loading="busy" @click="probe">测试当前已保存配置</el-button>
+        <el-button type="primary" v-if="edit.editing.value" native-type="submit" :loading="busy"
+          >保存存储配置</el-button
+        >
       </div>
     </el-form>
+    <el-button :loading="busy" @click="probe">测试当前已保存配置</el-button>
   </div>
   <div class="card">
     <h3>历史文件迁移</h3>

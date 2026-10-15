@@ -1,9 +1,15 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Principal } from '@contest-center/contracts';
-import { db, audit, enqueue, lock } from './db.js';
+import { dirty, loaded } from './registrations.js';
+import { db, audit, enqueue, lock, event } from './db.js';
 import {
   getRegistration,
   getSupportTicket,
@@ -13,7 +19,9 @@ import {
   requireManager,
 } from './security.js';
 import { putBlob, readBlob, type StorageRef } from './storage.js';
+import { getFinance } from './finance-accounts.js';
 import { publicLink } from './site-settings.js';
+import { paginated, pageOptions, type ListQuery } from './pagination.js';
 const purposeSchema = z.enum([
   'PRIVATE',
   'PERSONAL',
@@ -33,6 +41,14 @@ function uploadFilename(name: string) {
     .basename(name.replaceAll('\\', '/'))
     .replace(/[\r\n\u0000]/g, '')
     .slice(0, 200);
+}
+async function fileRegistrations(tx: import('./db.js').Tx, id: string) {
+  return tx.$queryRaw<
+    { id: string; used: boolean }[]
+  >`SELECT "registrationId" AS id,false AS used FROM "Attachment" WHERE id=${id}::uuid AND "registrationId" IS NOT NULL
+    UNION SELECT id,true FROM "Registration" WHERE answers::text LIKE ${`%${id}%`}
+    UNION SELECT "registrationId",true FROM "RegistrationPerson" WHERE answers::text LIKE ${`%${id}%`}
+    UNION SELECT "registrationId",true FROM "RegistrationCoach" WHERE answers::text LIKE ${`%${id}%`}`;
 }
 export class FileService {
   async upload(
@@ -151,8 +167,32 @@ export class FileService {
     if (!publicRead) {
       if (!u) throw new ForbiddenException('请先登录');
       if (file.ticketId) await getSupportTicket(u, file.ticketId);
-      else if (file.registrationId) await getRegistration(u, file.registrationId);
-      else if (file.contestId && !manages(u, file.contestId, 'FILES') && !owns(u, file.ownerId)) {
+      else if (file.registrationId) {
+        const financial =
+          (await db.paymentVoucher.count({ where: { attachmentId: id } })) +
+          (await db.invoiceRequest.count({ where: { attachmentId: id } })) +
+          (await db.refund.count({ where: { attachmentId: id } }));
+        if (financial) await getFinance(u, file.registrationId);
+        else {
+          try {
+            await getRegistration(u, file.registrationId);
+          } catch (error) {
+            const assigned = await db.teamFile.findMany({
+              where: { attachmentId: id },
+              select: { registrationId: true },
+            });
+            let allowed = owns(u, file.ownerId);
+            for (const a of assigned) {
+              try {
+                await getRegistration(u, a.registrationId);
+                allowed = true;
+                break;
+              } catch {}
+            }
+            if (!allowed) throw error;
+          }
+        }
+      } else if (file.contestId && !manages(u, file.contestId, 'FILES') && !owns(u, file.ownerId)) {
         const assignments = await db.teamFile.findMany({ where: { attachmentId: id } });
         let allowed = false;
         for (const assignment of assignments) {
@@ -172,27 +212,46 @@ export class FileService {
       inline: publicRead && file.mime.startsWith('image/'),
     };
   }
-  async list(u: Principal, query: { contestId?: string; registrationId?: string }) {
+  async list(u: Principal, query: ListQuery = {}) {
+    const search = query.search
+      ? { name: { contains: query.search, mode: 'insensitive' as const } }
+      : {};
     if (query.registrationId) {
       await getRegistration(u, query.registrationId);
-      return (
-        await db.teamFile.findMany({
-          where: { registrationId: query.registrationId, attachment: { deletedAt: null } },
-          include: { attachment: true },
-          orderBy: { createdAt: 'desc' },
-        })
-      ).map((x) => ({ ...x.attachment, assignmentId: x.id, assignedAt: x.createdAt }));
+      const where = {
+        registrationId: query.registrationId,
+        attachment: { deletedAt: null, ...search },
+      };
+      const find = async (options: { skip?: number; take?: number } = {}) =>
+        (
+          await db.teamFile.findMany({
+            where,
+            ...options,
+            include: { attachment: true },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          })
+        ).map((x) => ({ ...x.attachment, assignmentId: x.id, assignedAt: x.createdAt }));
+      return pageOptions(query)
+        ? paginated(query, find, () => db.teamFile.count({ where }))
+        : find();
     }
     if (query.contestId) {
       requireManager(u, query.contestId, 'FILES');
-      return db.attachment.findMany({
-        where: {
-          contestId: query.contestId,
-          deletedAt: null,
-          purpose: { in: ['CONTEST_PUBLIC', 'CONTEST_PRIVATE'] },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
+      const where = {
+        contestId: query.contestId,
+        ...search,
+        deletedAt: null,
+        purpose: { in: ['CONTEST_PUBLIC', 'CONTEST_PRIVATE'] },
+      };
+      const find = (options: { skip?: number; take?: number } = {}) =>
+        db.attachment.findMany({
+          where,
+          ...options,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        });
+      return pageOptions(query)
+        ? paginated(query, find, () => db.attachment.count({ where }))
+        : find();
     }
     const ids = ownerIds(u);
     const teams = await db.registration.findMany({
@@ -209,14 +268,21 @@ export class FileService {
       where: { registrationId: { in: teams.map((x) => x.id) }, attachment: { deletedAt: null } },
       select: { attachmentId: true },
     });
-    return db.attachment.findMany({
-      where: {
-        deletedAt: null,
-        OR: [{ ownerId: { in: ids } }, { id: { in: assigned.map((x) => x.attachmentId) } }],
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-    });
+    const where = {
+      ...search,
+      deletedAt: null,
+      OR: [{ ownerId: { in: ids } }, { id: { in: assigned.map((x) => x.attachmentId) } }],
+    };
+    return paginated(
+      query,
+      (options) =>
+        db.attachment.findMany({
+          where,
+          ...options,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        }),
+      () => db.attachment.count({ where }),
+    );
   }
   async distribute(u: Principal, contestId: string, body: unknown) {
     requireManager(u, contestId, 'FILES');
@@ -248,8 +314,14 @@ export class FileService {
     return { count: registrations.length };
   }
   async remove(u: Principal, id: string) {
+    const initial = await fileRegistrations(db, id),
+      ids = [...new Set(initial.map((r) => r.id))].sort();
     return db.$transaction(async (tx) => {
+      for (const rid of ids) await lock(tx, rid);
       await lock(tx, `file:${id}`);
+      const refs = await fileRegistrations(tx, id);
+      if (refs.some((r) => !ids.includes(r.id)))
+        throw new ConflictException('附件引用已变化，请刷新后重试');
       const file = await tx.attachment.findUniqueOrThrow({ where: { id } });
       if (!owns(u, file.ownerId) && !u.isAdmin) {
         if (!file.contestId) throw new ForbiddenException('仅可删除本人上传的文件');
@@ -270,6 +342,12 @@ export class FileService {
       await enqueue(tx, 'OBJECT_DELETE', id, `file-delete:${id}`, {
         storageRef: file as unknown as StorageRef,
       });
+      for (const rid of new Set(refs.filter((r) => r.used).map((r) => r.id))) {
+        if (await tx.registration.count({ where: { id: rid } })) {
+          await dirty(tx, await loaded(tx, rid), u, 'REGISTRATION_ATTACHMENT_DELETE');
+          await event(tx, 'NOTIFY', rid, { message: '报名附件已删除，请补充资料后重新提交。' });
+        }
+      }
       await audit(tx, u.id, 'FILE_DELETE', id);
       return { ok: true };
     });

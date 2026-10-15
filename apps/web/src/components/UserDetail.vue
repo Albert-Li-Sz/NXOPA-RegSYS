@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import PaginatedTable from './PaginatedTable.vue';
 import { computed, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { defaultFields, fieldSchema } from '@contest-center/contracts';
 import { api, auth, date, label, loadAuth } from '../api';
 import type { Data } from '../types';
+import { useEditSession } from '../composables/useEditSession';
 import DynamicFields from './DynamicFields.vue';
 
 const props = withDefaults(defineProps<{ id: string; endpoint?: string }>(), { endpoint: 'users' });
@@ -13,6 +15,11 @@ const detail = ref<Data>(),
   editing = ref(false),
   busy = ref(false),
   error = ref('');
+const editSession = useEditSession(form);
+watch(editing, (value) => (value ? editSession.begin() : editSession.finish()), { flush: 'sync' });
+async function beforeClose(done: () => void) {
+  if (!busy.value && (await editSession.mayLeave())) done();
+}
 const visible = computed({
   get: () => !!props.id,
   set: (value) => {
@@ -148,6 +155,7 @@ async function remove() {
 </script>
 <template>
   <el-dialog
+    :before-close="beforeClose"
     v-model="visible"
     :title="`${detail?.name || '账号'} · ${teacher ? '教师' : '学生'}详情`"
     width="960px"
@@ -227,7 +235,11 @@ async function remove() {
         }}</el-descriptions-item>
       </el-descriptions>
       <h3>参与活动</h3>
-      <el-table :data="detail.registrations" empty-text="暂无活动记录">
+      <PaginatedTable
+        page-key="userdetail-detail-registrations"
+        :data="detail.registrations"
+        empty-text="暂无活动记录"
+      >
         <el-table-column label="竞赛" min-width="220"
           ><template #default="{ row }"
             ><router-link :to="`/registrations/${row.id}`">{{
@@ -249,7 +261,7 @@ async function remove() {
             date(row.submittedAt || row.createdAt)
           }}</template></el-table-column
         >
-      </el-table>
+      </PaginatedTable>
     </template>
   </el-dialog>
 </template>

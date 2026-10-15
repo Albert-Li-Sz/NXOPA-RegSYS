@@ -3,6 +3,8 @@ import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { MailSettingsInput, MailSettingsView } from '@contest-center/contracts';
 import { mailSettingsSchema } from '@contest-center/contracts';
+import { useEditSession } from '../composables/useEditSession';
+import EditActions from './EditActions.vue';
 import { api, auth } from '../api';
 import { requestId } from '../request-id';
 import SmtpServerFields from './SmtpServerFields.vue';
@@ -18,6 +20,7 @@ const form = ref<MailSettingsInput>(),
   probeResult = ref(''),
   probeOk = ref(false),
   testResult = ref('');
+const edit = useEditSession(form);
 let alive = true;
 onBeforeUnmount(() => {
   alive = false;
@@ -95,10 +98,16 @@ async function save() {
   saving.value = true;
   try {
     apply(await api<MailSettingsView>('/admin/mail', 'PUT', parsed.data));
+    edit.finish();
     ElMessage.success('邮件设置已保存，后续邮件任务立即使用新配置');
   } finally {
     saving.value = false;
   }
+}
+async function reload() {
+  if (!(await edit.mayLeave())) return;
+  await load();
+  edit.finish();
 }
 async function probe() {
   probing.value = true;
@@ -150,7 +159,15 @@ onMounted(load);
       </div>
       <el-tag v-if="form" type="info">{{ source }} · 版本 {{ form.version }}</el-tag>
     </div>
-    <el-form v-if="form" label-position="top" @submit.prevent="save">
+    <EditActions :session="edit" />
+    <el-form
+      :key="String(edit.editing.value)"
+      v-if="form"
+      label-position="top"
+      :disabled="!edit.editing.value"
+      :class="{ 'read-mode': !edit.editing.value }"
+      @submit.prevent="save"
+    >
       <el-form-item label="邮件服务" for="mail-enabled">
         <el-switch id="mail-enabled" v-model="form.enabled" active-text="启用邮件服务" />
       </el-form-item>
@@ -163,7 +180,10 @@ onMounted(load);
             主 SMTP 失败后，按下方顺序尝试已启用的备用服务器，发送成功即停止。
           </p>
         </div>
-        <el-button :disabled="saving || form.fallbacks.length >= 10" @click="addFallback"
+        <el-button
+          v-if="edit.editing.value"
+          :disabled="saving || form.fallbacks.length >= 10"
+          @click="addFallback"
           >新增备用 SMTP</el-button
         >
       </div>
@@ -174,7 +194,7 @@ onMounted(load);
       >
         <div class="page-heading">
           <strong>第 {{ index + 2 }} 顺序</strong>
-          <div class="button-group">
+          <div v-if="edit.editing.value" class="button-group">
             <el-button :disabled="index === 0 || saving" @click="moveFallback(index, -1)"
               >上移</el-button
             ><el-button
@@ -202,39 +222,11 @@ onMounted(load);
           :prefix="`smtp-${server.id}`"
           :password-configured="fallbackConfigured[server.id]"
         />
-        <el-button
-          :disabled="dirty || !server.enabled || !form.enabled || saving || testing"
-          :loading="probing"
-          @click="probeFallback(server.id)"
-          >检测此备用连接</el-button
-        >
       </section>
       <p class="muted">
         密码加密保存，编辑时留空保留原值。关闭服务器认证并保存会清除认证密码。更换认证用户名时请重新填写密码。
       </p>
       <p v-if="dirty" class="muted">配置尚未保存，请先保存再检测或发送测试邮件。</p>
-      <div class="actions">
-        <el-button
-          type="primary"
-          native-type="submit"
-          :loading="saving"
-          :disabled="probing || testing"
-          >保存邮件设置</el-button
-        >
-        <el-button
-          :loading="probing"
-          :disabled="dirty || !form.enabled || saving || testing"
-          @click="probe"
-          >检测连接</el-button
-        >
-        <el-button
-          :loading="testing"
-          :disabled="dirty || !form.enabled || saving || probing"
-          @click="testMail"
-          >发送测试邮件</el-button
-        >
-        <el-button :disabled="saving || probing || testing" @click="load">重新加载</el-button>
-      </div>
       <el-alert
         v-if="probeResult"
         :title="probeResult"
@@ -256,6 +248,39 @@ onMounted(load);
         }}。连接检测通过后，还需要检查测试邮件是否实际收到。
       </p>
     </el-form>
+    <div v-if="form">
+      <div class="actions">
+        <el-button
+          v-for="(server, index) in form.fallbacks"
+          :key="server.id"
+          :disabled="dirty || !server.enabled || !form.enabled || saving || testing"
+          :loading="probing"
+          @click="probeFallback(server.id)"
+          >检测备用 {{ index + 1 }} · {{ server.name }}</el-button
+        >
+        <el-button
+          v-if="edit.editing.value"
+          type="primary"
+          @click="save"
+          :loading="saving"
+          :disabled="probing || testing"
+          >保存邮件设置</el-button
+        >
+        <el-button
+          :loading="probing"
+          :disabled="dirty || !form.enabled || saving || testing"
+          @click="probe"
+          >检测连接</el-button
+        >
+        <el-button
+          :loading="testing"
+          :disabled="dirty || !form.enabled || saving || probing"
+          @click="testMail"
+          >发送测试邮件</el-button
+        >
+        <el-button :disabled="saving || probing || testing" @click="reload">重新加载</el-button>
+      </div>
+    </div>
   </div>
 </template>
 <style scoped>
