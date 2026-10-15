@@ -11,8 +11,8 @@ import {
 } from '@contest-center/contracts';
 import { db, audit, event, json, lock, type Tx } from './db.js';
 import { config } from './config.js';
-import { publicLink } from './site-settings.js';
-import { opaqueToken, sha, hmac, same, encrypt } from './security.js';
+import { publicLink, publicUrl, secureCookies } from './site-settings.js';
+import { opaqueToken, sha, hmac, same, encrypt, secretKey, otpHash, checkOtp } from './security.js';
 import { effectiveAuthorization } from './authorization.js';
 import { feishuSignup, attachFeishuSignup, clearFeishuSignup } from './feishu.js';
 import { paginated, type ListQuery } from './pagination.js';
@@ -75,14 +75,32 @@ export async function attachPrincipal(req: AuthRequest) {
 }
 export async function checkCsrf(req: AuthRequest) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return;
+  // Browsers send Origin / Fetch Metadata even before a session exists.
+  // Keep non-browser API clients working while rejecting cross-site login forms.
+  const origin = req.headers.origin;
+  const origins = new Set([
+    new URL(config.publicUrl).origin,
+    `${req.protocol}://${req.get('host')}`,
+    ...String(process.env.TRUSTED_MANAGEMENT_ORIGINS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+    ...(!config.production ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : []),
+  ]);
+  if (origin && !origins.has(origin)) origins.add(new URL(await publicUrl()).origin);
+  if (
+    (origin !== undefined && !origins.has(origin)) ||
+    (!origin && req.headers['sec-fetch-site'] === 'cross-site')
+  )
+    throw new ForbiddenException('请求来源不受信任');
   if (
     req.sessionId &&
-    !same(String(req.headers['x-csrf-token'] ?? ''), hmac(config.encryptionKey, req.sessionId))
+    !same(String(req.headers['x-csrf-token'] ?? ''), hmac(secretKey('csrf:v2'), req.sessionId))
   )
     throw new ForbiddenException('CSRF 校验失败，请刷新页面');
 }
 export function csrf(req: AuthRequest) {
-  return req.sessionId ? hmac(config.encryptionKey, req.sessionId) : '';
+  return req.sessionId ? hmac(secretKey('csrf:v2'), req.sessionId) : '';
 }
 export async function session(req: AuthRequest, res: Response, id: string) {
   const token = opaqueToken();
@@ -102,12 +120,12 @@ export async function session(req: AuthRequest, res: Response, id: string) {
   });
   res.cookie('cc_session', token, {
     httpOnly: true,
-    secure: req.secure,
+    secure: await secureCookies(req),
     sameSite: 'lax',
     maxAge: 7 * 86400000,
     path: '/',
   });
-  return { user: principal, csrf: hmac(config.encryptionKey, sha(token)) };
+  return { user: principal, csrf: hmac(secretKey('csrf:v2'), sha(token)) };
 }
 async function mailToken(id: string, purpose: string, next?: string) {
   const raw = opaqueToken();
@@ -124,7 +142,7 @@ async function mailToken(id: string, purpose: string, next?: string) {
         id: sha(raw),
         userId: id,
         purpose,
-        codeHash: hmac(config.encryptionKey, `${sha(raw)}:${code}`),
+        codeHash: otpHash(`${sha(raw)}:${code}`),
         expiresAt: new Date(Date.now() + (purpose === 'CLOSE' ? 600000 : 3600000)),
       },
     });
@@ -163,8 +181,7 @@ export class AuthService {
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     await db.$transaction(async (tx) => {
       await lock(tx, `register:${email}`);
-      if (await tx.user.findUnique({ where: { email } }))
-        throw new BadRequestException('此邮箱已注册，请登录或找回密码');
+      if (await tx.user.findUnique({ where: { email } })) return;
       await tx.registrationVerification.updateMany({
         where: { email, usedAt: null },
         data: { usedAt: new Date() },
@@ -173,7 +190,7 @@ export class AuthService {
         data: {
           id,
           email,
-          codeHash: hmac(config.encryptionKey, `${id}:${code}`),
+          codeHash: otpHash(`${id}:${code}`),
           expiresAt: new Date(Date.now() + 600000),
         },
       });
@@ -230,7 +247,6 @@ export class AuthService {
     const attempts = await redis.incr(`register-code-attempts:${tokenId}`);
     if (attempts === 1) await redis.expire(`register-code-attempts:${tokenId}`, 600);
     if (attempts > 5) throw new BadRequestException('验证码尝试次数过多，请重新发送');
-    const passwordHash = await hash(b.password, { type: argon2id });
     const u = await db.$transaction(async (tx) => {
       await lock(tx, `register:${email}`);
       const verification = await tx.registrationVerification.findUnique({ where: { id: tokenId } });
@@ -239,9 +255,10 @@ export class AuthService {
         verification.email !== email ||
         verification.usedAt ||
         verification.expiresAt <= new Date() ||
-        !same(verification.codeHash, hmac(config.encryptionKey, `${tokenId}:${b.code}`))
+        !checkOtp(verification.codeHash, `${tokenId}:${b.code}`)
       )
         throw new BadRequestException('邮箱验证码无效或已过期，请重新发送');
+      const passwordHash = await hash(b.password, { type: argon2id });
       const account = await tx.user.create({
         data: {
           name: b.name,
@@ -274,12 +291,18 @@ export class AuthService {
     const b = z
       .object({ account: z.string().min(1).max(254), password: z.string().max(128) })
       .parse(body);
+    const failureKey = `login-failures:${sha(b.account.trim().toLowerCase())}`;
+    if (Number(await redis.get(failureKey)) >= 10)
+      throw new ForbiddenException('此账号登录失败次数过多，请稍后重试或找回密码');
     const u = await db.user.findFirst({
       where: { OR: [{ email: b.account.toLowerCase() }, { username: b.account }] },
     });
-    if (!u?.passwordHash || u.deactivatedAt || !(await verify(u.passwordHash, b.password)))
+    if (!u?.passwordHash || u.deactivatedAt || !(await verify(u.passwordHash, b.password))) {
+      if ((await redis.incr(failureKey)) === 1) await redis.expire(failureKey, 900);
       throw new UnauthorizedException('账号或密码错误');
+    }
     if (u.bannedAt) throw new ForbiddenException('账号已被封禁，请联系管理员');
+    await redis.del(failureKey);
     return session(req, res, u.id);
   }
   async logout(req: AuthRequest, res: Response) {
@@ -316,18 +339,19 @@ export class AuthService {
   async forgot(body: unknown, req: AuthRequest) {
     await rateLimit(`forgot:${req.ip}`, 5);
     const { email } = z.object({ email: z.email() }).parse(body);
+    await rateLimit(`forgot-email:${sha(email.toLowerCase())}`, 3);
     const u = await db.user.findUnique({ where: { email: email.toLowerCase() } });
     if (u && !u.deactivatedAt && !u.bannedAt) await mailToken(u.id, 'RESET');
     return { ok: true };
   }
-  async consume(body: unknown, purpose: string) {
+  async consume(body: unknown, purpose: string, req?: AuthRequest) {
+    await rateLimit(`consume-${purpose}:${req?.ip ?? 'internal'}`, 5);
     const b = z
       .object({
         token: z.string().min(30).max(100),
         password: purpose === 'RESET' ? passwordSchema : z.string().optional(),
       })
       .parse(body);
-    const pw = purpose === 'RESET' ? await hash(b.password!, { type: argon2id }) : undefined;
     return db.$transaction(async (tx) => {
       const record = await tx.emailToken.findUnique({ where: { id: sha(b.token) } });
       if (!record) throw new BadRequestException('链接已失效');
@@ -337,6 +361,7 @@ export class AuthService {
         throw new BadRequestException('链接已失效');
       const account = await tx.user.findUniqueOrThrow({ where: { id: t.userId } });
       if (account.deactivatedAt || account.bannedAt) throw new BadRequestException('链接已失效');
+      const pw = purpose === 'RESET' ? await hash(b.password!, { type: argon2id }) : undefined;
       const changed = await tx.emailToken.updateMany({
         where: { id: t.id, usedAt: null },
         data: { usedAt: new Date() },
@@ -456,10 +481,7 @@ export class AuthService {
     if (!record?.codeHash) throw new BadRequestException('请重新发送验证码');
     const attempts = await redis.incr(`email-code-attempts:${record.id}`);
     if (attempts === 1) await redis.expire(`email-code-attempts:${record.id}`, 3600);
-    if (
-      attempts > 5 ||
-      !same(record.codeHash, hmac(config.encryptionKey, `${record.id}:${b.code}`))
-    )
+    if (attempts > 5 || !checkOtp(record.codeHash, `${record.id}:${b.code}`))
       throw new BadRequestException('验证码无效或尝试次数过多，请重新发送');
     if (purpose === 'RESET' && !b.password) throw new BadRequestException('请填写新密码');
     const passwordHash =

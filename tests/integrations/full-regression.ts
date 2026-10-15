@@ -29,6 +29,7 @@ const secret = randomBytes(24).toString('hex');
 const env = {
   ...process.env,
   NODE_ENV: 'development',
+  SEED_DEMO: '1',
   PORT: String(api),
   PUBLIC_URL: `http://127.0.0.1:${web}`,
   WEB_URL: `http://127.0.0.1:${web}`,
@@ -210,7 +211,7 @@ try {
   await wait(`${env.FEISHU_API_BASE_URL}/fixture`);
   const suites = (
     process.env.FULL_REGRESSION_SUITES ??
-    'test:integration,test:auth,test:accounts,test:feishu,test:invitations,test:mail,test:mail-failover,test:template-bugs,test:overview,test:enhancements,test:admissions,test:activity-workflows,test:workflow-upgrade,test:bugs,test:permissions,test:file-race,test:load,test:mcp,test:e2e'
+    'test:integration,test:auth,test:accounts,test:feishu,test:invitations,test:mail,test:mail-failover,test:template-bugs,test:overview,test:enhancements,test:admissions,test:activity-workflows,test:workflow-upgrade,test:bugs,test:security,test:permissions,test:file-race,test:load,test:mcp,test:e2e'
   )
     .split(',')
     .filter(Boolean);

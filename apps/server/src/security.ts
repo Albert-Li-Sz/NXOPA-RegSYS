@@ -5,6 +5,7 @@ import {
   randomBytes,
   createHmac,
   timingSafeEqual,
+  hkdfSync,
 } from 'node:crypto';
 import dns from 'node:dns/promises';
 import {
@@ -18,21 +19,63 @@ import { config } from './config.js';
 import { db, registrationInclude, type Registration } from './db.js';
 export const opaqueToken = () => randomBytes(32).toString('base64url');
 export const sha = (s: string) => createHash('sha256').update(s).digest('hex');
-export function encrypt(s: string) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', Buffer.from(config.encryptionKey, 'hex'), iv);
-  const body = Buffer.concat([cipher.update(s, 'utf8'), cipher.final()]);
-  return [iv.toString('hex'), body.toString('hex'), cipher.getAuthTag().toString('hex')].join('.');
+export const secretKey = (purpose: string) =>
+  Buffer.from(
+    hkdfSync(
+      'sha256',
+      Buffer.from(config.encryptionKey, 'hex'),
+      Buffer.from('NXOPA-RegSYS'),
+      Buffer.from(purpose),
+      32,
+    ),
+  ).toString('hex');
+export function otpHash(body: string) {
+  return `v2:${hmac(secretKey('otp:v2'), body)}`;
 }
-export function decrypt(s: string) {
-  const [iv, body, tag] = s.split('.');
-  const cipher = createDecipheriv(
+export function checkOtp(stored: string, body: string) {
+  return stored.startsWith('v2:')
+    ? same(stored, otpHash(body))
+    : same(stored, hmac(config.encryptionKey, body));
+}
+export function encrypt(s: string, context = 'secret') {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv(
     'aes-256-gcm',
-    Buffer.from(config.encryptionKey, 'hex'),
-    Buffer.from(iv!, 'hex'),
+    Buffer.from(secretKey(`encryption:v2:${context}`), 'hex'),
+    iv,
   );
-  cipher.setAuthTag(Buffer.from(tag!, 'hex'));
-  return Buffer.concat([cipher.update(Buffer.from(body!, 'hex')), cipher.final()]).toString('utf8');
+  cipher.setAAD(Buffer.from(`NXOPA-RegSYS:v2:${context}`));
+  const body = Buffer.concat([cipher.update(s, 'utf8'), cipher.final()]);
+  return ['v2', iv.toString('hex'), body.toString('hex'), cipher.getAuthTag().toString('hex')].join(
+    '.',
+  );
+}
+export function decrypt(s: string, context = 'secret') {
+  try {
+    const parts = s.split('.');
+    const versioned = parts[0] === 'v2';
+    if (versioned) parts.shift();
+    if (parts.length !== 3) throw new Error('Invalid ciphertext');
+    const [iv, body, tag] = parts;
+    if (
+      !/^[a-f0-9]{24}$/i.test(iv!) ||
+      !/^(?:[a-f0-9]{2})*$/i.test(body!) ||
+      !/^[a-f0-9]{32}$/i.test(tag!)
+    )
+      throw new Error('Invalid ciphertext');
+    const cipher = createDecipheriv(
+      'aes-256-gcm',
+      Buffer.from(versioned ? secretKey(`encryption:v2:${context}`) : config.encryptionKey, 'hex'),
+      Buffer.from(iv!, 'hex'),
+    );
+    if (versioned) cipher.setAAD(Buffer.from(`NXOPA-RegSYS:v2:${context}`));
+    cipher.setAuthTag(Buffer.from(tag!, 'hex'));
+    return Buffer.concat([cipher.update(Buffer.from(body!, 'hex')), cipher.final()]).toString(
+      'utf8',
+    );
+  } catch {
+    throw new BadRequestException('加密配置无法读取，请重新保存该配置');
+  }
 }
 export const manages = (u: Principal, contestId: string, permission: AdminPermission = 'VIEW') =>
   u.isAdmin ||

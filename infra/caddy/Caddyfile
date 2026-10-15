@@ -1,7 +1,12 @@
 {$SITE_ADDRESS} {
 	encode zstd gzip
+	request_body {
+		max_size 51MiB
+	}
 	header {
 		X-Content-Type-Options nosniff
+		Strict-Transport-Security "max-age=31536000"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		Referrer-Policy same-origin
 		X-Frame-Options DENY
 		-Server

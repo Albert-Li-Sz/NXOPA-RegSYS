@@ -14,7 +14,7 @@ import {
   Inject,
   ForbiddenException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { BoundedUpload } from './upload-interceptor.js';
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { z } from 'zod';
 import type { Response, Request } from 'express';
@@ -22,6 +22,7 @@ import archiver from 'archiver';
 import { AuthService, user, csrf, type AuthRequest } from './auth.js';
 import { RegistrationService } from './registrations.js';
 import { removeContest } from './contest-removal.js';
+import { registrationCsv } from './registration-export.js';
 import { SeatingService } from './seating.js';
 import { FinanceService } from './finance.js';
 import { SupportService } from './support.js';
@@ -349,11 +350,11 @@ export class ApiController {
   @Post('auth/forgot') forgot(@Body() b: unknown, @Req() r: AuthRequest) {
     return this.auth.forgot(b, r);
   }
-  @Post('auth/verify') verify(@Body() b: unknown) {
-    return this.auth.consume(b, 'VERIFY');
+  @Post('auth/verify') verify(@Body() b: unknown, @Req() r: AuthRequest) {
+    return this.auth.consume(b, 'VERIFY', r);
   }
-  @Post('auth/reset') reset(@Body() b: unknown) {
-    return this.auth.consume(b, 'RESET');
+  @Post('auth/reset') reset(@Body() b: unknown, @Req() r: AuthRequest) {
+    return this.auth.consume(b, 'RESET', r);
   }
   @Put('auth/profile') profile(@Body() b: unknown, @Req() r: AuthRequest) {
     return this.auth.profile(r, b);
@@ -502,69 +503,20 @@ export class ApiController {
     @Res() res: Response,
     @Query() query: Record<string, string> = {},
   ) {
-    const u = user(r);
-    requireManager(u, id);
+    const content = await registrationCsv(
+      this.registrations,
+      user(r),
+      z.string().uuid().parse(id),
+      query,
+    );
     res
       .type('text/csv')
       .setHeader('Content-Disposition', 'attachment; filename="registrations.csv"');
-    const csv = (row: unknown[]) =>
-      row
-        .map(
-          (cell) =>
-            `"${String(cell)
-              .replace(/^[=+\-@\t\r]/, "'$&")
-              .replaceAll('"', '""')}"`,
-        )
-        .join(',') + '\r\n';
-    res.write(
-      '\uFEFF' +
-        csv([
-          '报名编号',
-          '报名ID',
-          '队名',
-          '参赛性质',
-          '代表学校／单位',
-          '姓名',
-          '邮箱',
-          '队长',
-          '审核',
-          '资格',
-          '应收(分)',
-          '净到账(分)',
-          '自定义字段',
-        ]),
-    );
-    let cursor: string | undefined;
-    while (!res.destroyed) {
-      const filtered = { ...query };
-      delete filtered.page;
-      delete filtered.pageSize;
-      const result = await this.registrations.list(u, id, cursor, 500, filtered);
-      const rows = Array.isArray(result) ? result : result.items;
-      for (const x of rows)
-        for (const p of x.people)
-          res.write(
-            csv([
-              x.number ?? '',
-              x.id,
-              x.teamName,
-              x.participationType === 'UNOFFICIAL' ? '非正式' : '正式',
-              (x.organization as any)?.name ?? '',
-              p.name,
-              p.email,
-              p.captain ? '是' : '否',
-              x.review,
-              x.eligible ? '是' : '否',
-              x.feeCents,
-              x.netPaidCents,
-              JSON.stringify(p.answers),
-            ]),
-          );
-      if (rows.length < 500) break;
-      cursor = rows.at(-1)!.id;
-    }
-    res.end();
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(content);
   }
+
   @Get('registrations/:id') detail(
     @Req() r: AuthRequest,
     @Param('id') id: string,
@@ -712,7 +664,7 @@ export class ApiController {
     return this.finance.invoiceDecision(user(r), id, b);
   }
   @Post('files')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
+  @UseInterceptors(BoundedUpload)
   upload(
     @Req() r: AuthRequest,
     @UploadedFile() file: Express.Multer.File,
@@ -832,7 +784,11 @@ export class ApiController {
     @Res() res: Response,
   ) {
     const d = await this.admissions.previewDownload(user(r), id);
-    res.type('application/pdf').send(d.buffer);
+    res
+      .type('application/pdf')
+      .setHeader('Content-Disposition', 'attachment; filename="preview.pdf"')
+      .setHeader('X-Content-Type-Options', 'nosniff')
+      .send(d.buffer);
   }
   @Get('integrations/instances') instances(@Req() r: AuthRequest) {
     return this.integrations.instances(user(r));

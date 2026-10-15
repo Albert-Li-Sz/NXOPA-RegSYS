@@ -29,6 +29,13 @@ const mime = new Map([
 ]);
 
 const server = createServer(async (req, res) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+  );
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('X-Frame-Options', 'DENY');
   const reply = (status, message, headers = {}) => {
     res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', ...headers });
     res.end(req.method === 'HEAD' ? undefined : message);

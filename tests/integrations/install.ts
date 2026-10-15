@@ -251,6 +251,9 @@ try {
   }
   const homepage = await fetch(base);
   assert.equal(homepage.status, 200);
+  assert.ok(homepage.headers.get('content-security-policy')?.includes("object-src 'none'"));
+  assert.ok(homepage.headers.get('strict-transport-security')?.includes('max-age='));
+  assert.equal((await fetch(`${base}/api/docs-json`)).status, 404);
   const html = await homepage.text();
   assert.ok(html.includes('南晓开放原子社在线报名系统'));
   passed(
@@ -360,13 +363,45 @@ try {
   await admin.api(`/admissions/${documentId}/release`, 'POST');
   const pdf = await admin.raw(`/api/v1/admissions/${documentId}/download`);
   assert.equal(pdf.status, 200);
-  assert.equal(
-    Buffer.from(await pdf.arrayBuffer())
-      .subarray(0, 5)
-      .toString(),
-    '%PDF-',
-  );
+  const pdfBytes = Buffer.from(await pdf.arrayBuffer());
+  assert.equal(pdfBytes.subarray(0, 5).toString(), '%PDF-');
   passed('真实报名、私有附件、Redis 队列与 Worker / XeLaTeX 生成中文准考证');
+
+  const upload = new FormData();
+  upload.append('file', new Blob([pdfBytes], { type: 'application/pdf' }), 'CSP预览验收.pdf');
+  await admin.api('/files?purpose=PERSONAL', 'POST', upload);
+  const pdfBrowser = await chromium.launch({
+    headless: true,
+    ...(existsSync(chrome) ? { executablePath: chrome } : {}),
+  });
+  try {
+    const page = await pdfBrowser.newPage();
+    const violations: string[] = [];
+    await page.addInitScript(() => {
+      window.addEventListener('securitypolicyviolation', (event) =>
+        console.error(`CSP-violation:${event.violatedDirective}:${event.blockedURI}`),
+      );
+    });
+    page.on('console', (message) => {
+      if (message.text().startsWith('CSP-violation:')) violations.push(message.text());
+    });
+    await page.goto(`${base}/login`);
+    await page.locator('#account').fill(credentials.ADMIN_EMAIL);
+    await page.locator('#password').fill(credentials.ADMIN_PASSWORD);
+    await page.getByRole('button', { name: '登录', exact: true }).click();
+    await expect(page.locator('.user-menu')).toBeVisible();
+    await page.goto(`${base}/me/files`);
+    await page.getByRole('link', { name: 'CSP预览验收.pdf', exact: true }).click();
+    await expect(page.getByRole('img', { name: 'PDF 第 1 页', exact: true })).toHaveAttribute(
+      'data-rendered',
+      'true',
+      { timeout: 20000 },
+    );
+    assert.deepEqual(violations, []);
+  } finally {
+    await pdfBrowser.close();
+  }
+  passed('生产 CSP 下 PDF.js 的 worker、WASM 及中文 PDF 实际渲染通过，无策略违规');
 
   await run(['compose', 'restart', 'postgres', 'redis', 'api', 'worker']);
   const healthy = async () => {

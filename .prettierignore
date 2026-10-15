@@ -7,4 +7,6 @@ apps/web/src/generated
 docs/api/openapi.json
 playwright-report
 test-results
+# User-supplied audit evidence is retained verbatim.
+docs/releases/SECURITY_AUDIT_2026-10-15.md
 *.svg

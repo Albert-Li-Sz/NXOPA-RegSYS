@@ -49,6 +49,13 @@ export async function siteSettings() {
 export async function publicUrl() {
   return (await siteSettings()).publicUrl;
 }
+export async function secureCookies(req: { secure?: boolean }) {
+  return (
+    !!req.secure ||
+    new URL(config.publicUrl).protocol === 'https:' ||
+    new URL(await publicUrl()).protocol === 'https:'
+  );
+}
 export async function publicLink(path: string) {
   if (!path.startsWith('/') || path.startsWith('//')) throw new Error('Invalid public link path');
   return `${await publicUrl()}${path}`;

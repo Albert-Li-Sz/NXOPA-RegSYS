@@ -731,7 +731,18 @@ export class RegistrationService {
       });
       if (participants.some((p) => !profileComplete(p)))
         throw new BadRequestException('请参赛成员先完善学号、姓名、班级、学院和性别');
+      await lock(tx, r.contestId);
+      r = await loaded(tx, id);
       const p = policy(r);
+      const currentPolicy = policySchema.parse(r.contest.policy);
+      if (
+        !r.submittedAt &&
+        currentPolicy.capacity > 0 &&
+        (await tx.registration.count({
+          where: { contestId: r.contestId, submittedAt: { not: null }, id: { not: r.id } },
+        })) >= currentPolicy.capacity
+      )
+        throw new BadRequestException('活动报名名额已满');
       if (
         r.people.length < p.minMembers ||
         r.people.length > p.maxMembers ||
@@ -1006,7 +1017,7 @@ export class RegistrationService {
         const r = await loaded(tx, id);
         requireManager(u, r.contestId, 'REGISTRATIONS');
         checkVersion(r.version, b.version);
-        return removeRegistration(tx, r, u.id, b.reason);
+        return removeRegistration(tx, r, u.id, b.reason, 'DELETE');
       },
       { timeout: 120000 },
     );

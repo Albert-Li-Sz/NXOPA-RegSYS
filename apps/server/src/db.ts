@@ -47,6 +47,7 @@ export async function enqueue(
   dedupeKey: string,
   payload: unknown,
 ) {
+  await lock(tx, `enqueue:${dedupeKey}`);
   const prior = await tx.job.findUnique({ where: { dedupeKey } });
   if (prior) return prior;
   const job = await tx.job.create({

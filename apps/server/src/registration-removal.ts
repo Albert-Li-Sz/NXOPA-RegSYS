@@ -18,14 +18,26 @@ export async function recordRemoteRevocation(
     remoteTeamId: string | null;
   },
   contestId: string,
+  fallbackTarget: Record<string, unknown> = {},
 ) {
   if (!m.remoteUserId && !m.remoteTeamId) return;
+  const prior = await tx.remoteRevocation.findFirst({
+    where: { bindingId: m.bindingId, registrationId: m.registrationId, state: 'PENDING' },
+  });
   if (
-    await tx.remoteRevocation.count({
-      where: { bindingId: m.bindingId, registrationId: m.registrationId, state: 'PENDING' },
-    })
-  )
+    prior &&
+    (!m.remoteUserId || !prior.remoteUserId || prior.remoteUserId === m.remoteUserId) &&
+    (!m.remoteTeamId || !prior.remoteTeamId || prior.remoteTeamId === m.remoteTeamId)
+  ) {
+    await tx.remoteRevocation.update({
+      where: { id: prior.id },
+      data: {
+        remoteUserId: m.remoteUserId ?? prior.remoteUserId,
+        remoteTeamId: m.remoteTeamId ?? prior.remoteTeamId,
+      },
+    });
     return;
+  }
   const binding = await tx.platformBinding.findUnique({
     where: { id: m.bindingId },
     include: { instance: { select: { name: true, baseUrl: true } } },
@@ -38,15 +50,22 @@ export async function recordRemoteRevocation(
       remoteUserId: m.remoteUserId,
       remoteTeamId: m.remoteTeamId,
       target: json({
-        platformName: binding?.instance.name,
-        baseUrl: binding?.instance.baseUrl,
-        remoteContestId: binding?.remoteContestId,
+        ...fallbackTarget,
+        platformName: binding?.instance.name ?? fallbackTarget.platformName,
+        baseUrl: binding?.instance.baseUrl ?? fallbackTarget.baseUrl,
+        remoteContestId: binding?.remoteContestId ?? fallbackTarget.remoteContestId,
       }),
     },
   });
 }
 // Callers hold the registration lock. Only settlement data and minimal deletion metadata survive.
-export async function removeRegistration(tx: Tx, r: Registration, actorId: string, reason: string) {
+export async function removeRegistration(
+  tx: Tx,
+  r: Registration,
+  actorId: string,
+  reason: string,
+  source: 'CANCEL' | 'DELETE' = 'CANCEL',
+) {
   await lock(tx, `seating:${r.contestId}`);
   const account = await ensureFinance(tx, r);
   const financialCount =
@@ -192,7 +211,8 @@ export async function removeRegistration(tx: Tx, r: Registration, actorId: strin
         },
       });
   }
-  await tx.auditEvent.deleteMany({
+  // Keep the action timeline for accountability, but discard recoverable form data.
+  await tx.auditEvent.updateMany({
     where: {
       resourceId: r.id,
       NOT: {
@@ -201,13 +221,14 @@ export async function removeRegistration(tx: Tx, r: Registration, actorId: strin
         })),
       },
     },
+    data: { details: { deleted: true, personalDataRemoved: true } },
   });
   await tx.registration.delete({ where: { id: r.id } });
   await tx.contest.update({
     where: { id: r.contestId },
     data: {
       deletedSubmittedCount: { increment: r.submittedAt ? 1 : 0 },
-      deletedCancelledCount: { increment: r.submittedAt ? 1 : 0 },
+      deletedCancelledCount: { increment: r.submittedAt && source === 'CANCEL' ? 1 : 0 },
       seatingVersion: { increment: 1 },
     },
   });
@@ -221,6 +242,7 @@ export async function removeRegistration(tx: Tx, r: Registration, actorId: strin
     contestId: r.contestId,
     reason,
     financial,
+    source,
   });
   return receipt;
 }

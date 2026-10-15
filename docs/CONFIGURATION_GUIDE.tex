@@ -1,4 +1,15 @@
 \documentclass[UTF8,fontset=fandol,a4paper,11pt]{ctexart}
+\IfFontExistsTF{Noto Serif CJK SC}{
+  \setCJKmainfont{Noto Serif CJK SC}
+  \setCJKsansfont{Noto Sans CJK SC}
+  \setCJKmonofont{Noto Sans CJK SC}
+}{
+  \IfFontExistsTF{Heiti SC}{
+    \setCJKmainfont{Heiti SC}
+    \setCJKsansfont{Heiti SC}
+    \setCJKmonofont{Heiti SC}
+  }{}
+}
 \usepackage[margin=20mm,headheight=16pt]{geometry}
 \usepackage{graphicx,xcolor,booktabs,tabularx,enumitem,fancyhdr,fvextra,etoolbox,hyperref}
 \definecolor{brand}{HTML}{2080F0}
@@ -9,6 +20,7 @@
 \graphicspath{{configuration-screenshots/}}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{6pt}
+\setlength{\emergencystretch}{2em}
 \setlist{nosep,leftmargin=1.6em,topsep=4pt}
 \renewcommand{\arraystretch}{1.25}
 \ctexset{section={format=\Large\bfseries\color{ink},beforeskip=0pt,afterskip=10pt}}
@@ -16,7 +28,7 @@
 \fancyhf{}
 \fancyhead[L]{\small\color{muted}南晓开放原子社在线报名系统}
 \fancyhead[R]{\small\color{muted}配置教程}
-\fancyfoot[L]{\small\color{muted}v0.2.0 · 中文 · Asia/Shanghai}
+\fancyfoot[L]{\small\color{muted}v0.5.2 · 中文 · Asia/Shanghai}
 \fancyfoot[R]{\small\color{muted}\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
@@ -26,7 +38,7 @@
 \AfterEndEnvironment{Code}{\end{minipage}\par}
 \begin{document}
 \thispagestyle{empty}
-{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 14 日}
+{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 16 日}
 \vspace{9mm}
 
 {\huge\bfseries\color{ink}南晓开放原子社\\[3mm]在线报名系统}
@@ -85,14 +97,14 @@ ALLOW_PRIVATE_INTEGRATIONS=true
 系统管理员登录后打开“管理中心 → 全局设置”，调整站点名称、主色与页脚，并点击“保存”。竞赛管理员没有全局设置权限。默认主色为 \texttt{\#2080F0}。
 \shot[0.24\textheight]{04-site}{全局设置中的站点配置。}
 
-\textbf{公网地址。}填写根路径 HTTP 或 HTTPS 地址，例如 \code{https://reg.example.org}。地址只用于生成邮件和邀请链接，不限制登录请求来源；TLS、域名及访问控制由反向代理负责。保留地址基本格式校验，不接受账号密码、额外路径、查询参数或片段。保存检查版本并记录审计。API 和 Worker 动态读取数据库地址，尚未发送的邮件在执行时读取最新地址。
+\textbf{公网地址。}填写根路径 HTTP 或 HTTPS 地址，例如 \code{https://reg.example.org}。地址用于生成邮件和邀请链接，同时允许来自该地址的浏览器写入。同源请求也自动允许，额外管理来源用 \texttt{TRUSTED\_\allowbreak MANAGEMENT\_\allowbreak ORIGINS} 配置。TLS、域名及访问控制由反向代理负责。地址不接受账号密码、额外路径、查询参数或片段；保存检查版本并记录审计。API 和 Worker 动态读取数据库地址。
 
 \newpage
 \begin{enumerate}
 \item 域名解析：给注册域名添加指向服务器的 A 记录；启用 IPv6 时再配置正确的 AAAA 记录。
 \item 反向代理：默认由自有代理监听 HTTPS，配置证书。整个站点转发到内部 Caddy 的 \code{127.0.0.1:8080} HTTP 入口，保留 Host、Origin 和请求协议。
 \item 更换域名：先解析新域名、配置代理与证书，并实际检查新站可登录，再保存新的公网地址。旧的、已经发出的邀请 URL 不会被重写，迁移期保留旧域名反向代理或引导用户重新获取链接。
-\item 请求与会话：不再使用 \code{PUBLIC_URL} 或 Origin 白名单拒绝请求。登录后写操作仍需 CSRF 令牌；反向代理正确传递 \code{X-Forwarded-Proto}，HTTPS 请求使用 Secure 会话 Cookie。
+\item 请求与会话：登录前亦检查写请求来源，登录后另检查 CSRF 令牌。反向代理正确传递 \texttt{X-\allowbreak Forwarded-\allowbreak Proto}；公网地址为 HTTPS 时强制使用 Secure 会话 Cookie，浏览器也须通过 HTTPS 访问。HTTP 内网部署继续支持 HTTP 地址。
 \end{enumerate}
 \begin{Code}
 # 原生部署：在项目目录使用原数据库与加密密钥
@@ -285,17 +297,17 @@ curl --user reg_bridge https://domjudge.example.org/api/contests/training-2026/g
 
 \newpage
 \section{竞赛报名规则与线下财务}
-打开“管理中心 → 竞赛”，创建或编辑竞赛。设置竞赛名称、赛季、时间、地点、公告和发布状态，再配置报名规则。草稿不显示在公开竞赛列表。
+打开“活动及竞赛管理中心”，创建或查看活动。已保存配置先点击“编辑”才可修改；设置名称、赛季、时间、地点、公告和发布状态，再配置报名规则。草稿不显示在公开列表。
 \shot[0.30\textheight]{10-contest-policy}{团队报名示例：邀请成员、人数限制、老师关联与人工审核。}
 
 个人报名固定一人。团队报名设置最少 / 最多人数，以及成员邀请或队长代填。老师可设置为必需、可选或不启用；必需老师的报名需要有效确认关联。
 \shot[0.28\textheight]{11-contest-finance}{线下财务示例：按报名单计费，先审核再缴费。}
 
-可设置免费、按报名单或按人数计费；金额单位是分，100 分等于 1 元。填写线下收款说明，选择“先审核，再缴费”或“先缴费，再审核”，并设置退款与开票。非正式报名由参赛者选择且必须人工审核，费用、老师与准考证规则沿用正式报名。参赛者上传凭证后，由管理员确认实际到账；部分到账不会被视为足额缴费。退款完成需要记录实际退款，开票由管理员上传实际发票。
+可设置免费、按报名单或按人数计费；费用输入单位为元，支持两位小数，例如 150.00 元。填写线下收款说明，选择审核与缴费顺序，并设置退款与开票。非正式报名同样需要审核。核账只能确认凭证申报金额，金额不符须退回；应记录交易参考号，申请人和上传者不能核账自己的凭证。部分到账不视为足额缴费，超应收退款须由不同管理员批准和完成。
 
 \newpage
 \section{配置报名字段}
-\textbf{按时间审核。}每个竞赛从 1 开始按首次成功提交的先后分配报名编号。草稿没有编号；并发提交不重号；补正、重新提交和取消保留原编号与首次提交时间。报名列表、详情与 CSV 显示编号并按编号升序排列，旧报名升级时按历史首次提交时间补齐。
+\textbf{按时间审核。}每个活动从 1 开始按首次成功提交的先后分配报名编号。草稿没有编号；并发提交不重号；补正与重新提交保留原编号与首次提交时间。取消后永久删除报名，财务独立保留，原编号不重复使用。名单 CSV 为每位有效成员一行，每个成员、队伍、报名和老师字段各一列；团队金额仅填写在该报名第一行，单位为元。
 在竞赛“报名字段”页增加字段，或从全局字段导入。设置中文名称、稳定键名、作用域、类型、必填与敏感标记，以及选项或条件。提交报名会保存人员、表单与费用快照；关键资料修改需要重新审核。
 \shot[0.38\textheight]{12-fields}{可视化字段列表：参赛者、队伍、老师或报名单的字段分别配置。}
 

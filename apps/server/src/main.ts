@@ -17,7 +17,7 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { config } from './config.js';
 import { Idempotency } from './idempotency.js';
 import { ApiController, ExternalController } from './api.js';
-import { AuthService, attachPrincipal, checkCsrf, type AuthRequest } from './auth.js';
+import { AuthService, attachPrincipal, checkCsrf, rateLimit, type AuthRequest } from './auth.js';
 import { RegistrationService } from './registrations.js';
 import { SeatingService } from './seating.js';
 import { FinanceService } from './finance.js';
@@ -103,8 +103,18 @@ if (config.production) app.getHttpAdapter().getInstance().set('trust proxy', 1);
 app.use(cookieParser());
 app.use(async (req: AuthRequest, res: import('express').Response, next: (e?: unknown) => void) => {
   try {
+    if (req.path.startsWith('/api/v1/') && !req.path.endsWith('/health'))
+      await rateLimit(
+        `http-ip:${req.ip}:${['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? 'read' : 'write'}`,
+        ['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? 3000 : 600,
+      );
     await attachPrincipal(req);
     await checkCsrf(req);
+    if (req.principal)
+      await rateLimit(
+        `http-user:${req.principal.id}:${req.method === 'GET' ? 'read' : 'write'}`,
+        req.method === 'GET' ? 1200 : 300,
+      );
     next();
   } catch (e) {
     res
@@ -125,8 +135,8 @@ const document = describeApi(
       .build(),
   ),
 );
-SwaggerModule.setup('api/docs', app, document);
 if (!config.production) {
+  SwaggerModule.setup('api/docs', app, document);
   await mkdir(path.join(config.root, 'docs/api'), { recursive: true });
   await writeFile(
     path.join(config.root, 'docs/api/openapi.json'),

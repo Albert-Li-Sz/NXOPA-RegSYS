@@ -53,7 +53,9 @@ services:
     networks:
       - data
     ports:
-      - '${MINIO_CONSOLE_PORT:-127.0.0.1:9001}:9001'
+      - target: 9001
+        published: '${MINIO_CONSOLE_PORT:-9001}'
+        host_ip: '${MINIO_BIND_ADDRESS:-127.0.0.1}'
     healthcheck:
       test: [CMD, curl, -fsS, http://localhost:9000/minio/health/live]
       interval: 5s
@@ -82,6 +84,8 @@ services:
       retries: 30
     restart: unless-stopped
     logging: *logging
+    mem_limit: 1000m
+    pids_limit: 256
 
   redis:
     image: redis:7.4.5-alpine
@@ -97,6 +101,8 @@ services:
       retries: 30
     restart: unless-stopped
     logging: *logging
+    mem_limit: 256m
+    pids_limit: 128
 
   initialize:
     <<: *app
@@ -115,7 +121,9 @@ services:
   api:
     <<: *app
     ports:
-      - '${API_PORT:-127.0.0.1:3000}:3000'
+      - target: 3000
+        published: '${API_PORT:-3000}'
+        host_ip: '${API_BIND_ADDRESS:-127.0.0.1}'
     depends_on:
       initialize:
         condition: service_completed_successfully
@@ -195,7 +203,9 @@ services:
     networks:
       - edge
     ports:
-      - '${WEB_PORT:-127.0.0.1:8081}:8080'
+      - target: 8080
+        published: '${WEB_PORT:-8081}'
+        host_ip: '${WEB_BIND_ADDRESS:-127.0.0.1}'
     read_only: true
     init: true
     cap_drop:

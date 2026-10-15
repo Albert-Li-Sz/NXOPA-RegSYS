@@ -248,6 +248,7 @@ try {
   assert.equal(paid.ledger.filter((e: any) => e.kind === 'PAYMENT').length, 1);
   v = await alice.api(`/finance/${paid.id}/vouchers`, 'POST', {
     ...input,
+    attachmentId: (await alice.upload(paid.id)).id,
     amountCents: 2000,
     reference: `full-${run}`,
   });

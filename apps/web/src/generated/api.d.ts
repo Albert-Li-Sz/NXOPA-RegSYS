@@ -1210,6 +1210,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description REGISTRATIONS permission required. CSV contains one active member per row, separate columns for every current or historical PERSON/TEAM/REGISTRATION/COACH field, and formula-safe escaped cells. FINANCE permission adds yuan totals on the first member row only. Maximum 10000 members, 500 columns and 25 MB per export; export filters and counts are audited. */
         get: operations["ApiController_export"];
         put?: never;
         post?: never;
@@ -1440,6 +1441,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description FINANCE permission required. Confirmation cannot change the declared amount; optional amountCents must match it. A nonempty channel/reference pair is required and cannot be credited twice. Owners and proof uploaders cannot confirm their own vouchers. */
         post: operations["ApiController_confirm"];
         delete?: never;
         options?: never;
@@ -2400,6 +2402,8 @@ export interface components {
                 feeMode: "FREE" | "FIXED" | "PER_PERSON";
                 /** @default 0 */
                 feeCents: number;
+                /** @default 0 */
+                capacity: number;
                 /**
                  * @default REVIEW_FIRST
                  * @enum {string}
@@ -11168,6 +11172,7 @@ export interface operations {
                     /** @enum {string} */
                     decision: "CONFIRMED" | "REJECTED";
                     amountCents?: number;
+                    reference?: string;
                     reason?: string;
                 };
             };
@@ -13842,6 +13847,8 @@ export interface operations {
                     contestId?: string;
                     /** Format: uri */
                     url: string;
+                    /** @default false */
+                    allowPrivate: boolean;
                 };
             };
         };

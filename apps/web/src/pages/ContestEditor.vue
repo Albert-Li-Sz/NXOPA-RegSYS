@@ -66,6 +66,12 @@ const form = ref<Data>({
   fields: JSON.parse(JSON.stringify(defaultFields)),
 });
 const template = ref({ name: '活动准考证模板', source: defaultTemplate, version: 0 });
+const feeYuan = computed({
+  get: () => form.value.policy.feeCents / 100,
+  set: (value: number | undefined) => {
+    form.value.policy.feeCents = Math.round(Number(value ?? 0) * 100);
+  },
+});
 const savedModules = ref(JSON.stringify(form.value.modules));
 const edit = useEditSession(form, isNew.value),
   templateEdit = useEditSession(template);
@@ -668,6 +674,15 @@ function insertVariable(v: string) {
                   :value="p.id"
                   :label="p.name" /></el-select
             ></el-form-item>
+            <el-form-item label="报名名额（份）">
+              <el-input-number
+                v-model="form.policy.capacity"
+                :min="0"
+                :max="1000000"
+                :precision="0"
+              />
+              <p class="form-help">0 表示不限；个人或团队每份已提交报名占一个名额，取消后释放。</p>
+            </el-form-item>
             <el-form-item label="重复参赛检查字段"
               ><el-select
                 v-model="form.policy.uniquePersonFields"
@@ -693,12 +708,13 @@ function insertVariable(v: string) {
                 ><el-radio value="FREE">免费</el-radio><el-radio value="FIXED">按报名单</el-radio
                 ><el-radio value="PER_PERSON">按人数</el-radio></el-radio-group
               ></el-form-item
-            ><el-form-item v-if="form.policy.feeMode !== 'FREE'" label="费用（分，100 分 = 1 元）"
+            ><el-form-item v-if="form.policy.feeMode !== 'FREE'" label="费用（元）"
               ><el-input-number
-                v-model="form.policy.feeCents"
-                :min="1"
-                :max="100000000"
-                :step="100" /></el-form-item
+                v-model="feeYuan"
+                :min="0.01"
+                :max="1000000"
+                :precision="2"
+                :step="1" /></el-form-item
             ><el-form-item v-if="form.policy.feeMode !== 'FREE'" label="审核与缴费顺序"
               ><el-select v-model="form.policy.paymentSequence" filterable
                 ><el-option label="先审核，再缴费" value="REVIEW_FIRST" /><el-option
@@ -862,6 +878,7 @@ function insertVariable(v: string) {
             value="UNOFFICIAL"
             label="非正式参赛" /></el-select
         ><a
+          v-if="permission('REGISTRATIONS')"
           :href="`/api/v1/registrations/export?contestId=${route.params.id}&${roster.query(false)}`"
           ><el-button>导出名单</el-button></a
         ><el-button :disabled="batchBusy" @click="refreshModules">刷新</el-button

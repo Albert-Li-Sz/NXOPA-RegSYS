@@ -1,0 +1,324 @@
+{
+  "checkedAt": "2026-10-15T16:16:08.798Z",
+  "baseCommit": "8e9fca54611a10b055950364ac14f81faa2ac2bf",
+  "branch": "codex/activity-workflows",
+  "workingTreeDirty": true,
+  "scope": "Local development and isolated production fixtures. No production data writes, push or release.",
+  "requirements": {
+    "securityAudit": "docs/releases/SECURITY_AUDIT_2026-10-15.md",
+    "feeUnit": "CNY yuan in UI; integer cents in API/database",
+    "roster": "Separate columns for PERSON, TEAM, REGISTRATION, COACH and historical fields; active member rows; first member row carries financial totals"
+  },
+  "checks": [
+    {
+      "name": "typecheck",
+      "command": "pnpm typecheck",
+      "status": "PASS",
+      "log": ".runtime/reports/security-typecheck-final.log"
+    },
+    {
+      "name": "production-build",
+      "command": "pnpm build",
+      "status": "PASS",
+      "log": ".runtime/reports/security-build-final.log"
+    },
+    {
+      "name": "unit",
+      "command": "pnpm test",
+      "status": "PASS",
+      "count": 22,
+      "log": ".runtime/reports/security-unit-final.log"
+    },
+    {
+      "name": "full-regression",
+      "command": "pnpm test:full",
+      "status": "PASS",
+      "count": 20,
+      "log": ".runtime/reports/security-full-final.log"
+    },
+    {
+      "name": "browser",
+      "command": "pnpm test:e2e (inside test:full)",
+      "status": "PASS",
+      "count": 77,
+      "log": ".runtime/reports/full-test-e2e.log"
+    },
+    {
+      "name": "security-api",
+      "command": "pnpm test:security",
+      "status": "PASS",
+      "count": 20,
+      "log": ".runtime/reports/security-api-final.log"
+    },
+    {
+      "name": "export-batches",
+      "command": "pnpm test:security -- team-export-all-scopes-and-historical-fields export-permission-and-field-columns",
+      "status": "PASS",
+      "count": 2,
+      "log": ".runtime/reports/security-export-final.log"
+    },
+    {
+      "name": "production-platform-csp",
+      "command": "PLATFORM_TEST_PRODUCTION_WEB=1 pnpm test:platform-features",
+      "status": "PASS",
+      "count": 12,
+      "log": ".runtime/reports/security-platform-csp-green.log"
+    },
+    {
+      "name": "oauth-and-ui",
+      "command": "pnpm test:release-features",
+      "status": "PASS",
+      "count": 8,
+      "log": ".runtime/reports/security-release-features.log"
+    },
+    {
+      "name": "backup-archives",
+      "command": "pnpm test:backup-security",
+      "status": "PASS",
+      "count": 18,
+      "log": ".runtime/reports/security-backup-test.log"
+    },
+    {
+      "name": "image-digests",
+      "command": "pnpm test:install-images",
+      "status": "PASS",
+      "count": 4,
+      "log": ".runtime/reports/security-install-images.log"
+    },
+    {
+      "name": "install-cli",
+      "command": "pnpm test:install-cli",
+      "status": "PASS",
+      "count": 20,
+      "log": ".runtime/reports/security-install-cli.log"
+    },
+    {
+      "name": "install-bootstrap",
+      "command": "pnpm test:install-bootstrap",
+      "status": "PASS",
+      "count": 5,
+      "log": ".runtime/reports/security-install-bootstrap.log"
+    },
+    {
+      "name": "static-server",
+      "command": "pnpm test:web-static",
+      "status": "PASS",
+      "count": 1,
+      "log": ".runtime/reports/security-web-static.log"
+    },
+    {
+      "name": "format",
+      "command": "pnpm format:check",
+      "status": "PASS",
+      "log": ".runtime/reports/security-format-final.log"
+    },
+    {
+      "name": "runtime-dependencies",
+      "command": "pnpm audit:runtime",
+      "status": "PASS",
+      "log": ".runtime/reports/security-dependency-final.log"
+    }
+  ],
+  "securityCases": [
+    "preauth-cross-site-request",
+    "voucher-declared-amount-is-immutable",
+    "transaction-reference-required-and-unique",
+    "finance-manager-cannot-confirm-own-receipt",
+    "duplicate-voucher-attachment",
+    "excess-refund-requires-independent-completion",
+    "administrator-cannot-replace-login-email",
+    "unique-participant-fields",
+    "concurrent-registration-capacity",
+    "reserved-capacity-survives-correction",
+    "deletion-retains-redacted-audit-and-separates-cancellations",
+    "export-permission-and-field-columns",
+    "deep-pagination-is-bounded",
+    "team-export-all-scopes-and-historical-fields",
+    "webhook-cannot-target-loopback",
+    "secure-session-uses-public-https-without-proxy-header",
+    "invalid-reset-requests-are-rate-limited",
+    "slow-platform-does-not-lock-registration-removal",
+    "finance-history-rejects-prototype-key",
+    "invalid-file-id-is-validation-error"
+  ],
+  "fullRegression": [
+    {
+      "suite": "test:integration",
+      "success": true,
+      "elapsedMs": 8604,
+      "log": ".runtime/reports/full-test-integration.log"
+    },
+    {
+      "suite": "test:auth",
+      "success": true,
+      "elapsedMs": 4884,
+      "log": ".runtime/reports/full-test-auth.log"
+    },
+    {
+      "suite": "test:accounts",
+      "success": true,
+      "elapsedMs": 9365,
+      "log": ".runtime/reports/full-test-accounts.log"
+    },
+    {
+      "suite": "test:feishu",
+      "success": true,
+      "elapsedMs": 1924,
+      "log": ".runtime/reports/full-test-feishu.log"
+    },
+    {
+      "suite": "test:invitations",
+      "success": true,
+      "elapsedMs": 6858,
+      "log": ".runtime/reports/full-test-invitations.log"
+    },
+    {
+      "suite": "test:mail",
+      "success": true,
+      "elapsedMs": 11151,
+      "log": ".runtime/reports/full-test-mail.log"
+    },
+    {
+      "suite": "test:mail-failover",
+      "success": true,
+      "elapsedMs": 7334,
+      "log": ".runtime/reports/full-test-mail-failover.log"
+    },
+    {
+      "suite": "test:template-bugs",
+      "success": true,
+      "elapsedMs": 4947,
+      "log": ".runtime/reports/full-test-template-bugs.log"
+    },
+    {
+      "suite": "test:overview",
+      "success": true,
+      "elapsedMs": 947,
+      "log": ".runtime/reports/full-test-overview.log"
+    },
+    {
+      "suite": "test:enhancements",
+      "success": true,
+      "elapsedMs": 5760,
+      "log": ".runtime/reports/full-test-enhancements.log"
+    },
+    {
+      "suite": "test:admissions",
+      "success": true,
+      "elapsedMs": 4044,
+      "log": ".runtime/reports/full-test-admissions.log"
+    },
+    {
+      "suite": "test:activity-workflows",
+      "success": true,
+      "elapsedMs": 6098,
+      "log": ".runtime/reports/full-test-activity-workflows.log"
+    },
+    {
+      "suite": "test:workflow-upgrade",
+      "success": true,
+      "elapsedMs": 3062,
+      "log": ".runtime/reports/full-test-workflow-upgrade.log"
+    },
+    {
+      "suite": "test:bugs",
+      "success": true,
+      "elapsedMs": 10869,
+      "log": ".runtime/reports/full-test-bugs.log"
+    },
+    {
+      "suite": "test:security",
+      "success": true,
+      "elapsedMs": 4187,
+      "log": ".runtime/reports/full-test-security.log"
+    },
+    {
+      "suite": "test:permissions",
+      "success": true,
+      "elapsedMs": 977,
+      "log": ".runtime/reports/full-test-permissions.log"
+    },
+    {
+      "suite": "test:file-race",
+      "success": true,
+      "elapsedMs": 2314,
+      "log": ".runtime/reports/full-test-file-race.log"
+    },
+    {
+      "suite": "test:load",
+      "success": true,
+      "elapsedMs": 10896,
+      "log": ".runtime/reports/full-test-load.log"
+    },
+    {
+      "suite": "test:mcp",
+      "success": true,
+      "elapsedMs": 1383,
+      "log": ".runtime/reports/full-test-mcp.log"
+    },
+    {
+      "suite": "test:e2e",
+      "success": true,
+      "elapsedMs": 247411,
+      "log": ".runtime/reports/full-test-e2e.log"
+    }
+  ],
+  "productionPlatformChecks": [
+    "生产模式关闭 Swagger 页面与 JSON 规范入口",
+    "学生与教师注册、真实 SMTP 验证码、格式错误与重复使用拒绝",
+    "MinIO 真实写入读取删除、历史本地迁移、头像、切换桶后旧对象可读、私有文件越权拒绝",
+    "队伍公示隐私、公开材料链接、队伍文件分发与上传、仅本人或管理员可删除",
+    "三种管理员权限、学生教师均可授权、即时撤回与到期、学生视图计数和竞赛范围",
+    "实名信息修改必须审核、完整 HTML 邮件模板、变量转义、工单反馈与投递状态",
+    "业务邮件失败可查看并授权重发、SMTP 恢复后成功投递、验证码重置密码和重放拒绝",
+    "真实 LaTeX 生成准考证存入 S3、发放下载与他人访问拒绝",
+    "注销保留报名与附件、禁止直接凭学号恢复、重新注册经实名审核恢复历史、保留最后系统管理员",
+    "S3 文件导出与恢复为本地副本，不依赖原存储端点",
+    "生产静态构建经真实 Caddy 的 CSP 下完成中文 PDF.js 渲染",
+    "真实浏览器验证新增页面的手机、平板、桌面布局与脚本错误"
+  ],
+  "oauthChecks": [
+    "生产模式下域名与 PUBLIC_URL 不同仍能登录，允许 HTTP 公网地址，登录后的 CSRF 令牌仍有效",
+    "五项资料不完整时禁止报名；按首次提交时间编号，并发编号唯一、重新提交不改变编号或首次时间",
+    "管理员标签规范化、用户及报名筛选正常，旧版本写入被拒绝",
+    "真实 GitHub 接口模拟完成 PKCE、已验证私有邮箱、无密码会话；篡改及重放 state 被拒绝，新用户仍需完善资料",
+    "封禁账号的 GitHub 会话立即失效，重新授权不能绕过封禁，解除后恢复登录",
+    "未验证邮箱不能登录，同邮箱不自动合并；本站账号主动绑定后可用 GitHub 登录，后台不返回密钥",
+    "手机、平板和桌面页面布局，长昵称与联系方式编辑、HTTP 表单、密码重置与会话撤销回归通过",
+    "真实浏览器验证 GitHub 入口、登录、管理员标签 / GitHub 设置及五项资料表单，无脚本错误"
+  ],
+  "runtimeAdvisories": 0,
+  "externalHydroPeerAdvisories": 29,
+  "incomplete": [
+    {
+      "name": "source-container-installation",
+      "command": "INSTALL_TEST_MODE=source pnpm test:install",
+      "status": "BLOCKED_EXTERNAL",
+      "reason": "Docker Hub base-image authorization request timed out before image startup and installer backup/restore.",
+      "log": ".runtime/reports/security-install-source.log"
+    }
+  ],
+  "validationNotes": [
+    "The final full regression preceded a smaller export batch/memory bound and stricter metadata block; final targeted API, export, unit, typecheck and build checks cover those changes.",
+    "Production CSP validation uses this static build, native production API, cached official Caddy, S3, real PDF.js browser rendering and actual XeLaTeX. It is separate from full source-image installation."
+  ],
+  "residualFindings": [
+    "M-10: no independent offline artifact-signing trust chain",
+    "L-9: generic default AAD context remains; not all fields have per-record binding",
+    "L-16: privileged one-shot volume initializer retained",
+    "N-5: no separate pnpm bootstrap integrity pin",
+    "Historical duplicate vouchers require manual reconciliation; destroyed old audit records cannot be recovered",
+    "External live Hydro/DOMjudge provisioning and manual remote revocation were not rerun"
+  ],
+  "redGreenEvidence": [
+    ".runtime/reports/security-audit-red.log",
+    ".runtime/reports/security-audit-first-green.log",
+    ".runtime/reports/security-sync-red.log",
+    ".runtime/reports/security-sync-green.log",
+    ".runtime/reports/security-metadata-red.log",
+    ".runtime/reports/security-unit-final.log",
+    ".runtime/reports/security-platform-csp-red.log",
+    ".runtime/reports/security-platform-csp-green.log"
+  ],
+  "report": "docs/SECURITY_REMEDIATION_2026-10-15.md"
+}

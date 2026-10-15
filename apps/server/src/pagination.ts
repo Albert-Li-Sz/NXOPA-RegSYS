@@ -8,13 +8,16 @@ export function pageOptions(query: ListQuery = {}) {
     .number()
     .int()
     .min(1)
-    .max(1000000)
+    .max(5000)
     .parse(query.page ?? 1);
   const pageSize = z.coerce
     .number()
     .int()
     .refine((n) => [20, 50, 100].includes(n), '每页支持 20、50、100 条')
     .parse(query.pageSize ?? 20);
+  z.number()
+    .max(100_000, '分页范围超过上限，请缩小筛选范围')
+    .parse(page * pageSize);
   return { page, pageSize, skip: (page - 1) * pageSize, take: pageSize };
 }
 export async function paginated<T>(
@@ -25,7 +28,10 @@ export async function paginated<T>(
 ): Promise<T[] | PageResult<T>> {
   const p = pageOptions(query);
   if (!p) return find({ take: legacyTake });
-  const [items, total] = await Promise.all([find({ skip: p.skip, take: p.take }), count()]);
+  const [items, total] = await Promise.all([
+    Promise.resolve().then(() => find({ skip: p.skip, take: p.take })),
+    Promise.resolve().then(count),
+  ]);
   return { items, total, page: p.page, pageSize: p.pageSize };
 }
 export function dateFilter(query: ListQuery) {

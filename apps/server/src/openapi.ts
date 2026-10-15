@@ -195,6 +195,7 @@ export function describeApi(document: OpenAPIObject) {
     'post /api/v1/finance/vouchers/{id}/review': object({
       decision: z.enum(['CONFIRMED', 'REJECTED']),
       amountCents: cents.optional(),
+      reference: text.optional(),
       reason: text.optional(),
     }),
     'post /api/v1/finance/ledger/{id}/reverse': object({ reason: text }),
@@ -283,7 +284,11 @@ export function describeApi(document: OpenAPIObject) {
       fields: z.array(text),
       expiresAt: date,
     }),
-    'post /api/v1/admin/webhooks': object({ contestId: id.optional(), url: z.url() }),
+    'post /api/v1/admin/webhooks': object({
+      contestId: id.optional(),
+      url: z.url(),
+      allowPrivate: z.boolean().default(false),
+    }),
     'post /api/v1/admin/fields': 'FieldDefinition',
     'post /api/v1/admin/roles': object({
       userId: id,
@@ -449,6 +454,12 @@ export function describeApi(document: OpenAPIObject) {
       if (url.startsWith('/api/v1/finance/accounts'))
         op.description =
           'Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. Account detail returns policy for historical fees/refunds and invoicePolicy for current invoice types, enabled status and required fields.';
+      if (url === '/api/v1/finance/vouchers/{id}/review')
+        op.description =
+          'FINANCE permission required. Confirmation cannot change the declared amount; optional amountCents must match it. A nonempty channel/reference pair is required and cannot be credited twice. Owners and proof uploaders cannot confirm their own vouchers.';
+      if (url === '/api/v1/registrations/export')
+        op.description =
+          'REGISTRATIONS permission required. CSV contains one active member per row, separate columns for every current or historical PERSON/TEAM/REGISTRATION/COACH field, and formula-safe escaped cells. FINANCE permission adds yuan totals on the first member row only. Maximum 10000 members, 500 columns and 25 MB per export; export filters and counts are audited.';
       if (url === '/api/v1/registrations/review-queue') {
         op.description =
           'Scoped REGISTRATIONS permission required. Returns all submitted IDs matching the current list filters in review order, independent of page size; defaults to pending review.';

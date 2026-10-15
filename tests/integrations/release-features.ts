@@ -57,6 +57,7 @@ const env = {
   NODE_ENV: 'production',
   PORT: String(apiPort),
   PUBLIC_URL: 'http://old.example.invalid',
+  TRUSTED_MANAGEMENT_ORIGINS: `https://proxy.example.test,${webBase},${webBase.replace('127.0.0.1', 'nxopa-ui.test')}`,
   DATABASE_URL: `postgresql://contest:${secret}@127.0.0.1:${pgPort}/contest_center`,
   REDIS_URL: `redis://127.0.0.1:${redisPort}`,
   ENCRYPTION_KEY: randomBytes(32).toString('hex'),
@@ -595,14 +596,11 @@ try {
     await browser.close();
   }
   passed('真实浏览器验证 GitHub 入口、登录、管理员标签 / GitHub 设置及五项资料表单，无脚本错误');
-  if (process.env.GENERATE_API_SCHEMA === '1') {
-    const response = await fetch(`${apiBase}/api/docs-json`);
-    assert.equal(response.status, 200);
-    await writeFile(
-      path.join(root, 'docs/api/openapi.json'),
-      JSON.stringify(await response.json(), null, 2) + '\n',
+  assert.equal((await fetch(`${apiBase}/api/docs-json`)).status, 404);
+  if (process.env.GENERATE_API_SCHEMA === '1')
+    throw new Error(
+      'Generate the OpenAPI snapshot from the development API; production documentation endpoints are disabled.',
     );
-  }
   success = true;
 } finally {
   for (const child of children) {

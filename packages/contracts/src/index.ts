@@ -1,3 +1,4 @@
+import './browser-validation.js';
 import { z } from 'zod';
 export {
   defaultMailTemplate,
@@ -259,6 +260,7 @@ export const policySchema = z
     platformProfiles: z.array(z.enum(['HYDRO_5_0_7', 'DOMJUDGE_9_0_1'])).default([]),
     feeMode: z.enum(['FREE', 'FIXED', 'PER_PERSON']).default('FREE'),
     feeCents: z.number().int().min(0).max(100_000_000).default(0),
+    capacity: z.number().int().min(0).max(1_000_000).default(0),
     paymentSequence: z.enum(['REVIEW_FIRST', 'PAYMENT_FIRST']).default('REVIEW_FIRST'),
     paymentInstructions: z.string().max(10000).default(''),
     refundsEnabled: z.boolean().default(true),
@@ -473,6 +475,8 @@ export interface ProvisioningResultV1 {
   verification?: Record<string, unknown>;
 }
 export interface ConnectorConfiguration {
+  /** Internal absolute deadline for one provisioning attempt. */
+  requestDeadline?: number;
   baseUrl: string;
   credentials: { username?: string; password?: string; token?: string };
   remoteContestId: string;

@@ -8,14 +8,41 @@ export const auth = reactive<{
   csrf: string;
   loaded: boolean;
 }>({ user: null, csrf: '', loaded: false });
-export async function api<T = any>(path: string, method = 'GET', body?: unknown): Promise<T> {
+const pendingWrites = new Map<string, Promise<any>>();
+const retryKeys = new Map<string, { key: string; expiresAt: number }>();
+export function api<T = any>(path: string, method = 'GET', body?: unknown): Promise<T> {
+  if (method === 'GET' || body instanceof FormData) return requestApi<T>(path, method, body);
+  const fingerprint = JSON.stringify([auth.user?.id ?? 'anonymous', method, path, body]);
+  if (pendingWrites.has(fingerprint)) return pendingWrites.get(fingerprint)!;
+  for (const [key, value] of retryKeys) if (value.expiresAt <= Date.now()) retryKeys.delete(key);
+  const retry = retryKeys.get(fingerprint) ?? { key: requestId(), expiresAt: Date.now() + 300000 };
+  retryKeys.set(fingerprint, retry);
+  const promise = requestApi<T>(path, method, body, retry.key);
+  pendingWrites.set(fingerprint, promise);
+  promise.then(
+    () => {
+      pendingWrites.delete(fingerprint);
+      retryKeys.delete(fingerprint);
+    },
+    () => {
+      pendingWrites.delete(fingerprint);
+    },
+  );
+  return promise;
+}
+async function requestApi<T = any>(
+  path: string,
+  method: string,
+  body?: unknown,
+  idempotencyKey = requestId(),
+): Promise<T> {
   const form = body instanceof FormData;
   const response = await fetch(`/api/v1${path}`, {
     method,
     credentials: 'same-origin',
     headers: {
       ...(form ? {} : { 'Content-Type': 'application/json' }),
-      ...(method === 'GET' ? {} : { 'X-CSRF-Token': auth.csrf, 'Idempotency-Key': requestId() }),
+      ...(method === 'GET' ? {} : { 'X-CSRF-Token': auth.csrf, 'Idempotency-Key': idempotencyKey }),
     },
     body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   });

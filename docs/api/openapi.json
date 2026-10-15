@@ -9535,7 +9535,8 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "description": "REGISTRATIONS permission required. CSV contains one active member per row, separate columns for every current or historical PERSON/TEAM/REGISTRATION/COACH field, and formula-safe escaped cells. FINANCE permission adds yuan totals on the first member row only. Maximum 10000 members, 500 columns and 25 MB per export; export filters and counts are audited."
       }
     },
     "/api/v1/registrations/{id}/finance/{collection}": {
@@ -11364,6 +11365,7 @@
             "cookie": []
           }
         ],
+        "description": "FINANCE permission required. Confirmation cannot change the declared amount; optional amountCents must match it. A nonempty channel/reference pair is required and cannot be credited twice. Owners and proof uploaders cannot confirm their own vouchers.",
         "requestBody": {
           "required": true,
           "content": {
@@ -11383,6 +11385,9 @@
                     "minimum": 0,
                     "exclusiveMinimum": true,
                     "maximum": 9007199254740991
+                  },
+                  "reference": {
+                    "type": "string"
                   },
                   "reason": {
                     "type": "string"
@@ -15316,10 +15321,15 @@
                   "url": {
                     "type": "string",
                     "format": "uri"
+                  },
+                  "allowPrivate": {
+                    "default": false,
+                    "type": "boolean"
                   }
                 },
                 "required": [
-                  "url"
+                  "url",
+                  "allowPrivate"
                 ],
                 "additionalProperties": false
               }
@@ -18724,6 +18734,12 @@
                 "minimum": 0,
                 "maximum": 100000000
               },
+              "capacity": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
               "paymentSequence": {
                 "default": "REVIEW_FIRST",
                 "type": "string",
@@ -18794,6 +18810,7 @@
               "platformProfiles",
               "feeMode",
               "feeCents",
+              "capacity",
               "paymentSequence",
               "paymentInstructions",
               "refundsEnabled",

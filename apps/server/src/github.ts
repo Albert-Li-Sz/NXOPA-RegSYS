@@ -1,3 +1,4 @@
+import { secureCookies } from './site-settings.js';
 import { BadRequestException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -158,7 +159,7 @@ export class GithubService {
     await redis.set(`github-state:${sha(state)}`, JSON.stringify(record), 'EX', 600);
     res.cookie(stateCookie, state, {
       httpOnly: true,
-      secure: req.secure,
+      secure: await secureCookies(req),
       sameSite: 'lax',
       maxAge: 600000,
       path: '/api/v1/auth/github',

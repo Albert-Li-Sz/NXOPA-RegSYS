@@ -1,6 +1,6 @@
 # 一键部署
 
-V0.5.1 使用仓库根目录的单一入口 `install.sh`，支持安装、更新、卸载和日常维护。旧 `install` 目录不再使用；Compose 配置、示例及辅助函数放在 `deploy`，不需要逐个运行脚本。宿主机需要 Docker、Compose 2.24.4 以上、Bash、OpenSSL、curl 和 tar，无需 Node.js、pnpm、PostgreSQL 或 LaTeX。
+V0.5.2 使用仓库根目录的单一入口 `install.sh`，支持安装、更新、卸载和日常维护。旧 `install` 目录不再使用；Compose 配置、示例及辅助函数放在 `deploy`，不需要逐个运行脚本。宿主机需要 Docker、Compose 2.24.4 以上、Bash、OpenSSL、curl 和 tar，无需 Node.js、pnpm、PostgreSQL 或 LaTeX。
 
 从 v0.4.x 或更早版本升级时，先保留更新器生成的加密备份及原加密密钥。本版迁移独立财务账户，并永久清理历史取消报名及专属资料，收款、账簿、退款、发票和财务附件继续保留。升级后核对财务单据与余额；永久清理后的回退必须恢复升级前数据库及文件备份，不能只切回旧镜像。详情见 [平台指南](../docs/PLATFORM_GUIDE.md)。
 
@@ -19,7 +19,7 @@ bash install.sh --dir /opt/my-registration
 
 菜单提供安装、更新、卸载与状态；也可执行 `bash install.sh install`。向导选择项目名、镜像版本、Caddy 的本机端口与邮件链接的站点地址，生成随机数据库密码和 32 字节加密密钥，保存为权限 `600` 的 `deploy/.env`，启动后交互创建管理员。密码输入不显示，正式实例不创建演示账号。
 
-从 Release 下载的 `nxopa-regsys-v0.5.1-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
+从 Release 下载的 `nxopa-regsys-v0.5.2-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
 
 ## 更新与卸载
 
@@ -38,12 +38,13 @@ bash /opt/nxopa-regsys/install.sh uninstall
 
 默认官方 Caddy 提供 `127.0.0.1:8080` HTTP 单一入口，`/api/` 在内部转发到 API，其余请求转发到前端。不占用公网 80/443，不申请证书，PostgreSQL 5432 与 Redis 不映射宿主机端口。
 
-`PUBLIC_URL` 仅用于邮件和邀请链接，支持 HTTP/HTTPS；不作为请求来源白名单，访问域名不必与它一致。域名、HTTPS、访问限制由自己的反向代理配置。登录后的写操作仍使用会话 CSRF 令牌。
+`PUBLIC_URL` 用于邮件和邀请链接，支持 HTTP/HTTPS。浏览器写操作校验来源，自动允许实际同源、环境初始地址和后台当前公网地址；额外管理域名在 `.env` 的 `TRUSTED_MANAGEMENT_ORIGINS` 中用逗号列出。登录后仍需会话 CSRF 令牌。公网地址为 HTTPS 时会话强制使用 Secure Cookie，浏览器也须通过 HTTPS 访问；HTTP 内网部署可继续使用 HTTP 地址。
 
 ```dotenv
 PUBLIC_URL=https://reg.example.org
 REVERSE_PROXY_MODE=gateway
-GATEWAY_PORT=127.0.0.1:8080
+GATEWAY_PORT=8080
+GATEWAY_BIND_ADDRESS=127.0.0.1
 ALLOW_PRIVATE_INTEGRATIONS=true
 ```
 
@@ -57,7 +58,7 @@ location / {
     proxy_pass http://127.0.0.1:8080;
     proxy_set_header Host $http_host;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-For $remote_addr;
 }
 ```
 
@@ -78,7 +79,7 @@ bash install.sh compose ps
 
 多个实例用 `INSTALL_ENV_FILE=/absolute/path/.env` 选择配置。`init` 保留已有文件，`up` 按配置构建或拉取，`update --yes` 按已保存版本先备份再更新。不要公开 `.env` 或完整 `compose config`，其中包含密钥。
 
-业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v0.5.1`，支持 amd64/arm64。PostgreSQL 17.6 和 Caddy 2.10.2 按 Docker 服务端架构固定官方运行摘要，避免不完整镜像代理要求索引中的证明配置。保持原数据库版本和卷名；`content descriptor ... not found` 时检查具体镜像及镜像代理，不能把拉取失败当成安装完成。
+业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v0.5.2`，支持 amd64/arm64。PostgreSQL 17.6 和 Caddy 2.10.2 按 Docker 服务端架构固定官方运行摘要，避免不完整镜像代理要求索引中的证明配置。保持原数据库版本和卷名；`content descriptor ... not found` 时检查具体镜像及镜像代理，不能把拉取失败当成安装完成。
 
 ## 账号与报名
 

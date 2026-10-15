@@ -38,7 +38,7 @@ const escape = (value) =>
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
   );
-const plain = (value) => value.replace(/\\([#%&_])/g, '$1');
+const plain = (value) => value.replace(/\\([#%&_])/g, '$1').replace(/\\allowbreak\s*/g, '');
 
 function group(input, start) {
   assert.equal(input[start], '{');

@@ -51,6 +51,21 @@ export class Client {
     return response;
   }
   async api(path: string, method = 'GET', body?: unknown, key?: string) {
+    // Successful financial fixtures use distinct real-world transaction references.
+    // Missing-reference regression cases call raw() explicitly.
+    if (
+      method === 'POST' &&
+      path.endsWith('/vouchers') &&
+      body &&
+      typeof body === 'object' &&
+      !(body instanceof FormData) &&
+      !('reference' in body)
+    )
+      body = {
+        ...body,
+        reference:
+          'attachmentId' in body ? `TEST:${body.attachmentId}` : globalThis.crypto.randomUUID(),
+      };
     const response = await this.raw(`/api/v1${path}`, method, body, key);
     const content = await response.text();
     assert.ok(response.ok, `${method} ${path}: HTTP ${response.status} ${content.slice(0, 300)}`);

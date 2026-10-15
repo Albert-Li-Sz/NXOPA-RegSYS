@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -62,7 +62,10 @@
     "test:oj-recovery": "tsx tests/integrations/oj-recovery.ts",
     "test:bugs": "tsx tests/integrations/bug-regressions.ts",
     "test:activity-workflows": "tsx tests/integrations/activity-workflows.ts",
-    "test:workflow-upgrade": "tsx tests/integrations/workflow-upgrade.ts"
+    "test:workflow-upgrade": "tsx tests/integrations/workflow-upgrade.ts",
+    "test:security": "tsx tests/integrations/security-audit.ts",
+    "test:backup-security": "node --test tests/backup-security.test.mjs",
+    "audit:runtime": "node scripts/audit-runtime.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

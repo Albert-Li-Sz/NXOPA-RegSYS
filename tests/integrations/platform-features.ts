@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { promisify } from 'node:util';
 import path from 'node:path';
@@ -32,11 +32,20 @@ const apiBase = `http://127.0.0.1:${apiPort}`,
   mailBase = `http://127.0.0.1:${mailPort}`,
   password = randomBytes(20).toString('base64url'),
   secret = randomBytes(24).toString('hex');
+const productionWeb = process.env.PLATFORM_TEST_PRODUCTION_WEB === '1';
+const staticPort = productionWeb ? await port() : webPort;
+const caddyImage = (
+  await readFile(
+    path.join(root, `deploy/compose.proxy.${process.arch === 'arm64' ? 'arm64' : 'amd64'}.yaml`),
+    'utf8',
+  )
+).match(/image:\s*(\S+)/)![1];
 const env = {
   ...process.env,
   NODE_ENV: 'production',
   PORT: String(apiPort),
   PUBLIC_URL: 'https://links.example.test',
+  TRUSTED_MANAGEMENT_ORIGINS: `https://reverse-proxy.example.test,${webBase}`,
   DATABASE_URL: `postgresql://contest:${secret}@127.0.0.1:${pg}/contest_center`,
   REDIS_URL: `redis://127.0.0.1:${redis}`,
   ENCRYPTION_KEY: randomBytes(32).toString('hex'),
@@ -52,11 +61,29 @@ const env = {
 };
 await mkdir(env.STORAGE_DIR, { recursive: true });
 await mkdir(env.LATEX_SPOOL, { recursive: true });
+if (productionWeb) {
+  await cp(path.join(root, 'apps/web/dist'), path.join(stage, 'public'), { recursive: true });
+  await cp(path.join(root, 'infra/web/server.mjs'), path.join(stage, 'server.mjs'));
+  const caddy = (await readFile(path.join(root, 'infra/caddy-gateway/Caddyfile'), 'utf8'))
+    .replace('api:3000', `host.docker.internal:${apiPort}`)
+    .replace('web:8080', `host.docker.internal:${staticPort}`);
+  await writeFile(path.join(stage, 'Caddyfile'), caddy);
+}
 const fixture = path.join(stage, 'compose.json');
 await writeFile(
   fixture,
   JSON.stringify({
     services: {
+      ...(productionWeb
+        ? {
+            caddy: {
+              image: caddyImage,
+              ports: [`127.0.0.1:${webPort}:80`],
+              volumes: [`${stage}/Caddyfile:/etc/caddy/Caddyfile:ro`],
+              extra_hosts: ['host.docker.internal:host-gateway'],
+            },
+          }
+        : {}),
       postgres: {
         image: 'postgres:17.6-alpine',
         environment: {
@@ -330,6 +357,9 @@ try {
   } catch {
     throw new Error(apiTail());
   }
+  assert.equal((await fetch(`${apiBase}/api/docs`)).status, 404);
+  assert.equal((await fetch(`${apiBase}/api/docs-json`)).status, 404);
+  passed('生产模式关闭 Swagger 页面与 JSON 规范入口');
   const admin = await new Actor().login('platform_admin'),
     student = await register(1),
     teacher = await register(2, 'TEACHER'),
@@ -789,10 +819,20 @@ try {
     'LOCAL',
   );
   passed('S3 文件导出与恢复为本地副本，不依赖原存储端点');
-  const webTail = start(
-    ['--filter', '@contest-center/web', 'dev', '--host', '127.0.0.1', '--port', String(webPort)],
-    { ...env, NODE_ENV: 'development', API_PROXY_TARGET: apiBase },
-  );
+  const webTail = productionWeb
+    ? start(['exec', 'node', path.join(stage, 'server.mjs')], { ...env, PORT: String(staticPort) })
+    : start(
+        [
+          '--filter',
+          '@contest-center/web',
+          'dev',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          String(webPort),
+        ],
+        { ...env, NODE_ENV: 'development', SEED_DEMO: '1', API_PROXY_TARGET: apiBase },
+      );
   try {
     await wait(webBase);
   } catch {
@@ -807,6 +847,18 @@ try {
   try {
     const page = await browser.newPage(),
       errors: string[] = [];
+    if (productionWeb) {
+      const response = await fetch(webBase);
+      assert.ok(response.headers.get('content-security-policy')?.includes("object-src 'none'"));
+      await page.addInitScript(() => {
+        window.addEventListener('securitypolicyviolation', (event) =>
+          console.error(`CSP-violation:${event.violatedDirective}:${event.blockedURI}`),
+        );
+      });
+      page.on('console', (message) => {
+        if (message.text().startsWith('CSP-violation:')) errors.push(message.text());
+      });
+    }
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto(`${webBase}/login`);
     await page.locator('#account').fill('platform_admin');
@@ -886,6 +938,35 @@ try {
       buffer: Buffer.from('browser file upload verified'),
     });
     await page.getByRole('link', { name: 'browser-upload.txt', exact: true }).waitFor();
+    if (productionWeb) {
+      await page.locator('input[type="file"]').setInputFiles({
+        name: 'CSP预览验收.pdf',
+        mimeType: 'application/pdf',
+        buffer: await readFile(path.join(root, 'docs/acceptance/individual.pdf')),
+      });
+      await page.getByRole('link', { name: 'CSP预览验收.pdf', exact: true }).click();
+      try {
+        await page.getByRole('img', { name: 'PDF 第 1 页', exact: true }).waitFor();
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            pdfPreviewErrors: errors,
+            dialog: await page.getByRole('dialog').innerText(),
+          }),
+        );
+        await page.screenshot({
+          path: path.join(root, '.runtime/reports/production-csp-pdf-error.png'),
+        });
+        throw error;
+      }
+      await until(
+        () =>
+          page.getByRole('img', { name: 'PDF 第 1 页', exact: true }).getAttribute('data-rendered'),
+        (value) => value === 'true',
+        20000,
+      );
+      passed('生产静态构建经真实 Caddy 的 CSP 下完成中文 PDF.js 渲染');
+    }
     await page.goto(`${webBase}/admin/contests/${contest.id}?tab=files`);
     await page.locator('.file-library input[type=file]').waitFor({ state: 'visible' });
     await page
@@ -913,7 +994,7 @@ try {
       },
       (value) => !value,
     );
-    const development = { ...env, NODE_ENV: 'development', TEST_URL: apiBase };
+    const development = { ...env, NODE_ENV: 'development', SEED_DEMO: '1', TEST_URL: apiBase };
     await exec('pnpm', ['seed'], {
       cwd: root,
       env: development,

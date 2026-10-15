@@ -82,7 +82,7 @@ async function sendRegistrationCode() {
     });
     registrationToken.value = result.token;
     codeSentAt.value = Date.now();
-    ElMessage.success('注册验证码已发送，10 分钟内有效');
+    ElMessage.success('如邮箱可用于注册，验证码将在 10 分钟内有效；已有账号请登录或找回密码。');
   } finally {
     codeBusy.value = false;
   }

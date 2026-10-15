@@ -8,8 +8,8 @@ import {
 } from '@contest-center/contracts';
 import { db, json } from './db.js';
 import { config } from './config.js';
-if (config.production || process.env.NODE_ENV !== 'development')
-  throw new Error('Demo seed is restricted to NODE_ENV=development');
+if (config.production || process.env.NODE_ENV !== 'development' || process.env.SEED_DEMO !== '1')
+  throw new Error('Demo seed requires NODE_ENV=development and explicit SEED_DEMO=1');
 const users = [
   ['admin', '系统管理员', true, false],
   ['manager', '竞赛管理员', false, false],

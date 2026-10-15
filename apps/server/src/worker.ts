@@ -1,3 +1,5 @@
+import { synchronizePlatform } from './platform-sync.js';
+import { postWebhook } from './webhook-http.js';
 import { Queue, Worker } from 'bullmq';
 import { mkdir, writeFile, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
@@ -214,152 +216,24 @@ const worker = new Worker(
         producedBlob = undefined;
         result = { documentId: document.id };
       } else if (j.kind === 'SYNC') {
-        result = await db.$transaction(
-          async (tx) => {
-            const mappingId = String(p.mappingId);
-            await lock(tx, `sync:${mappingId}`);
-            const mapping = await tx.accountMapping.findUniqueOrThrow({ where: { id: mappingId } });
-            await lock(tx, mapping.registrationId);
-            await lock(
-              tx,
-              (
-                await tx.registration.findUniqueOrThrow({
-                  where: { id: mapping.registrationId },
-                  select: { contestId: true },
-                })
-              ).contestId,
-            );
-            const expectedMapping = {
-              id: mapping.id,
-              registration: { version: Number(p.version), eligible: true },
-              binding: {
-                version: Number(p.bindingVersion),
-                enabled: true,
-                instance: { version: Number(p.instanceVersion), enabled: true },
-              },
-            };
-            const r = await tx.registration.findUniqueOrThrow({
-              where: { id: mapping.registrationId },
-              include: registrationInclude,
-            });
-            async function versions() {
-              const binding = await tx.platformBinding.findUniqueOrThrow({
-                where: { id: mapping.bindingId },
-                include: { instance: true },
-              });
-              const registration = await tx.registration.findUniqueOrThrow({ where: { id: r.id } });
-              const school = p.organizationMappingId
-                ? await tx.organizationMapping.findUniqueOrThrow({
-                    where: { id: String(p.organizationMappingId) },
-                  })
-                : null;
-              if (
-                !registration.eligible ||
-                registration.version !== p.version ||
-                binding.version !== p.bindingVersion ||
-                binding.instance.version !== p.instanceVersion ||
-                !binding.enabled ||
-                !binding.instance.enabled ||
-                (school &&
-                  (school.version !== p.organizationVersion || school.status !== 'CONFIRMED'))
-              )
-                throw new Error('报名、学校或平台配置已改变，请重新发起同步');
-              return binding;
-            }
-            if (!modulesFor(r.contest).integrations) throw new Error('此活动已关闭平台联动');
-            const binding = await versions();
-            const c = await platformConfig(mapping.bindingId);
-            c.configuration.organizationId = p.organizationId
-              ? String(p.organizationId)
-              : undefined;
-            const shared =
-              mapping.remoteTeamId &&
-              (await tx.accountMapping.findFirst({
-                where: {
-                  id: { not: mapping.id },
-                  remoteTeamId: mapping.remoteTeamId,
-                  bindingId: {
-                    in: (
-                      await tx.platformBinding.findMany({
-                        where: { instanceId: binding.instanceId },
-                        select: { id: true },
-                      })
-                    ).map((b) => b.id),
-                  },
-                },
-              }));
-            if (shared && c.type === 'DOMJUDGE')
-              throw new Error('历史远端队伍被其他绑定共享，请管理员确认并解除映射冲突后重试');
-            const input = {
-              envelope: await envelope(r),
-              username: mapping.username,
-              password: decrypt(mapping.credential),
-              remoteTeamId: String(p.remoteTeamId),
-              remoteUserId: mapping.remoteUserId ?? undefined,
-              onProgress: async (
-                output: import('@contest-center/contracts').ProvisioningResultV1,
-              ) => {
-                await versions();
-                // Persist partial remote IDs outside this transaction so recovery reuses them after a remote error.
-                const saved = await db.accountMapping.updateMany({
-                  where: expectedMapping,
-                  data: {
-                    state: output.state,
-                    remoteUserId: output.remoteUserId,
-                    remoteTeamId: output.remoteTeamId,
-                    details: json({
-                      ...output,
-                      registrationVersion: p.version,
-                      bindingVersion: p.bindingVersion,
-                    }),
-                  },
-                });
-                if (saved.count !== 1) throw new Error('报名或平台配置已改变，请重新发起同步');
-                await db.job.update({ where: { id: j.id }, data: { result: json(output) } });
-              },
-            };
-            const output = await connector(c.type).provisionRegistration(c.configuration, input);
-            if (output.state !== 'VERIFIED') throw new Error('平台未确认账号、队伍及目标比赛访问');
-            await lock(tx, r.id);
-            await versions();
-            const saved = await tx.accountMapping.updateMany({
-              where: expectedMapping,
-              data: {
-                state: 'VERIFIED',
-                remoteUserId: output.remoteUserId,
-                remoteTeamId: output.remoteTeamId,
-                details: json({
-                  ...output,
-                  registrationVersion: p.version,
-                  bindingVersion: p.bindingVersion,
-                }),
-              },
-            });
-            if (saved.count !== 1) throw new Error('报名或平台配置已改变，请重新发起同步');
-            return output;
-          },
-          { timeout: 120000 },
-        );
+        result = await synchronizePlatform(j);
       } else if (j.kind === 'WEBHOOK') {
         const hook = await db.webhook.findUniqueOrThrow({ where: { id: String(p.webhookId) } });
         if (!hook.enabled) throw new Error('Webhook disabled');
-        await safeUrl(hook.url);
         const timestamp = String(Math.floor(Date.now() / 1000));
         const body = JSON.stringify(p.body);
         const signature = hmac(decrypt(hook.secret), `${timestamp}.${body}`);
-        const response = await fetch(hook.url, {
-          method: 'POST',
-          headers: {
+        await postWebhook(
+          hook.url,
+          body,
+          {
             'Content-Type': 'application/json',
             'X-ContestCenter-Event': String((p.body as Record<string, unknown>).eventId),
             'X-ContestCenter-Timestamp': timestamp,
             'X-ContestCenter-Signature': `sha256=${signature}`,
           },
-          body,
-          redirect: 'error',
-          signal: AbortSignal.timeout(15000),
-        });
-        if (!response.ok) throw new Error(`Webhook HTTP ${response.status}`);
+          !!hook.privateApprovedBy,
+        );
       }
       await db.job.updateMany({
         where: { id: j.id, state: 'RUNNING' },
@@ -410,7 +284,23 @@ worker.on('error', (e) => console.error('Worker unavailable:', e.name));
 worker.on('failed', (j) =>
   console.warn(`Task ${j?.id} failed; details available to its authorized administrator`),
 );
+let nextRetentionCleanup = 0;
 async function dispatch() {
+  if (Date.now() >= nextRetentionCleanup) {
+    const expired = await db.idempotencyRecord.findMany({
+      where: { createdAt: { lt: new Date(Date.now() - 86400000) } },
+      select: { id: true },
+      take: 1000,
+    });
+    if (expired.length)
+      await db.idempotencyRecord.deleteMany({
+        where: {
+          id: { in: expired.map((r) => r.id) },
+          createdAt: { lt: new Date(Date.now() - 86400000) },
+        },
+      });
+    nextRetentionCleanup = Date.now() + 60000;
+  }
   const events = await db.outboxEvent.findMany({
     where: { deliveredAt: null },
     orderBy: { createdAt: 'asc' },
@@ -602,7 +492,12 @@ async function dispatch() {
     await queue.add(
       j.kind,
       { id: j.id },
-      { jobId: queueId, removeOnComplete: 100, removeOnFail: 100 },
+      {
+        jobId: queueId,
+        removeOnComplete: 100,
+        removeOnFail: 100,
+        priority: j.kind === 'MAIL' ? 1 : j.kind === 'ADMISSION' ? 5 : 10,
+      },
     );
   }
   const scheduled = await db.admissionDocument.findMany({

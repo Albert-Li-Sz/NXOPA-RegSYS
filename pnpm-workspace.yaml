@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
   - plugins/*
+minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - '@vue/language-core@3.3.13'
   - vue-tsc@3.3.13
@@ -13,3 +14,8 @@ allowBuilds:
   prisma: true
   msgpackr-extract: true
   '@scarf/scarf': false
+
+overrides:
+  'js-yaml@>=5.0.0 <5.4.3': '5.4.3'
+  'deepmerge-ts@<8.0.0': '8.0.2'
+  'mysql2@<3.24.6': '3.24.6'

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { z } from 'zod';
 import { invoiceSchema, policySchema, type Principal } from '@contest-center/contracts';
 import { db, audit, event, lock, json } from './db.js';
@@ -70,6 +70,7 @@ export class FinanceService {
     ]);
     return {
       id: r.id,
+      ownerId: r.ownerId,
       contestId: r.contestId,
       contest: { title: r.contest.title },
       number: r.number,
@@ -98,7 +99,7 @@ export class FinanceService {
       refunds: db.refund,
       invoices: db.invoiceRequest,
     };
-    if (!(collection in models)) throw new BadRequestException('财务记录类型无效');
+    if (!Object.hasOwn(models, collection)) throw new BadRequestException('财务记录类型无效');
     const model = models[collection as keyof typeof models] as any;
     const searchFields: Record<string, string[]> = {
       vouchers: ['payer', 'channel', 'reference', 'reason'],
@@ -156,13 +157,19 @@ export class FinanceService {
       )
         throw new BadRequestException('请先等待审核通过');
       await bindFile(tx, u, b.attachmentId, id);
+      if (await tx.paymentProofClaim.findUnique({ where: { attachmentId: b.attachmentId } }))
+        throw new ConflictException('该附件已经用于缴费凭证，请勿重复提交');
       const v = await tx.paymentVoucher.create({
         data: {
           ...b,
           reference: b.reference?.trim() || null,
           paidAt: new Date(b.paidAt),
           registrationId: id,
+          createdBy: u.id,
         },
+      });
+      await tx.paymentProofClaim.create({
+        data: { attachmentId: b.attachmentId, voucherId: v.id },
       });
       await audit(tx, u.id, 'VOUCHER_UPLOAD', id, { voucherId: v.id });
       await financeNotify(tx, r, { message: '缴费凭证已上传，等待管理员核账。' });
@@ -175,6 +182,7 @@ export class FinanceService {
         decision: z.enum(['CONFIRMED', 'REJECTED']),
         reason: z.string().max(3000).default(''),
         amountCents: cents.optional(),
+        reference: z.string().trim().min(1).max(150).optional(),
       })
       .parse(body);
     const v = await db.paymentVoucher.findUniqueOrThrow({ where: { id } });
@@ -183,15 +191,40 @@ export class FinanceService {
       const r = await loaded(tx, v.registrationId);
       requireManager(u, r.contestId, 'FINANCE');
       const current = await tx.paymentVoucher.findUniqueOrThrow({ where: { id } });
+      const attachment = await tx.attachment.findUnique({ where: { id: current.attachmentId } });
+      if (
+        ownerIds(u).some((actor) =>
+          [r.ownerId, current.createdBy, attachment?.ownerId].includes(actor),
+        )
+      )
+        throw new ForbiddenException(
+          '不能审核本人提交或本人账户的缴费凭证，请由其他财务管理员处理',
+        );
       if (current.status !== 'PENDING') {
         if (current.status === b.decision) return current;
         throw new BadRequestException('该凭证已经核账，需要通过冲正更正');
       }
       if (b.decision === 'REJECTED' && !b.reason) throw new BadRequestException('请填写拒绝原因');
-      const amount = b.amountCents ?? v.amountCents;
+      if (b.amountCents !== undefined && b.amountCents !== current.amountCents)
+        throw new BadRequestException('核账不能改写申报金额，请退回凭证后重新提交');
+      const amount = current.amountCents;
+      const reference = current.reference?.trim() || b.reference;
+      if (b.decision === 'CONFIRMED') {
+        if (!reference) throw new BadRequestException('确认到账前请填写银行或支付平台的交易参考号');
+        await lock(tx, `file:${current.attachmentId}`);
+        const claim = await tx.paymentProofClaim.findUnique({
+          where: { attachmentId: current.attachmentId },
+        });
+        if (claim && claim.voucherId !== id)
+          throw new ConflictException('此附件已用于其他缴费凭证');
+        if (!claim)
+          await tx.paymentProofClaim.create({
+            data: { attachmentId: current.attachmentId, voucherId: id },
+          });
+      }
       const result = await tx.paymentVoucher.update({
         where: { id },
-        data: { status: b.decision, reason: b.reason, amountCents: amount, confirmedBy: u.id },
+        data: { status: b.decision, reason: b.reason, reference, confirmedBy: u.id },
       });
       if (b.decision === 'CONFIRMED') {
         await tx.ledgerEntry.create({
@@ -201,7 +234,7 @@ export class FinanceService {
             kind: 'PAYMENT',
             amountCents: amount,
             sourceId: `voucher:${id}`,
-            channelReference: v.reference ? `${v.channel}:${v.reference}` : null,
+            channelReference: `${current.channel}:${reference}`,
             actorId: u.id,
             note: b.reason || '管理员确认线下实际到账',
           },
@@ -212,6 +245,8 @@ export class FinanceService {
         voucherId: id,
         decision: b.decision,
         amountCents: amount,
+        declaredAmountCents: current.amountCents,
+        differenceCents: amount - current.amountCents,
       });
       await financeNotify(tx, r, { message: `缴费核账：${b.decision}。${b.reason}` });
       if (r.registration) await refresh(tx, r.id);
@@ -265,7 +300,7 @@ export class FinanceService {
       });
       if (b.amountCents > r.netPaidCents - (pending._sum.amountCents ?? 0))
         throw new BadRequestException('退款金额超过可退款余额');
-      const x = await tx.refund.create({ data: { ...b, registrationId: id } });
+      const x = await tx.refund.create({ data: { ...b, registrationId: id, requestedBy: u.id } });
       await audit(tx, u.id, 'REFUND_REQUEST', id, { refundId: x.id });
       await financeNotify(tx, r, { message: '退款申请已提交，等待管理员处理。' });
       return x;
@@ -285,11 +320,15 @@ export class FinanceService {
       const r = await loaded(tx, refund.registrationId);
       requireManager(u, r.contestId, 'FINANCE');
       const x = await tx.refund.findUniqueOrThrow({ where: { id } });
+      if (ownerIds(u).some((actor) => [r.ownerId, x.requestedBy].includes(actor)))
+        throw new ForbiddenException('不能审核或完成本人的退款申请，请由其他财务管理员处理');
       if (x.status === b.decision) return x;
       if (['REJECTED', 'COMPLETED'].includes(x.status)) throw new BadRequestException('退款已结束');
       if (b.decision === 'COMPLETED' && x.status !== 'APPROVED')
         throw new BadRequestException('先审核通过，再记录实际退款');
       if (b.decision === 'COMPLETED') {
+        if (x.amountCents > r.feeCents && ownerIds(u).includes(x.approvedBy ?? x.handledBy ?? ''))
+          throw new ForbiddenException('超过应收费用的退款须由另一位财务管理员复核并登记实际退款');
         if (!b.reference?.trim()) throw new BadRequestException('请填写实际退款参考号');
         if (x.amountCents > r.netPaidCents) throw new BadRequestException('余额不足');
         if (
@@ -320,6 +359,7 @@ export class FinanceService {
           reference: b.reference,
           attachmentId: b.attachmentId,
           handledBy: u.id,
+          ...(b.decision === 'APPROVED' ? { approvedBy: u.id } : {}),
           completedAt: b.decision === 'COMPLETED' ? new Date() : null,
         },
       });

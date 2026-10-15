@@ -203,9 +203,9 @@ async function remove() {
             ><el-input id="admin-user-username" v-model="form.username"
           /></el-form-item>
           <el-form-item label="邮箱" for="admin-user-email" required
-            ><el-input id="admin-user-email" v-model="form.email" type="email" /><span
+            ><el-input id="admin-user-email" v-model="form.email" type="email" disabled /><span
               class="form-help"
-              >修改邮箱后需要重新验证邮箱，并重新登录。</span
+              >登录邮箱由账号本人在个人中心验证后变更。</span
             ></el-form-item
           >
           <el-form-item label="用户标签"

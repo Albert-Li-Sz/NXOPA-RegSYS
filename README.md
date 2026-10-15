@@ -4,7 +4,7 @@
 
 - [Docker Compose 安装包与步骤](deploy/README.md)
 - [存储、邮件、个人中心与三种管理员授权](docs/PLATFORM_GUIDE.md)
-- [V0.5.1 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.5.1)
+- [V0.5.2 发布、Docker 镜像与安装附件](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.5.2)
 - [部署与日常维护](docs/DEPLOYMENT.md)
 - [在线配置教程（GitHub Pages）](https://albert-li-sz.github.io/NXOPA-RegSYS/)
 - [带截图的配置教程（PDF）](output/pdf/configuration-guide.pdf)、[LaTeX 源码](docs/CONFIGURATION_GUIDE.tex)、[源码与截图打包](output/pdf/configuration-guide-source.zip)
@@ -20,7 +20,7 @@
 
 推荐使用根目录的单一一键安装入口 `install.sh`。宿主机需要 Docker Compose、Bash 和 OpenSSL，Node.js / pnpm 随镜像安装。
 
-从 V0.5.1 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
+从 V0.5.2 Release 下载的安装包默认拉取 GHCR 预构建镜像，支持 amd64 / arm64；无需业务源码。交互安装默认选择发布镜像，也可选择从完整源码仓库构建。
 
 ```bash
 # 安装：交互选择镜像版本、域名或端口，再创建管理员
@@ -30,7 +30,7 @@ bash install.sh
 
 更新使用 `bash install.sh update`，卸载使用 `bash install.sh uninstall`。更新前自动加密备份；卸载默认保留数据，永久删除数据卷须输入项目名确认。原有 `init/up/admin/backup/restore` 维护命令继续可用。
 
-本机试用打开 <http://localhost:8080>；公网部署由自己的反向代理配置 HTTP/HTTPS。`PUBLIC_URL` 只用于链接，不限制登录来源，内网联动默认启用。初始化命令交互输入管理员邮箱和密码；首次创建后使用邮箱或 `administrator` 登录。正式容器固定为 production 模式，初始化不会创建演示账号，也不会覆盖已有账号。数据库迁移在 API 启动前自动执行。已有根目录 Compose 部署仍可沿用原入口和配置；默认安装项目名 `nxopa-regsys` 与旧项目 `contest-center` 使用不同数据卷，迁移入口时按安装说明保留原项目名和密钥。
+本机试用打开 <http://localhost:8080>；公网部署由自己的反向代理配置 HTTP/HTTPS。浏览器写入允许同源、当前公网地址及显式配置的 `TRUSTED_MANAGEMENT_ORIGINS`；内网评测平台联动默认启用，Webhook 另行授权。初始化命令交互输入管理员邮箱和密码；首次创建后使用邮箱或 `administrator` 登录。正式容器固定为 production 模式，初始化不会创建演示账号，也不会覆盖已有账号。数据库迁移在 API 启动前自动执行。已有根目录 Compose 部署仍可沿用原入口和配置；默认安装项目名 `nxopa-regsys` 与旧项目 `contest-center` 使用不同数据卷，迁移入口时按安装说明保留原项目名和密钥。
 
 默认安装由内部 Caddy 合并前端和 API，提供 `127.0.0.1:8080` HTTP 入口，用户自己的反向代理负责公网 HTTPS。PostgreSQL、Redis、Caddy 使用官方镜像；Vue 前端、NestJS API、Worker 和 XeLaTeX 分别运行在独立容器，数据库和队列位于私有网络。各服务与数据卷说明见 [安装说明](deploy/README.md)。
 
@@ -41,7 +41,7 @@ pnpm install --frozen-lockfile
 pnpm setup
 pnpm dev
 # 在另一个终端创建虚构的开发演示数据
-pnpm seed
+NODE_ENV=development SEED_DEMO=1 pnpm seed
 ```
 
 首页 <http://localhost:5173> 为独立介绍页，点击“进入报名系统”时未登录会跳转登录，成功后返回 <http://localhost:5173/contests>；竞赛详情链接同样保留原页面和参数。社团与集训队 Logo 使用提供的原图。账号支持先验证邮箱再注册、账号密码、GitHub 和飞书登录；参赛前需完善学号、姓名、班级、学院、性别，管理员可编辑用户标签并筛选。每场竞赛按首次提交时间编号；Hydro / DOMjudge 的实例凭据、比赛绑定和同步设置位于“外接平台中心 → 评测平台”。SMTP 位于系统管理员的“管理中心 → 邮件设置”，支持保存、检测和向当前管理员发送测试邮件。
@@ -55,7 +55,7 @@ API 文档 <http://localhost:3000/api/docs>，Mailpit <http://localhost:58025>�
 | alice、bob、carol | 参赛者                   |
 | teacher           | 指导老师                 |
 
-开发演示密码统一为 `DemoContest2026!`，邮箱为对应用户名的 `@example.test`。`pnpm seed` 在 production 模式会拒绝执行。
+开发演示密码统一为 `DemoContest2026!`，邮箱为对应用户名的 `@example.test`。`pnpm seed` 需要显式设置 `SEED_DEMO=1`，并在 production 模式拒绝执行。
 
 ## 验证命令
 
@@ -64,6 +64,9 @@ pnpm typecheck
 pnpm build
 pnpm test
 pnpm test:bugs
+pnpm test:security
+pnpm test:backup-security
+pnpm audit:runtime
 pnpm test:integration
 pnpm test:enhancements
 pnpm test:admissions
@@ -78,7 +81,7 @@ pnpm test:load
 
 额外的 `test:oj`、`test:boundaries`、`test:deployment` 及其依赖和执行顺序见验收报告。浏览器测试优先使用本机 Chrome；其他环境先运行 `pnpm exec playwright install chromium`。
 
-`pnpm test:full` 在独立数据库和附件目录中执行十九组完整回归。报名流程升级会永久清理历史取消记录，更新前必须备份，具体见[升级与恢复说明](docs/DEPLOYMENT.md#加密备份与恢复)。
+`pnpm test:full` 在独立数据库和附件目录中执行二十组完整回归，包括安全审计针对性测试。费用在管理界面以元输入和展示，接口及数据库继续使用整数分；名单导出将每个动态字段展开为一列。报名流程升级会永久清理历史取消记录，更新前必须备份，具体见[升级与恢复说明](docs/DEPLOYMENT.md#加密备份与恢复)。安全处理范围及限制见 [SECURITY.md](SECURITY.md)。
 
 ## 编译配置教程
 

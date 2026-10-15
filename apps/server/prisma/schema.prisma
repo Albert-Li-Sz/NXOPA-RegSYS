@@ -352,7 +352,14 @@ model PaymentVoucher {
   status String @default("PENDING")
   reason String @default("")
   confirmedBy String? @db.Uuid
+  createdBy String? @db.Uuid
+  proofClaim PaymentProofClaim?
   createdAt DateTime @default(now())
+}
+model PaymentProofClaim {
+  attachmentId String @id @db.Uuid
+  voucherId String @unique @db.Uuid
+  voucher PaymentVoucher @relation(fields:[voucherId],references:[id],onDelete:Cascade)
 }
 model LedgerEntry {
   id String @id @default(uuid()) @db.Uuid
@@ -378,6 +385,8 @@ model Refund {
   reference String?
   attachmentId String? @db.Uuid
   handledBy String? @db.Uuid
+  requestedBy String? @db.Uuid
+  approvedBy String? @db.Uuid
   createdAt DateTime @default(now())
   completedAt DateTime?
 }
@@ -519,6 +528,8 @@ model AccountMapping {
   username String
   credential String
   state String @default("QUEUED")
+  syncJobId String? @db.Uuid
+  syncLeaseUntil DateTime?
   details Json @default("{}")
   updatedAt DateTime @updatedAt
   @@unique([registrationId,bindingId])
@@ -563,6 +574,7 @@ model Webhook {
   id String @id @default(uuid()) @db.Uuid
   contestId String? @db.Uuid
   url String
+  privateApprovedBy String? @db.Uuid
   secret String
   enabled Boolean @default(true)
   version Int @default(1)

@@ -113,6 +113,7 @@ try {
   const hook = await admin.api('/admin/webhooks', 'POST', {
     contestId: r.contestId,
     url: 'http://localhost:59091',
+    allowPrivate: true,
   });
   const job = await db.job.create({
     data: {

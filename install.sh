@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
-NXOPA_INSTALLER_VERSION=v0.5.1
+NXOPA_INSTALLER_VERSION=v0.5.2
 
 usage() {
   cat <<'EOF'
@@ -198,16 +198,16 @@ interactive_install() {
       unset s3_secret
     fi
     set_env_value REVERSE_PROXY_MODE gateway
-    set_env_value GATEWAY_PORT "127.0.0.1:$gateway_port"
+    set_env_value GATEWAY_PORT "$gateway_port"
     require_config
   fi
   start_services
   if [[ "$proxy_mode" == gateway ]]; then
-    gateway_bind="$(env_value GATEWAY_PORT)"
+    gateway_bind="${GATEWAY_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT:-8080}"
     printf '\n请将自有反向代理的整个站点转发到 http://%s，并传递 Host 和 X-Forwarded-Proto。\n示例：%s/nginx.conf.example；本机可直接访问该 HTTP 入口，公网需完成域名与 HTTPS 配置。\n' \
       "${gateway_bind:-127.0.0.1:8080}" "$install_dir"
   elif [[ "$proxy_mode" == external ]]; then
-    api_bind="$(env_value API_PORT)"; web_bind="$(env_value WEB_PORT)"
+    api_bind="${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-3000}"; web_bind="${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8081}"
     printf '\n请配置自有反向代理：/api/ → http://%s（保留 /api/ 路径）；其余请求 → http://%s。\n示例：%s/nginx.conf.example；仅健康检查通过不表示反向代理已就绪。\n' \
       "${api_bind:-127.0.0.1:3000}" "${web_bind:-127.0.0.1:8081}" "$install_dir"
   fi

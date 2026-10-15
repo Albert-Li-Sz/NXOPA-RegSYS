@@ -79,6 +79,7 @@ watch(tab, (value) => {
 });
 const manager = computed(() => !!r.value && canManage(r.value.contestId, 'REGISTRATIONS'));
 const financeManager = computed(() => !!r.value && canManage(r.value.contestId, 'FINANCE'));
+const financeReviewer = computed(() => financeManager.value && !ownUser(r.value?.ownerId ?? ''));
 const admissionManager = computed(() => !!r.value && canManage(r.value.contestId, 'ADMISSIONS'));
 const integrationManager = computed(
   () => !!r.value && canManage(r.value.contestId, 'INTEGRATIONS'),
@@ -321,14 +322,21 @@ async function completeRefund(id: string) {
   const { value } = await ElMessageBox.prompt('记录已实际退款的银行 / 渠道参考号', '记录线下退款');
   await action(`/finance/refunds/${id}/review`, { decision: 'COMPLETED', reference: value });
 }
-async function confirmVoucher(id: string) {
-  const { value } = await ElMessageBox.prompt('输入实际核实到账金额（元）', '核账确认', {
-    inputPattern: /^\d+(\.\d{1,2})?$/,
-    inputErrorMessage: '请填写有效金额',
-  });
-  await action(`/finance/vouchers/${id}/review`, {
+async function confirmVoucher(row: Data) {
+  await ElMessageBox.confirm(
+    `确认凭证申报金额 ${money(row.amountCents)} 已实际到账？金额不符请退回凭证。`,
+    '核账确认',
+  );
+  const reference =
+    row.reference ||
+    (
+      await ElMessageBox.prompt('填写银行或支付平台的交易参考号', '到账参考号', {
+        inputValidator: (value: string) => !!value.trim() || '请填写参考号',
+      })
+    ).value;
+  await action(`/finance/vouchers/${row.id}/review`, {
     decision: 'CONFIRMED',
-    amountCents: Math.round(Number(value) * 100),
+    reference,
   });
 }
 async function rejectVoucher(id: string) {
@@ -815,8 +823,9 @@ async function memberSave(id: string, index: number) {
           ><el-table-column label="操作" min-width="180"
             ><template #default="{ row }"
               ><a :href="`/api/v1/files/${row.attachmentId}`" target="_blank">查看凭证</a
-              ><template v-if="financeManager && row.status === 'PENDING'"
-                ><el-button text type="primary" @click="confirmVoucher(row.id)">核账</el-button
+              ><template
+                v-if="financeReviewer && !ownUser(row.createdBy ?? '') && row.status === 'PENDING'"
+                ><el-button text type="primary" @click="confirmVoucher(row)">核账</el-button
                 ><el-button text type="danger" @click="rejectVoucher(row.id)"
                   >拒绝</el-button
                 ></template
@@ -880,7 +889,7 @@ async function memberSave(id: string, index: number) {
           ><el-table-column label="金额"
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
           ><el-table-column label="说明" prop="note" min-width="160" /><el-table-column
-            v-if="financeManager"
+            v-if="financeReviewer"
             label="操作"
             ><template #default="{ row }"
               ><span v-if="row.reversed" class="muted">已冲正</span
@@ -945,7 +954,7 @@ async function memberSave(id: string, index: number) {
             label="状态"
             ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
           ><el-table-column label="实际退款参考号" prop="reference" /><el-table-column
-            v-if="financeManager"
+            v-if="financeReviewer"
             label="操作"
             min-width="180"
             ><template #default="{ row }"
@@ -964,6 +973,10 @@ async function memberSave(id: string, index: number) {
                 v-if="row.status === 'APPROVED'"
                 text
                 type="primary"
+                :disabled="
+                  row.amountCents > r.feeCents && ownUser(row.approvedBy ?? row.handledBy ?? '')
+                "
+                title="超过应收费用的退款需要另一位财务管理员复核"
                 @click="completeRefund(row.id)"
                 >记录实际退款</el-button
               ></template

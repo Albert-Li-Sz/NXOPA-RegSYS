@@ -370,9 +370,14 @@ async function saveGlobalField() {
   fieldDialog.value = false;
   await refresh();
 }
+const allowPrivateWebhook = ref(false);
 async function webhook() {
   const { value } = await ElMessageBox.prompt('填写接收报名资格事件的 URL', '配置全局 Webhook');
-  const x = await api('/admin/webhooks', 'POST', { url: value });
+  const x = await api('/admin/webhooks', 'POST', {
+    url: value,
+    allowPrivate: allowPrivateWebhook.value,
+  });
+  allowPrivateWebhook.value = false;
   secret.value = `Webhook HMAC-SHA256 密钥：${x.secret}`;
 }
 </script>
@@ -795,8 +800,16 @@ async function webhook() {
     <div class="actions">
       <el-button type="primary" @click="newToken">签发范围 Token</el-button
       ><el-button @click="webhook">配置签名 Webhook</el-button
-      ><a href="/api/docs" target="_blank"><el-button>OpenAPI 文档</el-button></a>
+      ><a
+        href="https://github.com/Albert-Li-Sz/NXOPA-RegSYS/blob/main/docs/API.md"
+        target="_blank"
+        rel="noopener"
+        ><el-button>API 接入文档</el-button></a
+      >
     </div>
+    <el-checkbox v-model="allowPrivateWebhook"
+      >授权下一个 Webhook 访问内网（仅系统管理员）</el-checkbox
+    >
     <div v-if="secret" class="notice">
       密钥只展示一次，请复制保存：<code>{{ secret }}</code
       ><el-button text @click="secret = ''">隐藏</el-button>

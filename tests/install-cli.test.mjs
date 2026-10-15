@@ -191,7 +191,7 @@ test('首次安装选择镜像版本、端口、隐藏管理员密码，校验�
     assert.equal(r.code, 0, r.output);
     const text = await readFile(envFile, 'utf8');
     assert.match(text, /^IMAGE_TAG=v0.2.3$/m);
-    assert.match(text, /^GATEWAY_PORT=127\.0\.0\.1:18080$/m);
+    assert.match(text, /^GATEWAY_PORT=18080$/m);
     assert.match(text, /^REVERSE_PROXY_MODE=gateway$/m);
     assert.match(text, /^PUBLIC_URL=http:\/\/localhost:18080$/m);
     assert.match(text, /^POSTGRES_PASSWORD=[a-f0-9]{48}$/m);
@@ -212,7 +212,7 @@ test('默认内部 Caddy 仅绑定本机 8080，用户配置公网 HTTPS 代理'
     const text = await readFile(envFile, 'utf8');
     assert.match(text, /^REVERSE_PROXY_MODE=gateway$/m);
     assert.match(text, /^PUBLIC_URL=https:\/\/reg.example.org$/m);
-    assert.match(text, /^GATEWAY_PORT=127\.0\.0\.1:8080$/m);
+    assert.match(text, /^GATEWAY_PORT=8080$/m);
     assert.ok(!/^(WEB_PORT|API_PORT)=/m.test(text));
     assert.ok(!/^(SITE_ADDRESS|HTTP_PORT|HTTPS_PORT)=/m.test(text));
     assert.ok((await calls()).every((c) => !c.files.some((f) => f.endsWith('compose.caddy.yaml'))));

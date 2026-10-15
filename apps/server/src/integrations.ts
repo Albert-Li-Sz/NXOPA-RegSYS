@@ -1,3 +1,4 @@
+import { webhookTarget } from './webhook-http.js';
 import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
@@ -827,12 +828,29 @@ export class IntegrationService {
     return { ok: true };
   }
   async webhook(u: Principal, body: unknown) {
-    const b = z.object({ contestId: z.string().uuid().optional(), url: z.url() }).parse(body);
+    const b = z
+      .object({
+        contestId: z.string().uuid().optional(),
+        url: z.url(),
+        allowPrivate: z.boolean().default(false),
+      })
+      .parse(body);
     if (b.contestId) requireManager(u, b.contestId, 'INTEGRATIONS');
     else requireSystemAdmin(u);
-    await safeUrl(b.url);
+    if (b.allowPrivate) requireSystemAdmin(u);
+    await webhookTarget(b.url, { allowPrivate: b.allowPrivate });
     const secret = opaqueToken();
-    const row = await db.webhook.create({ data: { ...b, secret: encrypt(secret) } });
+    const { allowPrivate, ...data } = b;
+    const row = await db.$transaction(async (tx) => {
+      const hook = await tx.webhook.create({
+        data: { ...data, privateApprovedBy: allowPrivate ? u.id : null, secret: encrypt(secret) },
+      });
+      await audit(tx, u.id, allowPrivate ? 'WEBHOOK_PRIVATE_APPROVE' : 'WEBHOOK_CREATE', hook.id, {
+        contestId: b.contestId,
+        allowPrivate,
+      });
+      return hook;
+    });
     return { id: row.id, secret };
   }
 }

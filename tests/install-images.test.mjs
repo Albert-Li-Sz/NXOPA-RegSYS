@@ -4,12 +4,41 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { verifyManifestGraph } from '../scripts/verify-registry.mjs';
+import { digestOverride } from '../scripts/release-digests.mjs';
 
 const fixture = JSON.parse(
   await readFile(new URL('./fixtures/postgres-runtime.json', import.meta.url), 'utf8'),
 );
 const missing = 'sha256:f9989be93aaf18e0f2ee8da9e8cbaedc1979c5c1aa89e1c8a0dc18524e5eb7f9';
 const hash = (body) => `sha256:${createHash('sha256').update(body).digest('hex')}`;
+
+test('发布安装包对五个服务及初始化锁定实际构建摘要', () => {
+  const prefix = 'ghcr.io/example/project',
+    tag = 'v1.2.3',
+    commit = 'fixture-commit';
+  const records = ['api', 'worker', 'web', 'latex', 'minio'].map((service) => ({
+    image: `${prefix}-${service}`,
+    tag,
+    commit,
+    digest: hash(service),
+  }));
+  const options = { records, tag, commit, prefix };
+  const output = digestOverride(options);
+  assert.ok(output.startsWith('# NXOPA_IMAGE_TAG=v1.2.3\n'));
+  assert.equal((output.match(/@sha256:/g) ?? []).length, 6);
+  assert.ok(
+    output.includes(`initialize:\n    image: \${IMAGE_PREFIX:-${prefix}}-api@${hash('api')}`),
+  );
+  assert.ok(!output.includes(':latest'));
+  for (const change of [
+    { records: records.slice(1) },
+    { commit: 'stale-source' },
+    { tag: 'v1.2.4' },
+    { records: records.map((r) => ({ ...r, digest: 'sha256:invalid' })) },
+    { records: [...records.slice(0, 4), records[0]] },
+  ])
+    assert.throws(() => digestOverride({ ...options, ...change }));
+});
 
 async function withIncompleteMirror(check) {
   const bodies = new Map();

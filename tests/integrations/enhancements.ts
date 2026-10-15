@@ -79,7 +79,7 @@ try {
         body: '{}',
       })
     ).status,
-    400,
+    403,
   );
   const invite = await admin.api('/admin/invitations', 'POST', {
     kind: 'ACCOUNT',

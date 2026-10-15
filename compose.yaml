@@ -124,7 +124,11 @@ services:
   caddy:
     image: caddy:2.10.2-alpine
     environment: { SITE_ADDRESS: '${SITE_ADDRESS:-:80}' }
-    ports: ['${HTTP_PORT:-8080}:80', '${HTTPS_PORT:-8443}:443']
+    ports:
+      [
+        '${DEV_BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-8080}:80',
+        '${DEV_BIND_ADDRESS:-127.0.0.1}:${HTTPS_PORT:-8443}:443',
+      ]
     volumes: ['./infra/caddy:/etc/caddy:ro', caddy_data:/data, caddy_config:/config]
     networks: [edge, app]
     depends_on: { api: { condition: service_healthy }, web: { condition: service_healthy } }

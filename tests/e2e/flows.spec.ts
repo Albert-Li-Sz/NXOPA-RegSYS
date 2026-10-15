@@ -63,10 +63,11 @@ async function link(page: Page, name: string) {
   await expect(input).not.toHaveValue(old);
   return input.inputValue();
 }
-async function prompt(page: Page, value: string) {
+async function confirmReceipt(page: Page, amountYuan: string) {
   const box = page.locator('.el-message-box');
   await expect(box).toBeVisible();
-  await box.locator('input,textarea').first().fill(value);
+  await expect(box).toContainText(`¥ ${Number(amountYuan).toFixed(2)}`);
+  await expect(box.locator('input:visible,textarea:visible')).toHaveCount(0);
   await box.getByRole('button', { name: '确定', exact: true }).click();
   await expect(box).not.toBeVisible();
 }
@@ -186,7 +187,7 @@ test('manual team, optional teacher, review first, receipt and partial/full conf
       await expect(dialog).not.toBeVisible();
       await manager.page.goto(`/registrations/${id}?tab=finance`);
       await manager.page.getByRole('button', { name: '核账', exact: true }).click();
-      await prompt(manager.page, String(amount));
+      await confirmReceipt(manager.page, String(amount));
       await expect(
         manager.page.getByText(amount === 20 ? '参加资格已确认' : '参加资格待完成', {
           exact: true,
@@ -252,7 +253,7 @@ test('payment first blocks review until actual receipt confirmation', async ({ b
     await expect(dialog).not.toBeVisible();
     await manager.page.goto(`/registrations/${id}?tab=finance`);
     await manager.page.getByRole('button', { name: '核账', exact: true }).click();
-    await prompt(manager.page, '20');
+    await confirmReceipt(manager.page, '20');
     await expect(manager.page.getByText('参加资格待完成', { exact: true })).toBeVisible();
     await manager.page.getByRole('tab', { name: '报名资料', exact: true }).click();
     await approveRegistration(manager.page);

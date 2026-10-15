@@ -1,3 +1,4 @@
+import { rateLimit } from './auth.js';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
@@ -217,6 +218,7 @@ export class AdmissionService {
     });
   }
   async preview(u: Principal, body: unknown) {
+    await rateLimit(`pdf-preview:${u.id}`, 10);
     const b = z
       .object({ contestId: z.string().uuid().optional(), source: z.string().max(100000) })
       .parse(body);

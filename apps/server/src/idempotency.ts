@@ -39,7 +39,9 @@ export class Idempotency implements NestInterceptor {
       return atomicRequest(async () => {
         await lock(db, id);
         const existing = await db.idempotencyRecord.findUnique({ where: { id } });
-        if (existing) {
+        const expired = existing && existing.createdAt.getTime() <= Date.now() - 86400000;
+        if (existing && expired) await db.idempotencyRecord.delete({ where: { id } });
+        if (existing && !expired) {
           if (existing.requestHash !== fingerprint)
             throw new ConflictException('此幂等键已用于不同请求');
           const [, , , module, resource, resourceId] = req.path.split('/');

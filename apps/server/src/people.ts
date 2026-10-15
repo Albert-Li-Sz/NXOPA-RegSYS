@@ -540,6 +540,10 @@ export class PeopleService {
       });
       if (target.deactivatedAt) throw new BadRequestException('此账号已经删除');
       checkVersion(target.version, b.version);
+      if (b.email.toLowerCase() !== target.email)
+        throw new ForbiddenException(
+          '登录邮箱须由账号本人在个人中心验证后变更，管理员不能直接替换',
+        );
       if (b.profile.gender !== undefined)
         z.enum(['男', '女'], '请选择男或女').parse(b.profile.gender);
       if (b.profile.enrollment_year !== undefined)

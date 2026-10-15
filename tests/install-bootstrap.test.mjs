@@ -176,7 +176,7 @@ test('单文件启动下载并校验发布包，菜单安装后保留配置、�
     const envFile = path.join(target, 'deploy/.env'),
       before = await readFile(envFile, 'utf8');
     assert.match(before, /^ALLOW_PRIVATE_INTEGRATIONS=true$/m);
-    assert.match(before, /^GATEWAY_PORT=127\.0\.0\.1:8080$/m);
+    assert.match(before, /^GATEWAY_PORT=8080$/m);
     assert.equal((await stat(envFile)).mode & 0o777, 0o600);
     assert.equal((await run(['install'], 'y\nn\n')).code, 0);
     assert.equal(await readFile(envFile, 'utf8'), before);

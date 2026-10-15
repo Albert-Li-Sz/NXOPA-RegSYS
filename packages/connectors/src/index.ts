@@ -12,11 +12,13 @@ const headers = (c: ConnectorConfiguration) => ({
     : `Basic ${Buffer.from(`${c.credentials.username}:${c.credentials.password}`).toString('base64')}`,
 });
 async function request(c: ConnectorConfiguration, path: string, init: RequestInit = {}) {
+  const remaining = c.requestDeadline ? c.requestDeadline - Date.now() : 20000;
+  if (remaining <= 0) throw new Error('Platform request deadline exceeded');
   const r = await fetch(`${c.baseUrl.replace(/\/$/, '')}${path}`, {
     ...init,
     headers: { ...headers(c), ...init.headers },
     redirect: 'error',
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(Math.min(20000, remaining)),
   });
   if (!r.ok) throw new Error(`Platform HTTP ${r.status} at ${path}`);
   return r.json();

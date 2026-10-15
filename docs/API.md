@@ -1,6 +1,6 @@
 # API、Webhook 与 MCP
 
-HTTP 接口说明由实际 NestJS 路由与共享 Zod 契约生成，运行中的 Swagger 位于 `/api/docs`，JSON 位于 `/api/docs-json`。源码快照见 [openapi.json](api/openapi.json)，共享类型见 `packages/contracts/src/index.ts`。
+HTTP 接口说明由实际 NestJS 路由与共享 Zod 契约生成。开发环境的 Swagger 位于 `/api/docs`，JSON 位于 `/api/docs-json`；生产环境关闭这两个入口。源码快照见 [openapi.json](api/openapi.json)，共享类型见 `packages/contracts/src/index.ts`。
 
 ```bash
 pnpm generate:client
@@ -24,11 +24,13 @@ pnpm generate:client
 
 浏览器会话 Cookie 为 `cc_session`。从 `GET /api/v1/auth/me` 获取 CSRF，写操作发送 `X-CSRF-Token`。写入版本化资源时传 `version`；旧版本返回 409。写请求可传 `Idempotency-Key`，同一用户对相同 URL、方法、正文的重试返回原结果；幂等结果和业务写入在一个 PostgreSQL 事务提交，结果静态加密。
 
-JSON 请求上限 5 MiB，附件上限 10 MiB。竞赛后台统计与导出使用完整权限和筛选条件，不随当前页变化。准考证批量下载使用 POST /api/v1/admissions/batch，正文选择 ids 或 registrationIds，单次最多 1000 张。
+所有金额接口继续使用整数分，例如 `feeCents: 12345` 对应界面 123.45 元。核账不能修改凭证申报金额，兼容参数 `amountCents` 若传入必须与申报值一致；确认到账必须有交易参考号，渠道与参考号组合不可重复入账。凭证附件只能用于一张凭证，申请人和上传者不能核账自己的凭证；超过应收费用的退款须由不同管理员批准和完成。
+
+JSON 请求上限 5 MiB；头像、凭证、普通附件分别在缓冲前限制为 5／10／50 MiB。上传最多每账号并行 2 个、全局 8 个、每账号每分钟 60 次；累计存储默认普通账号 1 GiB、管理员 10 GiB，可通过 `UPLOAD_QUOTA_MB` 覆盖。竞赛后台统计与导出使用完整权限和筛选条件，不随当前页变化。准考证批量下载使用 POST /api/v1/admissions/batch，正文选择 ids 或 registrationIds，单次最多 1000 张；模板预览每账号每分钟最多 10 次。
 
 ### 分页与筛选
 
-列表显式传入 `page` 或 `pageSize` 时返回共享 `PageResult<T>`：`{items,total,page,pageSize}`。`page` 从 1 开始，`pageSize` 只接受 20／50／100，默认 20。活动、附件、邮件通知、登录会话、审计、任务、用户、授权邀请、报名、工单和财务历史均支持后端分页；权限与搜索／状态／时间条件同时作用于总数和列表。报名按每个竞赛的首次提交编号升序排列，草稿放在末尾，再按创建时间和 ID 排序。
+列表显式传入 `page` 或 `pageSize` 时返回共享 `PageResult<T>`：`{items,total,page,pageSize}`。`page` 从 1 开始、最多 5000，且 `page × pageSize` 不超过 100000；`pageSize` 只接受 20／50／100，默认 20。活动、附件、邮件通知、登录会话、审计、任务、用户、授权邀请、报名、工单和财务历史均支持后端分页；权限与搜索／状态／时间条件同时作用于总数和列表。报名按每个竞赛的首次提交编号升序排列，草稿放在末尾，再按创建时间和 ID 排序。
 
 管理活动列表使用 `GET /contests?all=true&managed=true&page=1&pageSize=20`，仅返回当前管理员有查看权限的活动；`search` 匹配活动标题和赛季。每项额外返回 `registrationCounts: {official,unofficial}`，按有效成员人数而非报名单数统计，范围为有报名编号的已提交或待补正记录，不含草稿、撤回和删除记录。
 
@@ -42,7 +44,9 @@ GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
 
 时间筛选为带时区 ISO `from`／`to`。状态键按列表使用 `status`、`review`、`kind`；完整参数见 OpenAPI。报名可使用 `eligible`、`participationType`、`search`、`tag`，统计与 CSV 接收同样筛选。`GET /registrations/:id?history=false` 返回财务合计但不附带历史数组，历史分别从 `finance/vouchers`、`finance/ledger`、`finance/refunds`、`finance/invoices` 读取。
 
-未显式分页的旧调用继续返回原数组；报名 `cursor=<上一页最后一项ID>` 按报名列表相同顺序、最多 500 条，用于导出和既有集成。CSV 遍历全部筛选报名，采用 UTF-8 BOM 并转义公式前缀。
+未显式分页的旧调用继续返回原数组；报名 `cursor=<上一页最后一项ID>` 按报名列表相同顺序、最多 500 条，用于导出和既有集成。`GET /registrations/export?contestId=…` 需要 REGISTRATIONS 权限，每位有效成员一行，成员、队伍、报名及老师的每个当前或历史字段各占一列；多名老师依次编号。费用列只向 FINANCE 管理员开放，以元保留两位小数，仅每份报名第一行填写，避免汇总重复。CSV 使用 UTF-8 BOM、标准引号转义及公式前缀防护，单次最多 10000 位成员、500 列、25 MiB，超出时整次拒绝；导出筛选及数量写入审计。
+
+浏览器写请求在登录前也校验 Origin／Fetch Metadata；自动允许实际同源、环境 `PUBLIC_URL` 和数据库当前公网地址，额外来源由 `TRUSTED_MANAGEMENT_ORIGINS` 显式设置。会话为 HTTPS 时使用 Secure Cookie，SameSite=Lax 保持 OAuth 回跳。幂等结果保留 24 小时；浏览器合并同一份未完成写请求，网络失败后的短期重试沿用原键，成功后的主动新操作使用新键。
 
 ### 永久删除、独立财务与审核
 
@@ -87,7 +91,7 @@ GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
 
 ### 公网地址、竞赛与发票
 
-`GET /api/v1/site` 返回当前 `publicUrl` 与配置 `version`；系统管理员 `PUT /api/v1/admin/site` 保存新地址并检查版本。地址允许根路径 HTTP／HTTPS；API 与 Worker 动态读取，只用于生成链接，不作为登录来源白名单。TLS、域名与访问控制由反向代理负责；登录后的写请求仍检查 CSRF。CLI `pnpm restore:public-url https://reg.example.org` 提供恢复并记录审计。
+`GET /api/v1/site` 返回当前 `publicUrl` 与配置 `version`；系统管理员 `PUT /api/v1/admin/site` 保存新地址并检查版本。地址允许根路径 HTTP／HTTPS；API 与 Worker 动态读取用于生成链接，同时作为浏览器写入的允许来源之一。TLS、域名与访问控制由反向代理负责；登录后的写请求仍检查 CSRF。CLI `pnpm restore:public-url https://reg.example.org` 提供恢复并记录审计。
 
 竞赛新增 `descriptionFormat: TEXT|MARKDOWN`；旧数据保持 `TEXT`。规则新增 `allowUnofficial`、版本化 `platformProfiles`、`invoiceTypes: NORMAL|SPECIAL` 和 `invoiceRequiredFields`。报名新增 `participationType: OFFICIAL|UNOFFICIAL` 与 `organization: {name,shortName,country,icpcId?}`；旧报名默认正式，字段向后兼容。提交锁定资料快照，关键变更使审核、准考证和映射失效。非正式申请必须人工审核。
 

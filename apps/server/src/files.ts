@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   NotFoundException,
   ConflictException,
+  PayloadTooLargeException,
 } from '@nestjs/common';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -43,6 +44,7 @@ function uploadFilename(name: string) {
     .slice(0, 200);
 }
 async function fileRegistrations(tx: import('./db.js').Tx, id: string) {
+  z.string().uuid().parse(id);
   return tx.$queryRaw<
     { id: string; used: boolean }[]
   >`SELECT "registrationId" AS id,false AS used FROM "Attachment" WHERE id=${id}::uuid AND "registrationId" IS NOT NULL
@@ -125,6 +127,20 @@ export class FileService {
         await lock(tx, contestId);
         await tx.contest.findUniqueOrThrow({ where: { id: contestId } });
       }
+      await lock(tx, `upload-owner:${u.id}`);
+      const used = await tx.attachment.aggregate({
+        where: { ownerId: u.id, deletedAt: null },
+        _sum: { size: true },
+      });
+      const quota = Number(process.env.UPLOAD_QUOTA_MB ?? (u.isAdmin ? 10240 : 1024));
+      if (
+        !Number.isFinite(quota) ||
+        quota <= 0 ||
+        (used._sum.size ?? 0) + file.size > quota * 1024 * 1024
+      )
+        throw new PayloadTooLargeException(
+          '附件总量已达到账号配额，请清理不再使用的文件或联系管理员',
+        );
       const id = randomUUID(),
         ref = await putBlob(id, bytes, mime);
       const result = await tx.attachment.create({

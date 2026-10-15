@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
 import { api, money, date, label, upload } from '../api';
 import type { Data } from '../types';
+import { ownUser } from '../permissions';
 import InvoiceApplication from '../components/InvoiceApplication.vue';
 const route = useRoute(),
   account = ref<Data>(),
@@ -65,9 +66,22 @@ async function refundReview(row: Data, decision: string) {
   await action(`/finance/refunds/${row.id}/review`, { decision, reference });
 }
 async function voucherReview(row: Data, decision: string) {
+  let reference = row.reference;
+  if (decision === 'CONFIRMED') {
+    await ElMessageBox.confirm(
+      `确认申报金额 ${money(row.amountCents)} 已实际到账？金额不符请拒绝凭证。`,
+      '核账确认',
+    );
+    if (!reference)
+      reference = (
+        await ElMessageBox.prompt('填写银行或支付平台的交易参考号', '到账参考号', {
+          inputValidator: (value: string) => !!value.trim() || '请填写参考号',
+        })
+      ).value;
+  }
   const reason = (await ElMessageBox.prompt('填写核账说明', '核账', { inputType: 'textarea' }))
     .value;
-  await action(`/finance/vouchers/${row.id}/review`, { decision, reason });
+  await action(`/finance/vouchers/${row.id}/review`, { decision, reason, reference });
 }
 async function invoiceReview(row: Data, decision: string) {
   const reason = (await ElMessageBox.prompt('填写处理说明', '发票处理')).value;
@@ -147,7 +161,13 @@ async function reverse(row: Data) {
           ></el-table-column
         ><el-table-column label="操作" min-width="180"
           ><template #default="{ row }"
-            ><template v-if="account.canManage && row.status === 'PENDING'"
+            ><template
+              v-if="
+                account.canManage &&
+                !ownUser(account.ownerId) &&
+                !ownUser(row.createdBy ?? '') &&
+                row.status === 'PENDING'
+              "
               ><el-button
                 text
                 type="success"
@@ -177,7 +197,10 @@ async function reverse(row: Data) {
           label="操作"
           min-width="180"
           ><template #default="{ row }"
-            ><template v-if="account.canManage"
+            ><template
+              v-if="
+                account.canManage && !ownUser(account.ownerId) && !ownUser(row.requestedBy ?? '')
+              "
               ><template v-if="row.status === 'REQUESTED'"
                 ><el-button text @click="refundReview(row, 'APPROVED')">通过</el-button
                 ><el-button text type="danger" @click="refundReview(row, 'REJECTED')"
@@ -186,6 +209,11 @@ async function reverse(row: Data) {
               ><el-button
                 v-if="row.status === 'APPROVED'"
                 text
+                :disabled="
+                  row.amountCents > account.feeCents &&
+                  ownUser(row.approvedBy ?? row.handledBy ?? '')
+                "
+                title="超过应收费用的退款需要另一位财务管理员复核"
                 @click="refundReview(row, 'COMPLETED')"
                 >记录实际退款</el-button
               ></template

@@ -58,6 +58,7 @@ set_env_value() {
 use_saved_environment() {
   unset INSTALL_MODE IMAGE_TAG IMAGE_PREFIX COMPOSE_PROJECT_NAME PUBLIC_URL SITE_ADDRESS \
     HTTP_PORT HTTPS_PORT WEB_PORT API_PORT GATEWAY_PORT REVERSE_PROXY_MODE POSTGRES_PASSWORD ENCRYPTION_KEY \
+    API_BIND_ADDRESS WEB_BIND_ADDRESS GATEWAY_BIND_ADDRESS MINIO_BIND_ADDRESS \
     STORAGE_MODE MINIO_ROOT_USER MINIO_ROOT_PASSWORD MINIO_CONSOLE_PORT S3_ENDPOINT S3_REGION S3_BUCKET S3_PREFIX S3_ACCESS_KEY S3_SECRET_KEY S3_FORCE_PATH_STYLE
 }
 
@@ -134,7 +135,10 @@ compose() {
   local compose_args=(--project-directory "$install_dir" --env-file "$install_env" -f "$install_dir/compose.yaml")
   if [[ "$(env_value STORAGE_MODE)" == MINIO ]]; then compose_args+=(--profile minio); fi
   if [[ -n "$platform_override" ]]; then compose_args+=(-f "$platform_override"); fi
-  if [[ "$install_mode" == images ]]; then compose_args+=(-f "$install_dir/compose.images.yaml"); fi
+  if [[ "$install_mode" == images ]]; then
+    compose_args+=(-f "$install_dir/compose.images.yaml")
+    if [[ -f "$install_dir/compose.digest.yaml" && "$(head -n 1 "$install_dir/compose.digest.yaml")" == "# NXOPA_IMAGE_TAG=${IMAGE_TAG:-$(env_value IMAGE_TAG)}" ]]; then compose_args+=(-f "$install_dir/compose.digest.yaml"); fi
+  fi
   if [[ -n "$proxy_override" ]]; then compose_args+=(-f "$proxy_override" -f "$proxy_platform_override"); fi
   if [[ "${1:-}" == pull ]]; then compose_args+=(--parallel 1); fi
   docker compose "${compose_args[@]}" "$@"
@@ -163,6 +167,21 @@ require_docker() {
   esac
 }
 
+normalize_private_ports() {
+  local key bind value address port
+  for key in API_PORT WEB_PORT GATEWAY_PORT MINIO_CONSOLE_PORT; do
+    case "$key" in API_PORT) bind=API_BIND_ADDRESS ;; WEB_PORT) bind=WEB_BIND_ADDRESS ;; GATEWAY_PORT) bind=GATEWAY_BIND_ADDRESS ;; *) bind=MINIO_BIND_ADDRESS ;; esac
+    value="${!key:-$(env_value "$key")}"
+    [[ -n "$value" ]] || continue
+    address="${!bind:-$(env_value "$bind")}"; address="${address:-127.0.0.1}"
+    port="$value"
+    # Read old host:port files without rewriting the saved configuration.
+    if [[ "$value" == *:* ]]; then address="${value%:*}"; port="${value##*:}"; address="${address#[}"; address="${address%]}"; fi
+    [[ "$port" =~ ^[0-9]{1,5}$ ]] && (( 10#$port >= 1 && 10#$port <= 65535 )) || fail "$key 端口无效。"
+    printf -v "$key" '%s' "$((10#$port))"; export "$key"
+    printf -v "$bind" '%s' "$address"; export "$bind"
+  done
+}
 require_config() {
   [[ -f "$install_env" ]] || fail '尚未生成配置，请先运行 bash ../install.sh 或 bash ../install.sh init。'
   if [[ "$(env_value STORAGE_MODE)" == MINIO ]]; then
@@ -198,6 +217,7 @@ require_config() {
     external) proxy_override="" ;;
     *) fail 'REVERSE_PROXY_MODE 只能为 gateway、external 或 caddy。' ;;
   esac
+  normalize_private_ports
   compose config --quiet
 }
 

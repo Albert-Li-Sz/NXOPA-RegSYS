@@ -4,10 +4,11 @@ import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { digestOverride } from './release-digests.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
-assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.5.1');
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.5.2');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
@@ -21,6 +22,7 @@ try {
   // Explicit allowlist: never package local environment files, credentials or runtime data.
   for (const name of [
     'install.sh',
+    'SECURITY.md',
     'deploy/lib.sh',
     'deploy/compose.yaml',
     'deploy/compose.images.yaml',
@@ -41,6 +43,7 @@ try {
     'infra/minio/entrypoint.sh',
     'scripts/backup.sh',
     'scripts/restore.sh',
+    'scripts/verify-backup.mjs',
     'scripts/compose-lib.sh',
   ]) {
     const destination = join(stage, folder, name);
@@ -111,6 +114,12 @@ try {
         2,
       ),
     );
+    const pinned = digestOverride({ records, tag, commit, prefix });
+    await writeFile(join(stage, folder, 'deploy/compose.digest.yaml'), pinned);
+    await writeFile(join(stage, folder, 'images.json'), JSON.stringify(records, null, 2));
+    execFileSync('tar', ['-czf', join(output, `${folder}-install.tar.gz`), '-C', stage, folder], {
+      env: { ...process.env, COPYFILE_DISABLE: '1' },
+    });
   }
   for (const arch of ['amd64', 'arm64']) {
     const name = join(root, 'dist/installation-reports', `installation-${arch}`, 'install.json');
@@ -215,6 +224,7 @@ try {
       'test:activity-workflows',
       'test:workflow-upgrade',
       'test:bugs',
+      'test:security',
       'test:permissions',
       'test:file-race',
       'test:load',
