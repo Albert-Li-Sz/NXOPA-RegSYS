@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createCipheriv, randomBytes } from 'node:crypto';
+// Cryptography and address policy tests must not load local secrets or create a DB client.
+vi.mock('../../apps/server/src/config.js', () => ({
+  config: { encryptionKey: '12'.repeat(32), production: false },
+}));
+vi.mock('../../apps/server/src/db.js', () => ({ db: {}, registrationInclude: {} }));
 import {
   encrypt,
   decrypt,

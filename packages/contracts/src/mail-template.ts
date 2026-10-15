@@ -135,6 +135,92 @@ export function mailTemplateExample(category: string): {
   };
 }
 export type MailTemplateContext = Record<(typeof mailVariables)[number], string>;
+type TemplateToken = { start: number; end: number; kind: '' | '#' | '/'; key: string };
+function templateTokens(source: string) {
+  const tokens: TemplateToken[] = [];
+  let cursor = 0;
+  let invalid = false;
+  for (;;) {
+    const start = source.indexOf('{{', cursor);
+    if (start < 0) break;
+    const close = source.indexOf('}}', start + 2);
+    if (close < 0) {
+      invalid = true;
+      break;
+    }
+    let key = source.slice(start + 2, close).trim();
+    let kind: TemplateToken['kind'] = '';
+    if (key[0] === '#' || key[0] === '/') {
+      kind = key[0];
+      key = key.slice(1).trim();
+    }
+    if (
+      key &&
+      [...key].every((character) => {
+        const code = character.charCodeAt(0);
+        return (
+          (code >= 48 && code <= 57) ||
+          (code >= 65 && code <= 90) ||
+          (code >= 97 && code <= 122) ||
+          code === 95
+        );
+      })
+    )
+      tokens.push({ start, end: close + 2, kind, key });
+    else invalid = true;
+    cursor = close + 2;
+  }
+  return { tokens, invalid };
+}
+const hasVariable = (source: string, key: string) =>
+  templateTokens(source).tokens.some((token) => !token.kind && token.key === key);
+function onlyVariable(source: string, key: string) {
+  const body = source.trim();
+  const { tokens, invalid } = templateTokens(body);
+  return (
+    !invalid &&
+    tokens.length === 1 &&
+    tokens[0]!.start === 0 &&
+    tokens[0]!.end === body.length &&
+    !tokens[0]!.kind &&
+    tokens[0]!.key === key
+  );
+}
+function stripLegacyParagraphs(source: string, context: MailTemplateContext) {
+  const output: string[] = [];
+  let cursor = 0;
+  let search = 0;
+  while (!context.code || !context.actionUrl) {
+    const start = source.indexOf('<p', search);
+    if (start < 0) break;
+    const openingEnd = source.indexOf('>', start + 2);
+    if (openingEnd < 0) break;
+    const opening = source.slice(start, openingEnd + 1);
+    search = openingEnd + 1;
+    if (opening !== '<p>' && !opening.startsWith('<p style="font-size:28px')) continue;
+    const close = source.indexOf('</p>', search);
+    if (close < 0) break;
+    const body = source.slice(search, close).trim();
+    let remove =
+      !context.code && opening.startsWith('<p style="font-size:28px') && onlyVariable(body, 'code');
+    if (
+      !context.actionUrl &&
+      opening === '<p>' &&
+      body.startsWith('<a href="') &&
+      body.endsWith('</a>')
+    ) {
+      const hrefEnd = body.indexOf('"', '<a href="'.length);
+      remove ||= hrefEnd >= 0 && onlyVariable(body.slice('<a href="'.length, hrefEnd), 'actionUrl');
+    }
+    if (remove) {
+      output.push(source.slice(cursor, start));
+      cursor = close + '</p>'.length;
+    }
+    search = close + '</p>'.length;
+  }
+  output.push(source.slice(cursor));
+  return output.join('');
+}
 export function mailTemplateError(
   template: { subject: string; text: string; html: string; enabled: boolean },
   category: string,
@@ -142,26 +228,27 @@ export function mailTemplateError(
   if (
     authenticationMailCategories.includes(category) &&
     (!template.enabled ||
-      !/{{\s*code\s*}}/.test(template.text) ||
-      (template.html.trim() && !/{{\s*code\s*}}/.test(template.html)))
+      !hasVariable(template.text, 'code') ||
+      (template.html.trim() && !hasVariable(template.html, 'code')))
   )
     return '验证类邮件必须启用，并在纯文本及非空 HTML 中保留 {{code}} 验证码变量';
   for (const source of [template.subject, template.text, template.html]) {
+    const { tokens, invalid } = templateTokens(source);
+    if (invalid) return '模板变量或条件区块格式有误';
     let block = '';
-    for (const token of source.matchAll(/{{\s*([#/]?)\s*(\w+)\s*}}/g)) {
-      if (!mailVariables.includes(token[2]! as (typeof mailVariables)[number]))
-        return `模板变量不支持：${token[2]}`;
-      if (token[1] === '#') {
+    for (const token of tokens) {
+      if (!mailVariables.includes(token.key as (typeof mailVariables)[number]))
+        return `模板变量不支持：${token.key}`;
+      if (token.kind === '#') {
         if (block) return '条件区块不支持嵌套';
-        block = token[2]!;
+        block = token.key;
       }
-      if (token[1] === '/') {
-        if (block !== token[2]) return '模板条件区块没有正确配对';
+      if (token.kind === '/') {
+        if (block !== token.key) return '模板条件区块没有正确配对';
         block = '';
       }
     }
-    if (block || source.replace(/{{\s*([#/]?)\s*(\w+)\s*}}/g, '').includes('{{'))
-      return '模板变量或条件区块格式有误';
+    if (block) return '模板变量或条件区块格式有误';
   }
 }
 const escape = (value: string) =>
@@ -176,27 +263,47 @@ export function renderMailTemplate(
   context: MailTemplateContext,
   category = 'GENERIC',
 ) {
-  const render = (source: string, html = false) =>
-    source
-      .replace(/{{\s*#\s*(\w+)\s*}}([\s\S]*?){{\s*\/\s*\1\s*}}/g, (_match, key, content) =>
-        context[key as keyof MailTemplateContext] ? content : '',
-      )
-      .replace(/{{\s*(\w+)\s*}}/g, (_match, key) =>
-        html
-          ? escape(context[key as keyof MailTemplateContext] ?? '').replaceAll('\n', '<br>')
-          : (context[key as keyof MailTemplateContext] ?? ''),
-      );
-  let html = template.html;
+  const render = (source: string, html = false) => {
+    const { tokens } = templateTokens(source);
+    const pairs = new Map<number, number>();
+    const stack: number[] = [];
+    tokens.forEach((token, index) => {
+      if (token.kind === '#') stack.push(index);
+      if (token.kind === '/' && stack.length && tokens[stack.at(-1)!]!.key === token.key) {
+        const open = stack.pop()!;
+        pairs.set(open, index);
+        pairs.set(index, open);
+      }
+    });
+    const output: string[] = [];
+    let cursor = 0;
+    for (let index = 0; index < tokens.length; index++) {
+      const token = tokens[index]!;
+      output.push(source.slice(cursor, token.start));
+      if (
+        token.kind === '#' &&
+        pairs.has(index) &&
+        !context[token.key as keyof MailTemplateContext]
+      ) {
+        index = pairs.get(index)!;
+        cursor = tokens[index]!.end;
+        continue;
+      }
+      if (!token.kind) {
+        const value = context[token.key as keyof MailTemplateContext] ?? '';
+        output.push(html ? escape(value).replaceAll('\n', '<br>') : value);
+      } else if (!pairs.has(index)) output.push(source.slice(token.start, token.end));
+      cursor = token.end;
+    }
+    output.push(source.slice(cursor));
+    return output.join('');
+  };
   // Older saved defaults did not have conditional blocks.
-  if (!context.code)
-    html = html.replace(/<p style="font-size:28px[^>]*>\s*{{\s*code\s*}}\s*<\/p>/g, '');
-  if (!context.actionUrl)
-    html = html.replace(/<p>\s*<a href="{{\s*actionUrl\s*}}"[^>]*>[\s\S]*?<\/a>\s*<\/p>/g, '');
   let text = render(template.text).replace(/\n验证码：\s*\n/, '\n');
-  html = render(html, true);
+  let html = render(stripLegacyParagraphs(template.html, context), true);
   if (authenticationMailCategories.includes(category) && context.code) {
-    if (!/{{\s*code\s*}}/.test(template.text)) text += `\n验证码：${context.code}`;
-    if (html && !/{{\s*code\s*}}/.test(template.html))
+    if (!hasVariable(template.text, 'code')) text += `\n验证码：${context.code}`;
+    if (html && !hasVariable(template.html, 'code'))
       html += `<p>验证码：${escape(context.code)}</p>`;
   }
   return { subject: render(template.subject).replace(/[\r\n]/g, ' '), text, html };

@@ -320,5 +320,27 @@
     ".runtime/reports/security-platform-csp-red.log",
     ".runtime/reports/security-platform-csp-green.log"
   ],
-  "report": "docs/SECURITY_REMEDIATION_2026-10-15.md"
+  "report": "docs/SECURITY_REMEDIATION_2026-10-15.md",
+  "releasePreflight": {
+    "target": "v0.5.3",
+    "previousAttempt": {
+      "tag": "v0.5.2",
+      "run": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38771814452",
+      "result": "Stopped at unit test configuration; no images or public release"
+    },
+    "unit": {
+      "status": "PASS",
+      "count": 24,
+      "command": "DATABASE_URL= ENCRYPTION_KEY=not-a-real-key pnpm test",
+      "log": ".runtime/reports/release-v0.5.3-unit-clean.log"
+    },
+    "codeqlReview": {
+      "findings": 9,
+      "templateBacktracking": 5,
+      "fixtureHardening": 3,
+      "redactionFalsePositive": 1,
+      "releaseScanPending": true
+    },
+    "releaseEvidence": "CI regression, installation and image verification are supplied with the release assets"
+  }
 }

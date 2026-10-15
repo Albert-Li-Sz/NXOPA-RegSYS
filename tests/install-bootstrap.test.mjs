@@ -70,6 +70,8 @@ async function fixture(fn) {
   let wrongHash = false;
   const visited = [];
   const server = createServer((req, res) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     visited.push(req.url);
     req.url = req.url?.replace(
       /^\/accelerate\/https:\/\/github.com\/Albert-Li-Sz\/NXOPA-RegSYS\/releases\/download/,
@@ -86,9 +88,10 @@ async function fixture(fn) {
       res.end(
         `${wrongHash ? '0'.repeat(64) : release.checksum}  nxopa-regsys-${requestedTag}-install.tar.gz\n`,
       );
-    else if (req.url?.endsWith('/' + `nxopa-regsys-${requestedTag}-install.tar.gz`))
+    else if (req.url?.endsWith('/' + `nxopa-regsys-${requestedTag}-install.tar.gz`)) {
+      res.setHeader('Content-Type', 'application/octet-stream');
       res.end(release.bytes);
-    else {
+    } else {
       res.statusCode = 404;
       res.end();
     }

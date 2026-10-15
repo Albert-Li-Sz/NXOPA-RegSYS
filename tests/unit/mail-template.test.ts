@@ -101,4 +101,32 @@ describe('mail template rendering and validation', () => {
     for (const text of ['{{ unknown }}', '{{code', '{{#code}}未关闭', '{{/code}}'])
       expect(mailTemplateError({ ...template, text }, 'GENERIC')).toBeDefined();
   });
+  it('supports spaced variables, legacy empty paragraphs and conditional data without reparsing values', () => {
+    const template = {
+      subject: '{{ subject }}',
+      text: '{{ # status }}状态：{{ status }}{{ / status }} {{ message }}',
+      html: '<p style="font-size:28px;font-weight:bold"> {{ code }} </p><p><a href="{{ actionUrl }}" class="action">详情</a></p><p>{{ message }}</p>',
+    };
+    expect(mailTemplateError({ ...template, enabled: true }, 'GENERIC')).toBeUndefined();
+    const output = renderMailTemplate(template, { ...context, message: '{{code}} <b>资料</b>' });
+    expect(output.text).toBe('状态：通过 {{code}} <b>资料</b>');
+    expect(output.html).toBe('<p>{{code}} &lt;b&gt;资料&lt;/b&gt;</p>');
+    expect(renderMailTemplate(template, { ...context, status: '' }).text).not.toContain('状态：');
+  });
+  it('handles long malformed tokens and unclosed legacy HTML in bounded time', () => {
+    const start = performance.now();
+    for (const source of [
+      '{{' + ' '.repeat(200000),
+      '{{#code}}a'.repeat(20000),
+      '<p style="font-size:28px'.repeat(10000),
+      '<p><a href="{{actionUrl}}">'.repeat(10000),
+    ]) {
+      const template = { subject: '通知', text: source, html: source };
+      const output = renderMailTemplate(template, context);
+      expect(output.text.length).toBeLessThanOrEqual(source.length);
+      expect(output.html.length).toBeLessThanOrEqual(source.length);
+      mailTemplateError({ ...template, enabled: true }, 'GENERIC');
+    }
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
 });

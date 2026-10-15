@@ -20,7 +20,13 @@ const proxy = createServer(async (request, response) => {
   try {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
-    const remote = await fetch(`${upstream}${request.url}`, {
+    const target = new URL(request.url ?? '/', upstream);
+    assert.equal(
+      target.origin,
+      new URL(upstream).origin,
+      'Recovery proxy must stay on its fixture upstream',
+    );
+    const remote = await fetch(target, {
       method: request.method,
       headers: {
         Authorization: String(request.headers.authorization ?? ''),

@@ -664,7 +664,10 @@ try {
   });
   const reply = await message(student.user.email, (m) => m.Subject.startsWith('[测试反馈]'));
   assert.ok(reply.HTML.includes('&lt;script&gt;'));
-  assert.ok(reply.HTML.includes('https://public-links.example.test/'));
+  const actionLinks = [...reply.HTML.matchAll(/href="([^"]+)"/g)].map(
+    (match) => new URL(match[1]!),
+  );
+  assert.ok(actionLinks.some((url) => url.origin === 'https://public-links.example.test'));
   assert.ok(!reply.HTML.includes('<script>'));
   const delivery = await until(
     () => student.api(`/notifications/mail?resourceId=${ticket.id}`),
