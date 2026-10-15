@@ -18,7 +18,7 @@
     "pdfjs-dist": "6.4.299",
     "pinia": "^3.0.0",
     "vue": "3.5.43",
-    "vue-router": "^4.0.0"
+    "vue-router": "^5.4.0"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",
