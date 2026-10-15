@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import PaginatedTable from '../components/PaginatedTable.vue';
+import DeleteContestButton from '../components/DeleteContestButton.vue';
+import RemoteRevocations from '../components/RemoteRevocations.vue';
 import PaginatedList from '../components/PaginatedList.vue';
 import { ref, onMounted, watch, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -35,6 +37,7 @@ const tabs = centerTabs(center.key, auth.user);
 const allowedTabs = tabs.map((item) => item.name);
 const requestedTab = typeof route.query.tab === 'string' ? route.query.tab : allowedTabs[0]!;
 const userDetailId = ref('');
+const revocationsView = ref<InstanceType<typeof RemoteRevocations>>();
 const peopleView = ref<InstanceType<typeof StudentsView>>();
 const jobsPage = usePagedList('jobs', () => '/admin/jobs'),
   contestsPage = usePagedList<ContestView>(
@@ -79,6 +82,7 @@ const operationNames: Record<string, string> = {
   MAIL_SETTINGS_TEST: '发送测试邮件',
   CONTEST_CREATE: '创建竞赛',
   CONTEST_UPDATE: '更新竞赛',
+  CONTEST_DELETE: '删除活动及竞赛',
   REGISTRATION_CREATE: '创建报名',
   REGISTRATION_EDIT: '修改报名',
   REGISTRATION_SUBMIT: '提交报名',
@@ -153,6 +157,7 @@ const jobKinds: Record<string, string> = {
 async function refresh() {
   loadError.value = '';
   try {
+    if (tab.value === 'revocations') await revocationsView.value?.refresh();
     if (['instances', 'users', 'tokens', 'audit'].includes(tab.value))
       contests.value = await api('/contests?all=true');
     if (tab.value === 'contests') await contestsPage.load();
@@ -420,6 +425,7 @@ async function webhook() {
   <UserDetail :id="userDetailId" @close="userDetailId = ''" @changed="refresh" />
   <IdentityReviews v-if="tab === 'identities' && auth.user?.isAdmin" />
   <AdminGrants v-if="tab === 'grants' && auth.user?.isAdmin" />
+  <RemoteRevocations v-if="tab === 'revocations' && auth.user?.isAdmin" ref="revocationsView" />
   <div class="panel" v-if="tab === 'contests'">
     <div class="toolbar">
       <el-input
@@ -448,8 +454,7 @@ async function webhook() {
         ><el-table-column label="竞赛名称" prop="title" min-width="280" /><el-table-column
           label="赛季"
           prop="season"
-          width="100"
-        /><el-table-column label="公开" width="90"
+          width="100" /><el-table-column label="公开" width="90"
           ><template #default="{ row }">{{
             row.published ? '已发布' : '草稿'
           }}</template></el-table-column
@@ -464,17 +469,19 @@ async function webhook() {
               非正式 {{ row.registrationCounts?.unofficial ?? 0 }} 人
             </div></template
           ></el-table-column
-        ><el-table-column label="操作" width="200"
+        ><el-table-column label="操作" width="250"
           ><template #default="{ row }"
-            ><router-link :to="`/admin/contests/${row.id}`">编辑配置</router-link
-            ><router-link
-              :to="`/admin/contests/${row.id}?tab=registrations`"
-              style="margin-left: 15px"
-              >报名管理</router-link
-            ></template
-          ></el-table-column
-        ></el-table
-      >
+            ><div class="table-actions">
+              <router-link :to="`/admin/contests/${row.id}`">编辑配置</router-link>
+              <router-link :to="`/admin/contests/${row.id}?tab=registrations`"
+                >报名管理</router-link
+              >
+              <DeleteContestButton
+                :contest="row"
+                text
+                @deleted="contestsPage.load"
+              /></div></template></el-table-column
+      ></el-table>
       <ListPagination
         v-model:page="contestsPage.page.value"
         v-model:size="contestsPage.pageSize.value"

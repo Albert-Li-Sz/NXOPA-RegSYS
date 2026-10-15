@@ -12,6 +12,7 @@ const data = ref<Data>({ rooms: [], seats: [], seatingVersion: 1 }),
   loading = ref(false),
   busy = ref(false),
   error = ref(''),
+  planError = ref(''),
   dialog = ref(false),
   room = ref<Data>({}),
   preview = ref<Data>(),
@@ -91,6 +92,8 @@ async function loadCandidates() {
   }
   selected.value = [];
   preview.value = undefined;
+  request.value = undefined;
+  planError.value = '';
   importFile.value = '';
 }
 async function openPlan() {
@@ -101,11 +104,15 @@ const chosen = computed(() =>
   range.value === 'SELECTED' ? selected.value : candidates.value.map((r) => r.id),
 );
 async function showPreview(assignments?: Data[]) {
+  if (busy.value) return false;
   if (!chosen.value.length && !assignments?.length) {
     ElMessage.warning('请先选择报名');
-    return;
+    return false;
   }
   busy.value = true;
+  preview.value = undefined;
+  request.value = undefined;
+  planError.value = '';
   try {
     const body = {
       registrationIds: assignments
@@ -114,14 +121,18 @@ async function showPreview(assignments?: Data[]) {
       replace: assignments ? true : replace.value,
       ...(assignments ? { assignments } : {}),
     };
-    request.value = body;
     preview.value = await api(`/contests/${props.contestId}/seating/preview`, 'POST', body);
+    request.value = body;
+    return true;
+  } catch (e) {
+    planError.value = (e as Error).message;
+    return false;
   } finally {
     busy.value = false;
   }
 }
 async function commit() {
-  if (!preview.value || !request.value) return;
+  if (busy.value || !preview.value || !request.value || preview.value.errors.length) return;
   busy.value = true;
   try {
     await api(`/contests/${props.contestId}/seating/commit`, 'POST', {
@@ -132,6 +143,10 @@ async function commit() {
     ElMessage.success('排考已保存');
     planOpen.value = false;
     await load();
+  } catch (e) {
+    planError.value = `${(e as Error).message}，请重新预览后确认。`;
+    preview.value = undefined;
+    request.value = undefined;
   } finally {
     busy.value = false;
   }
@@ -174,7 +189,7 @@ async function importCsv(event: Event) {
     if (!byName && header?.join(',') !== 'registrationId,personId,roomId,seat')
       throw new Error('请使用下载的排考模板：registrationId,personId,room,seat');
     importFile.value = file.name;
-    await showPreview(
+    const shown = await showPreview(
       rows.map(([registrationId, personId, roomId, seat]) => ({
         registrationId,
         personId: personId || null,
@@ -186,7 +201,7 @@ async function importCsv(event: Event) {
         seat: Number(seat),
       })),
     );
-    planOpen.value = true;
+    planOpen.value = shown;
   } catch (e) {
     ElMessage.error((e as Error).message);
   } finally {
@@ -258,7 +273,7 @@ async function manual(row: Data) {
   setupManual();
 }
 async function previewManual() {
-  await showPreview(
+  const shown = await showPreview(
     manualRows.value.map(({ registrationId, personId, roomId, seat }) => ({
       registrationId,
       personId,
@@ -266,11 +281,13 @@ async function previewManual() {
       seat,
     })),
   );
+  if (!shown) return;
   manualOpen.value = false;
   planOpen.value = true;
   importFile.value = '手动排考';
 }
 async function closeRoom(done: () => void) {
+  if (busy.value) return;
   if (await roomEdit.mayLeave()) {
     roomEdit.cancel();
     done();
@@ -354,7 +371,8 @@ async function closeRoom(done: () => void) {
     :title="room.id ? '考场详情' : '新增考场'"
     width="620px"
     :before-close="closeRoom"
-    ><EditActions :session="roomEdit" /><el-form
+    :show-close="!busy"
+    ><EditActions :session="roomEdit" :allow="!busy" /><el-form
       :key="String(roomEdit.editing.value)"
       label-position="top"
       :disabled="!roomEdit.editing.value || busy"
@@ -376,8 +394,10 @@ async function closeRoom(done: () => void) {
     title="排考预览与确认"
     width="min(1000px,95vw)"
     :close-on-click-modal="false"
+    :close-on-press-escape="!busy"
+    :show-close="!busy"
     ><template v-if="!importFile"
-      ><el-radio-group v-model="range" @change="preview = undefined"
+      ><el-radio-group v-model="range" :disabled="busy" @change="preview = undefined"
         ><el-radio value="ALL">全部取得资格的报名（{{ candidates.length }} 份）</el-radio
         ><el-radio value="SELECTED">仅已勾选（{{ selected.length }} 份）</el-radio></el-radio-group
       ><PaginatedTable
@@ -391,20 +411,25 @@ async function closeRoom(done: () => void) {
             preview = undefined;
           }
         "
-        ><el-table-column reserve-selection type="selection" /><el-table-column label="报名"
+        ><el-table-column
+          reserve-selection
+          type="selection"
+          :selectable="() => !busy"
+        /><el-table-column label="报名"
           ><template #default="{ row }"
             >#{{ row.number }} {{ row.teamName || row.people[0]?.name }}</template
           ></el-table-column
         ></PaginatedTable
       >
       <div class="toolbar">
-        <el-checkbox v-model="replace" @change="preview = undefined"
+        <el-checkbox v-model="replace" :disabled="busy" @change="preview = undefined"
           >重新分配所选报名（替换已有座位）</el-checkbox
         ><el-button :loading="busy" @click="showPreview()">预览分配结果</el-button
-        ><el-button @click="setupManual">手动填写座位</el-button>
+        ><el-button :disabled="busy" @click="setupManual">手动填写座位</el-button>
       </div></template
     >
     <p v-else>导入文件：{{ importFile }}</p>
+    <el-alert v-if="planError" :title="planError" type="error" :closable="false" />
     <template v-if="preview"
       ><p>
         本次作用范围：{{ preview.total }} 份报名；新增／替换
@@ -432,10 +457,10 @@ async function closeRoom(done: () => void) {
           prop="seat"
           label="座位" /></PaginatedTable></template
     ><template #footer
-      ><el-button @click="planOpen = false">关闭</el-button
+      ><el-button :disabled="busy" @click="planOpen = false">关闭</el-button
       ><el-button
         type="primary"
-        :disabled="!preview || preview.errors.length > 0"
+        :disabled="busy || !preview || preview.errors.length > 0"
         :loading="busy"
         @click="commit"
         >确认保存本次排考</el-button
@@ -447,13 +472,16 @@ async function closeRoom(done: () => void) {
     title="手动安排座位"
     width="min(900px,95vw)"
     :close-on-click-modal="false"
+    :close-on-press-escape="!busy"
+    :show-close="!busy"
     ><p class="form-help">每个座位填写完成后先预览；同队按成员排考时请安排在同一考场。</p>
+    <el-alert v-if="planError" :title="planError" type="error" :closable="false" />
     <PaginatedTable page-key="seatingmanager-manualrows" :data="manualRows"
       ><el-table-column prop="name" label="姓名／队伍" /><el-table-column
         label="考场"
         min-width="220"
         ><template #default="{ row }"
-          ><el-select v-model="row.roomId" filterable
+          ><el-select v-model="row.roomId" filterable :disabled="busy"
             ><el-option
               v-for="item in data.rooms.filter((r: Data) => r.enabled)"
               :key="item.id"
@@ -463,12 +491,13 @@ async function closeRoom(done: () => void) {
         ><template #default="{ row }"
           ><el-input-number
             v-model="row.seat"
+            :disabled="busy"
             :min="1"
             :max="
               data.rooms.find((room: Data) => room.id === row.roomId)?.capacity || 1
             " /></template></el-table-column></PaginatedTable
     ><template #footer
-      ><el-button @click="manualOpen = false">取消</el-button
+      ><el-button :disabled="busy" @click="manualOpen = false">取消</el-button
       ><el-button type="primary" :loading="busy" @click="previewManual"
         >预览手动排考</el-button
       ></template

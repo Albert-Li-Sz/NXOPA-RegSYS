@@ -4,10 +4,12 @@ import { onMounted, ref } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import { api, date } from '../api';
 import type { Data } from '../types';
-const props = defineProps<{ contestId: string }>();
+const props = defineProps<{ contestId?: string }>();
 const rows = ref<Data[]>([]);
 async function load() {
-  rows.value = await api(`/integrations/revocations?contestId=${props.contestId}`);
+  rows.value = await api(
+    `/integrations/revocations${props.contestId ? `?contestId=${props.contestId}` : ''}`,
+  );
 }
 async function complete(row: Data) {
   await ElMessageBox.confirm(
@@ -18,6 +20,7 @@ async function complete(row: Data) {
   await load();
 }
 onMounted(load);
+defineExpose({ refresh: load });
 </script>
 <template>
   <div class="card">

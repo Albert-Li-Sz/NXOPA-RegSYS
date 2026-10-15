@@ -1,0 +1,151 @@
+{
+  "verifiedAt": "2026-10-15T02:57:06.085761+00:00",
+  "baseCommit": "ff14e82c61bcd3ad1fbec648943b2e499f033856",
+  "branch": "codex/activity-workflows",
+  "uncommittedChanges": true,
+  "scope": [
+    "empty activity deletion with version and authorization checks",
+    "registration and independent finance protection",
+    "private attachment and support retention",
+    "remote revocation access after activity deletion",
+    "button alignment at 1440, 831 and 390 pixels"
+  ],
+  "newScenarios": 7,
+  "browserTests": 60,
+  "unitTests": 13,
+  "checks": {
+    "typecheck": true,
+    "build": true,
+    "format": true,
+    "localApiHealth": "ok"
+  },
+  "commands": [
+    "pnpm typecheck",
+    "pnpm test",
+    "pnpm build",
+    "pnpm format:check",
+    "PLATFORM_TEST_LATEX_IMAGE=ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.4.0 E2E_MAX_FAILURES=5 pnpm test:full"
+  ],
+  "fullRegression": {
+    "success": true,
+    "results": [
+      {
+        "suite": "test:integration",
+        "success": true,
+        "elapsedMs": 8306,
+        "log": ".runtime/reports/full-test-integration.log"
+      },
+      {
+        "suite": "test:auth",
+        "success": true,
+        "elapsedMs": 5498,
+        "log": ".runtime/reports/full-test-auth.log"
+      },
+      {
+        "suite": "test:accounts",
+        "success": true,
+        "elapsedMs": 8789,
+        "log": ".runtime/reports/full-test-accounts.log"
+      },
+      {
+        "suite": "test:feishu",
+        "success": true,
+        "elapsedMs": 1900,
+        "log": ".runtime/reports/full-test-feishu.log"
+      },
+      {
+        "suite": "test:invitations",
+        "success": true,
+        "elapsedMs": 7528,
+        "log": ".runtime/reports/full-test-invitations.log"
+      },
+      {
+        "suite": "test:mail",
+        "success": true,
+        "elapsedMs": 9090,
+        "log": ".runtime/reports/full-test-mail.log"
+      },
+      {
+        "suite": "test:mail-failover",
+        "success": true,
+        "elapsedMs": 6478,
+        "log": ".runtime/reports/full-test-mail-failover.log"
+      },
+      {
+        "suite": "test:template-bugs",
+        "success": true,
+        "elapsedMs": 3687,
+        "log": ".runtime/reports/full-test-template-bugs.log"
+      },
+      {
+        "suite": "test:overview",
+        "success": true,
+        "elapsedMs": 895,
+        "log": ".runtime/reports/full-test-overview.log"
+      },
+      {
+        "suite": "test:enhancements",
+        "success": true,
+        "elapsedMs": 6463,
+        "log": ".runtime/reports/full-test-enhancements.log"
+      },
+      {
+        "suite": "test:admissions",
+        "success": true,
+        "elapsedMs": 4054,
+        "log": ".runtime/reports/full-test-admissions.log"
+      },
+      {
+        "suite": "test:activity-workflows",
+        "success": true,
+        "elapsedMs": 5975,
+        "log": ".runtime/reports/full-test-activity-workflows.log"
+      },
+      {
+        "suite": "test:workflow-upgrade",
+        "success": true,
+        "elapsedMs": 3262,
+        "log": ".runtime/reports/full-test-workflow-upgrade.log"
+      },
+      {
+        "suite": "test:bugs",
+        "success": true,
+        "elapsedMs": 4268,
+        "log": ".runtime/reports/full-test-bugs.log"
+      },
+      {
+        "suite": "test:permissions",
+        "success": true,
+        "elapsedMs": 1094,
+        "log": ".runtime/reports/full-test-permissions.log"
+      },
+      {
+        "suite": "test:file-race",
+        "success": true,
+        "elapsedMs": 2309,
+        "log": ".runtime/reports/full-test-file-race.log"
+      },
+      {
+        "suite": "test:load",
+        "success": true,
+        "elapsedMs": 11697,
+        "log": ".runtime/reports/full-test-load.log"
+      },
+      {
+        "suite": "test:mcp",
+        "success": true,
+        "elapsedMs": 1455,
+        "log": ".runtime/reports/full-test-mcp.log"
+      },
+      {
+        "suite": "test:e2e",
+        "success": true,
+        "elapsedMs": 208073,
+        "log": ".runtime/reports/full-test-e2e.log"
+      }
+    ],
+    "checkedAt": "2026-10-15T02:56:30.020Z",
+    "commit": "ff14e82c61bcd3ad1fbec648943b2e499f033856",
+    "workingTreeDirty": true
+  }
+}

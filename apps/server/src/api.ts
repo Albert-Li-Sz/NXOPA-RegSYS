@@ -21,6 +21,7 @@ import type { Response, Request } from 'express';
 import archiver from 'archiver';
 import { AuthService, user, csrf, type AuthRequest } from './auth.js';
 import { RegistrationService } from './registrations.js';
+import { removeContest } from './contest-removal.js';
 import { SeatingService } from './seating.js';
 import { FinanceService } from './finance.js';
 import { SupportService } from './support.js';
@@ -373,6 +374,13 @@ export class ApiController {
   ) {
     return this.registrations.saveContest(user(r), id, b);
   }
+  @Delete('contests/:id') deleteContest(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return removeContest(user(r), id, b);
+  }
   @Get('contests/:id/rooms') rooms(@Req() r: AuthRequest, @Param('id') id: string) {
     return this.seating.view(user(r), id);
   }
@@ -422,9 +430,10 @@ export class ApiController {
   }
   @Get('integrations/revocations') revocations(
     @Req() r: AuthRequest,
-    @Query('contestId') id: string,
+    @Query('contestId') id?: string,
   ) {
-    requireManager(user(r), id, 'INTEGRATIONS');
+    if (id) requireManager(user(r), z.string().uuid().parse(id), 'INTEGRATIONS');
+    else requireAdmin(user(r));
     return db.remoteRevocation.findMany({
       where: { contestId: id },
       orderBy: { createdAt: 'desc' },

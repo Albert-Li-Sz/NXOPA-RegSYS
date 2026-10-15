@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PaginatedTable from '../components/PaginatedTable.vue';
+import DeleteContestButton from '../components/DeleteContestButton.vue';
 import PaginatedList from '../components/PaginatedList.vue';
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -91,24 +92,26 @@ async function openReview(row: Data) {
   reviewOpen.value = true;
 }
 async function nextReview() {
-  while (reviewQueue.value.length) {
-    const id = reviewQueue.value.shift()!;
-    const response = await fetch(`/api/v1/registrations/${id}?history=false`, {
-      credentials: 'same-origin',
-    });
-    if (response.status === 404) continue;
-    if (!response.ok) {
-      reviewOpen.value = false;
-      moduleError.value = '报名状态或管理权限已变化，请刷新后继续';
+  try {
+    while (reviewQueue.value.length) {
+      const id = reviewQueue.value.shift()!;
+      const response = await fetch(`/api/v1/registrations/${id}?history=false`, {
+        credentials: 'same-origin',
+      });
+      if (response.status === 404) continue;
+      if (!response.ok) throw new Error('报名状态或管理权限已变化');
+      const value = await response.json();
+      if (!value.actions.review) continue;
+      reviewId.value = id;
       return;
     }
-    const value = await response.json();
-    if (!value.actions.review) continue;
-    reviewId.value = id;
-    return;
+    reviewOpen.value = false;
+    ElMessage.success('当前筛选范围内的报名已处理完成');
+  } catch {
+    reviewOpen.value = false;
+    reviewQueue.value = [];
+    moduleError.value = '本条审核已保存，但下一条报名加载失败；请刷新报名列表后继续审核。';
   }
-  reviewOpen.value = false;
-  ElMessage.success('当前筛选范围内的报名已处理完成');
 }
 async function removeRegistration(row: Data) {
   const { value } = await ElMessageBox.prompt(
@@ -150,6 +153,7 @@ function newKind() {
   }
 }
 const selected = ref<Data[]>([]),
+  batchBusy = ref(false),
   statusFilter = ref(''),
   search = ref(''),
   fieldDialog = ref(false),
@@ -159,10 +163,19 @@ const selected = ref<Data[]>([]),
 const permission = (item: Parameters<typeof canManage>[1]) =>
   isNew.value || canManage(String(route.params.id), item);
 const filtered = computed(() => rows.value);
-watch([statusFilter, search], ([review, value]) => {
-  roster.filters.value = { ...roster.filters.value, review, search: value };
-  selected.value = [];
-});
+const batchRows = computed(() => (selected.value.length ? selected.value : rows.value));
+const batchIds = computed(() => batchRows.value.filter((r) => r.eligible).map((r) => r.id));
+const batchBlocked = computed(
+  () => batchBusy.value || roster.loading.value || !!roster.error.value || !batchIds.value.length,
+);
+watch(
+  [statusFilter, search],
+  ([review, value]) => {
+    roster.filters.value = { ...roster.filters.value, review, search: value };
+    selected.value = [];
+  },
+  { flush: 'sync' },
+);
 const rosterTable = ref<TableInstance>();
 watch(
   roster.filters,
@@ -170,7 +183,7 @@ watch(
     selected.value = [];
     rosterTable.value?.clearSelection();
   },
-  { deep: true },
+  { deep: true, flush: 'sync' },
 );
 watch(
   () => form.value.policy.platformProfiles,
@@ -353,52 +366,66 @@ async function checkPreview() {
   preview.value = await api(`/jobs/${preview.value!.id}`);
 }
 async function generate() {
-  const ids = selected.value.length
-    ? selected.value.filter((r) => r.eligible).map((r) => r.id)
-    : rows.value.filter((r) => r.eligible).map((r) => r.id);
-  if (!ids.length) {
-    ElMessage.warning('请选择已取得资格的报名');
-    return;
-  }
-  await ElMessageBox.confirm(
-    `本次将为${selected.value.length ? '已勾选' : '当前页'}的 ${ids.length} 份有效报名生成准考证。确认继续？`,
-    '批量生成准考证',
-  );
-  let room = '',
-    seat = '';
-  if (!form.value.modules.rooms) {
-    const { value } = await ElMessageBox.prompt(
-      '考场 / 座位起始号（连续分配），例如 A101 / 1',
-      '生成准考证',
+  if (batchBlocked.value) return;
+  const ids = [...batchIds.value],
+    query = roster.query();
+  batchBusy.value = true;
+  try {
+    await ElMessageBox.confirm(
+      `本次将为${selected.value.length ? '已勾选' : '当前页'}的 ${ids.length} 份有效报名生成准考证。确认继续？`,
+      '批量生成准考证',
     );
-    [room, seat] = value.split('/').map((x) => x.trim());
+    let room = '',
+      seat = '';
+    if (!form.value.modules.rooms) {
+      const { value } = await ElMessageBox.prompt(
+        '考场 / 座位起始号（连续分配），例如 A101 / 1',
+        '生成准考证',
+      );
+      [room, seat] = value.split('/').map((x) => x.trim());
+    }
+    requireBatchScope(query);
+    await api('/admissions/generate', 'POST', {
+      registrationIds: ids,
+      location: form.value.location,
+      room,
+      seat,
+      incrementSeats: true,
+    });
+    ElMessage.success('生成任务已入队');
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close')
+      moduleError.value = e instanceof Error ? e.message : '准考证生成失败，请重试';
+  } finally {
+    batchBusy.value = false;
   }
-  await api('/admissions/generate', 'POST', {
-    registrationIds: ids,
-    location: form.value.location,
-    room,
-    seat,
-    incrementSeats: true,
-  });
-  ElMessage.success('生成任务已入队');
+}
+function requireBatchScope(query: string) {
+  if (roster.loading.value || roster.error.value || query !== roster.query())
+    throw new Error('报名列表或筛选范围已变化，请重新加载并核对后操作');
 }
 async function downloadAdmissions() {
-  const registrationIds = (selected.value.length ? selected.value : filtered.value)
-    .filter((r) => r.eligible)
-    .map((r) => r.id);
-  if (!registrationIds.length) {
-    ElMessage.warning('请选择已取得资格且准考证已生成的报名');
-    return;
-  }
+  if (batchBlocked.value) return;
+  const registrationIds = [...batchIds.value],
+    query = roster.query();
   if (registrationIds.length > 1000) {
     ElMessage.warning('每次最多下载 1000 份，请分批选择');
     return;
   }
-  await ElMessageBox.confirm(
-    `下载${selected.value.length ? '已勾选' : '当前页'}的 ${registrationIds.length} 份有效报名准考证。`,
-    '确认下载范围',
-  );
-  await downloadArchive('/admissions/batch', { registrationIds }, 'admissions.zip');
+  batchBusy.value = true;
+  try {
+    await ElMessageBox.confirm(
+      `下载${selected.value.length ? '已勾选' : '当前页'}的 ${registrationIds.length} 份有效报名准考证。`,
+      '确认下载范围',
+    );
+    requireBatchScope(query);
+    await downloadArchive('/admissions/batch', { registrationIds }, 'admissions.zip');
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close')
+      moduleError.value = e instanceof Error ? e.message : '准考证下载失败，请重试';
+  } finally {
+    batchBusy.value = false;
+  }
 }
 const availableVariables = computed(() => [
   'contest.title',
@@ -439,9 +466,19 @@ function insertVariable(v: string) {
         <h1>{{ isNew ? '创建活动及竞赛' : form.title }}</h1>
         <p class="subtitle">配置报名规则，处理审核、准考证和平台联动</p>
       </div>
-      <el-button v-if="!isNew" @click="router.push(`/contests/${route.params.id}`)"
-        >查看公开页面</el-button
-      >
+      <div v-if="!isNew" class="button-group">
+        <el-button @click="router.push(`/contests/${route.params.id}`)">查看公开页面</el-button>
+        <DeleteContestButton
+          :contest="{
+            id: form.id,
+            title: form.title,
+            version: form.version,
+            deletion: form.deletion,
+          }"
+          :before-remove="mayLeaveEdits"
+          @deleted="router.push('/admin/contests')"
+        />
+      </div>
     </div>
     <EditActions
       v-if="['settings', 'fields'].includes(tab)"
@@ -804,8 +841,9 @@ function insertVariable(v: string) {
         </div>
       </div>
       <div class="toolbar">
-        <el-input v-model="search" placeholder="搜索姓名或队名" /><el-select
+        <el-input v-model="search" :disabled="batchBusy" placeholder="搜索姓名或队名" /><el-select
           v-model="statusFilter"
+          :disabled="batchBusy"
           clearable
           placeholder="审核状态"
           filterable
@@ -816,6 +854,7 @@ function insertVariable(v: string) {
             :label="label(s)" /></el-select
         ><el-select
           v-model="roster.filters.value.participationType"
+          :disabled="batchBusy"
           clearable
           placeholder="参赛性质"
           filterable
@@ -825,14 +864,16 @@ function insertVariable(v: string) {
         ><a
           :href="`/api/v1/registrations/export?contestId=${route.params.id}&${roster.query(false)}`"
           ><el-button>导出名单</el-button></a
-        ><el-button @click="refreshModules">刷新</el-button
+        ><el-button :disabled="batchBusy" @click="refreshModules">刷新</el-button
         ><el-button
           v-if="permission('ADMISSIONS') && form.modules.admissions"
           type="primary"
+          :disabled="batchBlocked"
           @click="generate"
           >批量生成准考证</el-button
         ><el-button
           v-if="permission('ADMISSIONS') && form.modules.admissions"
+          :disabled="batchBlocked"
           @click="downloadAdmissions"
           >下载准考证 ZIP</el-button
         ><label
@@ -850,11 +891,14 @@ function insertVariable(v: string) {
         /><el-table
           ref="rosterTable"
           row-key="id"
+          v-loading="roster.loading.value"
           :data="filtered"
           @selection-change="(value: Data[]) => (selected = value)"
-          ><el-table-column reserve-selection type="selection" /><el-table-column
-            label="队名 / 姓名"
-            min-width="240"
+          ><el-table-column
+            reserve-selection
+            type="selection"
+            :selectable="() => !batchBusy && !roster.loading.value"
+          /><el-table-column label="队名 / 姓名" min-width="240"
             ><template #default="{ row }"
               ><router-link :to="`/registrations/${row.id}`">{{
                 row.teamName || row.people[0]?.name
@@ -884,7 +928,7 @@ function insertVariable(v: string) {
                 row.eligible ? '有效' : '待完成'
               }}</el-tag></template
             ></el-table-column
-          ><el-table-column label="操作" width="220"
+          ><el-table-column label="操作" width="270"
             ><template #default="{ row }"
               ><el-button
                 v-if="permission('REGISTRATIONS') && registrationReviewPhase(row)"
@@ -907,9 +951,18 @@ function insertVariable(v: string) {
           v-model:page="roster.page.value"
           v-model:size="roster.pageSize.value"
           :total="roster.total.value"
-          :loading="roster.loading.value"
+          :loading="roster.loading.value || batchBusy"
         />
-        <p class="form-help">批量操作作用于已选择的报名；未选择时使用当前页符合条件的报名。</p>
+        <p v-if="roster.loading.value" class="form-help">
+          报名列表正在更新，请稍候再执行批量操作。
+        </p>
+        <p v-else-if="roster.error.value" class="form-help">
+          报名列表加载失败，请刷新后再执行批量操作。
+        </p>
+        <p v-else class="form-help">
+          本次批量作用范围：{{ selected.length ? '已勾选' : '当前页' }}
+          {{ batchRows.length }} 份报名， 其中 {{ batchIds.length }} 份已取得参加资格。
+        </p>
       </div>
     </div>
     <div class="panel" v-if="tab === 'templates'">

@@ -184,6 +184,7 @@ export class AdmissionService {
     renderTemplate(b.source, {});
     return db.$transaction(async (tx) => {
       await lock(tx, `template:${b.contestId ?? 'global'}`);
+      if (b.contestId) await tx.contest.findUniqueOrThrow({ where: { id: b.contestId } });
       const last = await tx.admissionTemplate.findFirst({
         where: { contestId: b.contestId ?? null },
         orderBy: { version: 'desc' },

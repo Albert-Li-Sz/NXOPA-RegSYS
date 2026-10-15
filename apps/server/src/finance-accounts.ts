@@ -73,11 +73,30 @@ export async function balanceChange(tx: Tx, r: FinanceContext, delta: number) {
     });
 }
 export async function financeNotify(tx: Tx, r: FinanceContext, payload: Record<string, unknown>) {
-  if (r.registration) return event(tx, 'NOTIFY', r.id, payload);
-  const owner = await tx.user.findUnique({ where: { id: r.ownerId } });
-  if (owner?.verified && !owner.deactivatedAt)
+  // Resolve recipients now: settlement notifications must remain deliverable if the
+  // registration is removed before the outbox worker consumes this transaction.
+  const ids = [
+    r.ownerId,
+    ...(r.registration?.coaches.map((c) => c.userId) ?? []),
+    ...(r.registration?.people.flatMap((p) => (p.active && p.userId ? [p.userId] : [])) ?? []),
+  ];
+  const personIds = (
+    await tx.user.findMany({
+      where: { id: { in: ids } },
+      select: { personId: true },
+    })
+  ).flatMap((u) => (u.personId ? [u.personId] : []));
+  const recipients = await tx.user.findMany({
+    where: {
+      OR: [{ id: { in: ids } }, { personId: { in: personIds } }],
+      verified: true,
+      deactivatedAt: null,
+    },
+  });
+  for (const recipient of recipients)
     await event(tx, 'MAIL', r.id, {
-      to: owner.email,
+      to: recipient.email,
+      name: recipient.name,
       subject: '活动财务处理更新',
       text: String(payload.message),
       category: String(payload.category ?? 'REGISTRATION'),

@@ -83,6 +83,8 @@ test('activity overview is the first navigation entry and real statistics fit de
 });
 test('gender has only two options and dropdowns can filter typed text', async ({ page }) => {
   await login(page, 'alice');
+  const originalGender = (await (await page.request.get('/api/v1/auth/me')).json()).user.profile
+    .gender;
   await page.goto('/me/profile?tab=identity');
   const select = page.locator('#identity-gender');
   await select.fill('其他');
@@ -91,6 +93,11 @@ test('gender has only two options and dropdowns can filter typed text', async ({
   await expect(page.getByRole('option', { name: '女', exact: true })).toBeVisible();
   await expect(page.getByRole('option', { name: '男', exact: true })).toHaveCount(0);
   await page.getByRole('option', { name: '女', exact: true }).click();
+  await page.getByRole('tab', { name: '总览', exact: true }).click();
+  // The selected gender may already match the saved profile; only discard when dirty.
+  if (originalGender !== '女')
+    await page.getByRole('button', { name: '放弃并离开', exact: true }).click();
+  await expect(page.locator('#profile-email')).toBeVisible();
   await page.goto('/admin');
   await expect(page).toHaveURL(/\/contests$/);
 });

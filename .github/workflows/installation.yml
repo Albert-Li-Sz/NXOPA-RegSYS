@@ -6,7 +6,7 @@ on:
       image_tag:
         description: 待验收的已有镜像版本
         required: true
-        default: v0.5.0
+        default: v0.5.1
         type: string
 
 permissions:

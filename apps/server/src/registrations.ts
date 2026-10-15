@@ -66,6 +66,7 @@ import {
 import { config } from './config.js';
 import { publicLink } from './site-settings.js';
 import { paginated, dateFilter, pageOptions, type ListQuery } from './pagination.js';
+import { contestDeletionAccess } from './contest-removal.js';
 
 function registrationAccess(u: Principal, contestId?: string) {
   return {
@@ -236,7 +237,7 @@ export class RegistrationService {
         orderBy: [{ opensAt: 'desc' }, { id: 'desc' }],
         include: {
           forms: { orderBy: { version: 'desc' }, take: 1 },
-          _count: { select: { registrations: true } },
+          _count: { select: { registrations: true, financeAccounts: true } },
         },
       });
       const ids = rows.map((c) => c.id);
@@ -264,12 +265,14 @@ export class RegistrationService {
         unofficialCounts = counts(unofficial);
       return rows.map((c) => ({
         ...c,
+        _count: { registrations: c._count.registrations },
         policy: policySchema.parse(c.policy),
         status: contestStatus(c),
         fields: c.forms[0]?.fields ?? [],
         forms: undefined,
         ...(managed
           ? {
+              deletion: contestDeletionAccess(u, c._count),
               registrationCounts: {
                 official: officialCounts.get(c.id) ?? 0,
                 unofficial: unofficialCounts.get(c.id) ?? 0,
@@ -283,7 +286,10 @@ export class RegistrationService {
   async contest(id: string, u?: Principal) {
     const c = await db.contest.findUnique({
       where: { id },
-      include: { forms: { orderBy: { version: 'desc' }, take: 1 } },
+      include: {
+        forms: { orderBy: { version: 'desc' }, take: 1 },
+        _count: { select: { registrations: true, financeAccounts: true } },
+      },
     });
     if (!c || (!c.published && !u?.isAdmin && !u?.contestIds.includes(id)))
       throw new NotFoundException('竞赛不存在');
@@ -291,6 +297,8 @@ export class RegistrationService {
       ...c,
       policy: policySchema.parse(c.policy),
       forms: undefined,
+      _count: undefined,
+      ...(u?.isAdmin ? { deletion: contestDeletionAccess(u, c._count) } : {}),
       fields: c.forms[0]?.fields ?? [],
       status: contestStatus(c),
     };
@@ -563,6 +571,7 @@ export class RegistrationService {
       throw new BadRequestException('请先完善学号、姓名、班级、学院和性别后再报名');
     const { contestId } = z.object({ contestId: z.string().uuid() }).parse(body);
     return db.$transaction(async (tx) => {
+      await lock(tx, contestId);
       const c = await tx.contest.findUniqueOrThrow({ where: { id: contestId } });
       if (!c.published || c.archived || contestStatus(c) !== 'OPEN')
         throw new BadRequestException('当前无法报名');
@@ -604,6 +613,9 @@ export class RegistrationService {
         throw new BadRequestException('此竞赛未开放非正式报名');
       if ((p.mode === 'INDIVIDUAL' && b.people.length !== 1) || b.people.length > p.maxMembers)
         throw new BadRequestException('参赛人数不符合规则');
+      const memberIds = b.people.flatMap((person) => (person.id ? [person.id] : []));
+      if (new Set(memberIds).size !== memberIds.length)
+        throw new BadRequestException('成员编号重复，请刷新报名后重试');
       if (
         b.people.filter((x) => x.captain).length !== 1 ||
         !b.people.some(
@@ -864,8 +876,10 @@ export class RegistrationService {
           !file ||
           file.deletedAt ||
           file.public ||
+          file.ticketId ||
           (file.contestId && file.contestId !== r.contestId) ||
-          (file.registrationId !== r.id && !owns(u, file.ownerId))
+          (file.registrationId && file.registrationId !== r.id) ||
+          (!file.registrationId && !owns(u, file.ownerId))
         )
           throw new ForbiddenException('附件不属于此报名');
         if (f.type === 'photo' && !file.mime.startsWith('image/'))

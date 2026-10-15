@@ -1,0 +1,243 @@
+{
+  "verifiedAt": "2026-10-15T04:52:51.153965+00:00",
+  "baseCommit": "ff14e82c61bcd3ad1fbec648943b2e499f033856",
+  "branch": "codex/activity-workflows",
+  "uncommittedChanges": true,
+  "environment": "Local development and isolated regression stack; production not modified",
+  "fixedDefects": [
+    "Serialize registration attachment uploads with permanent registration deletion",
+    "Serialize linked support ticket creation with registration deletion",
+    "Prevent independent ticket or other activity files from becoming financial proof",
+    "Prevent cross-activity attachments in support creation and replies",
+    "Keep queued financial notifications and deliver new applications after registration deletion",
+    "Use current invoice policy in the independent finance page while retaining historical fee/refund policy",
+    "Revalidate support authorization before returning idempotent cached replies"
+  ],
+  "newApiRegressionCases": 7,
+  "newBrowserRegressionCases": 1,
+  "browserTests": 61,
+  "unitTests": 13,
+  "bugRegression": {
+    "results": [
+      {
+        "case": "old-verification-link",
+        "status": "PASS"
+      },
+      {
+        "case": "old-reset-link",
+        "status": "PASS"
+      },
+      {
+        "case": "cancellation-eligibility-event",
+        "status": "PASS"
+      },
+      {
+        "case": "unofficial-review-before-payment",
+        "status": "PASS"
+      },
+      {
+        "case": "team-member-support-list",
+        "status": "PASS"
+      },
+      {
+        "case": "registration-upload-deletion-race",
+        "status": "PASS"
+      },
+      {
+        "case": "support-creation-deletion-race",
+        "status": "PASS"
+      },
+      {
+        "case": "finance-current-invoice-policy",
+        "status": "PASS"
+      },
+      {
+        "case": "financial-attachment-context",
+        "status": "PASS"
+      },
+      {
+        "case": "removed-registration-financial-notifications",
+        "status": "PASS"
+      },
+      {
+        "case": "support-attachment-context",
+        "status": "PASS"
+      }
+    ]
+  },
+  "permissionRegression": {
+    "success": true,
+    "checks": [
+      "job search retains contest authorization scope",
+      "VIEW grant cannot enumerate other users support tickets",
+      "VIEW grant cannot read standalone ticket",
+      "VIEW grant cannot read standalone support file",
+      "VIEW grant cannot upload to standalone ticket",
+      "VIEW grant cannot read standalone support mail status",
+      "VIEW grant cannot read registration-linked ticket",
+      "VIEW grant cannot read registration-linked support file",
+      "VIEW grant cannot upload to registration-linked ticket",
+      "VIEW grant cannot read registration-linked support mail status",
+      "invalid student year returns a validation error",
+      "invalid calendar date cannot enter identity approval queue",
+      "deleting a submitted form attachment invalidates qualification",
+      "deleted files cannot be bound to a new support ticket",
+      "a support attachment cannot be moved to another ticket",
+      "SUPPORT grant permits ticket, file and delivery reads",
+      "SUPPORT revocation removes access immediately",
+      "SUPPORT revocation also blocks idempotent reply replay"
+    ],
+    "failures": []
+  },
+  "fullRegression": {
+    "success": true,
+    "results": [
+      {
+        "suite": "test:integration",
+        "success": true,
+        "elapsedMs": 8159,
+        "log": ".runtime/reports/full-test-integration.log"
+      },
+      {
+        "suite": "test:auth",
+        "success": true,
+        "elapsedMs": 5455,
+        "log": ".runtime/reports/full-test-auth.log"
+      },
+      {
+        "suite": "test:accounts",
+        "success": true,
+        "elapsedMs": 8677,
+        "log": ".runtime/reports/full-test-accounts.log"
+      },
+      {
+        "suite": "test:feishu",
+        "success": true,
+        "elapsedMs": 1740,
+        "log": ".runtime/reports/full-test-feishu.log"
+      },
+      {
+        "suite": "test:invitations",
+        "success": true,
+        "elapsedMs": 7249,
+        "log": ".runtime/reports/full-test-invitations.log"
+      },
+      {
+        "suite": "test:mail",
+        "success": true,
+        "elapsedMs": 9725,
+        "log": ".runtime/reports/full-test-mail.log"
+      },
+      {
+        "suite": "test:mail-failover",
+        "success": true,
+        "elapsedMs": 7236,
+        "log": ".runtime/reports/full-test-mail-failover.log"
+      },
+      {
+        "suite": "test:template-bugs",
+        "success": true,
+        "elapsedMs": 3660,
+        "log": ".runtime/reports/full-test-template-bugs.log"
+      },
+      {
+        "suite": "test:overview",
+        "success": true,
+        "elapsedMs": 865,
+        "log": ".runtime/reports/full-test-overview.log"
+      },
+      {
+        "suite": "test:enhancements",
+        "success": true,
+        "elapsedMs": 5689,
+        "log": ".runtime/reports/full-test-enhancements.log"
+      },
+      {
+        "suite": "test:admissions",
+        "success": true,
+        "elapsedMs": 5612,
+        "log": ".runtime/reports/full-test-admissions.log"
+      },
+      {
+        "suite": "test:activity-workflows",
+        "success": true,
+        "elapsedMs": 5028,
+        "log": ".runtime/reports/full-test-activity-workflows.log"
+      },
+      {
+        "suite": "test:workflow-upgrade",
+        "success": true,
+        "elapsedMs": 2977,
+        "log": ".runtime/reports/full-test-workflow-upgrade.log"
+      },
+      {
+        "suite": "test:bugs",
+        "success": true,
+        "elapsedMs": 10558,
+        "log": ".runtime/reports/full-test-bugs.log"
+      },
+      {
+        "suite": "test:permissions",
+        "success": true,
+        "elapsedMs": 943,
+        "log": ".runtime/reports/full-test-permissions.log"
+      },
+      {
+        "suite": "test:file-race",
+        "success": true,
+        "elapsedMs": 1513,
+        "log": ".runtime/reports/full-test-file-race.log"
+      },
+      {
+        "suite": "test:load",
+        "success": true,
+        "elapsedMs": 11073,
+        "log": ".runtime/reports/full-test-load.log"
+      },
+      {
+        "suite": "test:mcp",
+        "success": true,
+        "elapsedMs": 1331,
+        "log": ".runtime/reports/full-test-mcp.log"
+      },
+      {
+        "suite": "test:e2e",
+        "success": true,
+        "elapsedMs": 198729,
+        "log": ".runtime/reports/full-test-e2e.log"
+      }
+    ],
+    "checkedAt": "2026-10-15T04:51:48.211Z",
+    "commit": "ff14e82c61bcd3ad1fbec648943b2e499f033856",
+    "workingTreeDirty": true
+  },
+  "checks": {
+    "typecheck": true,
+    "testTypecheck": true,
+    "build": true,
+    "format": true,
+    "diffCheck": true,
+    "localApiHealth": "ok",
+    "localWebStatus": 200
+  },
+  "commands": [
+    "pnpm typecheck",
+    "pnpm exec tsc -p tests/tsconfig.json",
+    "pnpm test",
+    "pnpm build",
+    "pnpm format:check",
+    "pnpm test:bugs",
+    "pnpm test:permissions",
+    "pnpm exec playwright test tests/e2e/activity-workflows.spec.ts -g 'retained finance accounts'",
+    "PLATFORM_TEST_LATEX_IMAGE=ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.4.0 E2E_MAX_FAILURES=5 pnpm test:full"
+  ],
+  "localLogs": {
+    "full": ".runtime/reports/bug-audit-full-final.log",
+    "typecheck": ".runtime/reports/bug-audit-typecheck.log",
+    "build": ".runtime/reports/bug-audit-build.log",
+    "format": ".runtime/reports/bug-audit-format.log",
+    "unit": ".runtime/reports/bug-audit-unit.log",
+    "permissionReproduction": ".runtime/reports/bug-audit-permissions-red.log"
+  },
+  "notRun": ["Production deployment and live third-party OJ infrastructure testing"]
+}

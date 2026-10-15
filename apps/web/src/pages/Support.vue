@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { ref, reactive, onMounted, computed, watch } from 'vue';
+import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
+import { ElMessage } from 'element-plus';
 import MailDelivery from '../components/MailDelivery.vue';
 import { canManage } from '../permissions';
 import { api, auth, date, label, upload } from '../api';
@@ -8,6 +9,7 @@ import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
 import type { Data, ContestView } from '../types';
 import PaginatedList from '../components/PaginatedList.vue';
+import { useEditSession } from '../composables/useEditSession';
 const list = usePagedList('support', () => '/support');
 const route = useRoute(),
   router = useRouter(),
@@ -16,6 +18,8 @@ const route = useRoute(),
   contests = ref<ContestView[]>([]),
   createDialog = ref(!!route.query.registrationId),
   busy = ref(false),
+  uploading = ref(false),
+  submitError = ref(''),
   loading = ref(true),
   loadError = ref('');
 const form = reactive({
@@ -27,6 +31,32 @@ const form = reactive({
     attachments: [] as string[],
   }),
   reply = reactive({ text: '', status: '', attachments: [] as string[] });
+const working = computed(() => busy.value || uploading.value);
+function mayNavigate() {
+  if (!working.value) return true;
+  ElMessage.info(uploading.value ? '附件正在上传，请稍候再离开' : '正在提交，请稍候再离开');
+  return false;
+}
+onBeforeRouteLeave(mayNavigate);
+onBeforeRouteUpdate(mayNavigate);
+const createEdit = useEditSession(form),
+  replyEdit = useEditSession(reply, !!route.params.id);
+watch(
+  createDialog,
+  (open) => {
+    if (open) {
+      submitError.value = '';
+      createEdit.begin();
+    }
+  },
+  { immediate: true },
+);
+async function closeCreate(done: () => void) {
+  if (working.value || !(await createEdit.mayLeave())) return;
+  createEdit.cancel();
+  submitError.value = '';
+  done();
+}
 const manager = computed(
   () =>
     auth.user?.isAdmin || (ticket.value?.contestId && canManage(ticket.value.contestId, 'SUPPORT')),
@@ -52,27 +82,50 @@ onMounted(async () => {
   }
 });
 async function attach(e: Event, list: string[]) {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (file) {
+  const input = e.target as HTMLInputElement,
+    file = input.files?.[0];
+  if (!file || working.value) return;
+  if (list.length >= 10) {
+    ElMessage.warning('每条消息最多上传 10 个附件');
+    input.value = '';
+    return;
+  }
+  uploading.value = true;
+  submitError.value = '';
+  try {
     const f = await upload(file, undefined, ticket.value?.id);
     list.push(f.id);
+  } catch (error) {
+    submitError.value = error instanceof Error ? error.message : '附件上传失败，请重试';
+  } finally {
+    uploading.value = false;
+    input.value = '';
   }
 }
 async function create() {
+  if (working.value) return;
   busy.value = true;
+  submitError.value = '';
   try {
     const t = await api('/support', 'POST', {
       ...form,
       contestId: form.contestId || undefined,
       registrationId: form.registrationId || undefined,
     });
-    router.push(`/support/${t.id}`);
+    createEdit.finish();
+    createDialog.value = false;
+    busy.value = false;
+    await router.push(`/support/${t.id}`);
+  } catch (error) {
+    submitError.value = error instanceof Error ? error.message : '工单提交失败，请重试';
   } finally {
     busy.value = false;
   }
 }
 async function send() {
+  if (working.value || !ticket.value) return;
   busy.value = true;
+  submitError.value = '';
   try {
     await api(`/support/${ticket.value!.id}/messages`, 'POST', {
       ...reply,
@@ -80,8 +133,12 @@ async function send() {
       status: reply.status || undefined,
     });
     reply.text = '';
+    reply.status = '';
     reply.attachments = [];
+    replyEdit.begin();
     await refresh();
+  } catch (error) {
+    submitError.value = error instanceof Error ? error.message : '回复提交失败，请重试';
   } finally {
     busy.value = false;
   }
@@ -135,6 +192,7 @@ async function send() {
             <h3>添加回复</h3>
             <el-input
               v-model="reply.text"
+              :disabled="working"
               type="textarea"
               :rows="5"
               placeholder="描述问题或补充处理信息"
@@ -144,11 +202,14 @@ async function send() {
               <input
                 type="file"
                 accept=".pdf,.png,.jpg,.txt"
+                :disabled="working || reply.attachments.length >= 10"
                 @change="attach($event, reply.attachments)"
               /><el-tag v-if="reply.attachments.length"
                 >{{ reply.attachments.length }} 个附件</el-tag
+              ><span v-if="uploading" class="form-help" role="status">附件正在上传…</span
               ><el-select
                 v-model="reply.status"
+                :disabled="working"
                 clearable
                 placeholder="回复后的状态"
                 style="width: 170px"
@@ -160,8 +221,15 @@ async function send() {
                   :key="s"
                   :value="s"
                   :label="label(s)" /></el-select
-              ><el-button type="primary" :loading="busy" @click="send">提交回复</el-button>
+              ><el-button
+                type="primary"
+                :loading="busy"
+                :disabled="working || !reply.text.trim()"
+                @click="send"
+                >提交回复</el-button
+              >
             </div>
+            <el-alert v-if="submitError" :title="submitError" type="error" :closable="false" />
           </div>
         </div>
         <aside class="card">
@@ -236,8 +304,15 @@ async function send() {
         />
       </div>
     </div>
-    <el-dialog v-model="createDialog" title="新建工单" width="600px"
-      ><el-form label-position="top"
+    <el-dialog
+      v-model="createDialog"
+      title="新建工单"
+      width="600px"
+      :before-close="closeCreate"
+      :close-on-click-modal="!working"
+      :close-on-press-escape="!working"
+      :show-close="!working"
+      ><el-form label-position="top" :disabled="working"
         ><el-form-item label="所属竞赛"
           ><el-select
             v-model="form.contestId"
@@ -261,14 +336,22 @@ async function send() {
         ><el-form-item label="描述" for="ticket-text"
           ><el-input id="ticket-text" v-model="form.text" type="textarea" :rows="5" /></el-form-item
         ><el-form-item label="附件"
-          ><input type="file" @change="attach($event, form.attachments)" /><span
-            v-if="form.attachments.length"
-          >
-            已上传 {{ form.attachments.length }} 个</span
-          ></el-form-item
+          ><input
+            type="file"
+            :disabled="working || form.attachments.length >= 10"
+            @change="attach($event, form.attachments)"
+          /><span v-if="form.attachments.length"> 已上传 {{ form.attachments.length }} 个</span
+          ><span v-if="uploading" class="form-help" role="status">附件正在上传…</span></el-form-item
         ></el-form
-      ><template #footer
-        ><el-button type="primary" :loading="busy" @click="create">提交工单</el-button></template
+      ><el-alert v-if="submitError" :title="submitError" type="error" :closable="false" />
+      <template #footer
+        ><el-button
+          type="primary"
+          :loading="busy"
+          :disabled="working || !form.title.trim() || !form.text.trim()"
+          @click="create"
+          >提交工单</el-button
+        ></template
       ></el-dialog
     >
   </template>

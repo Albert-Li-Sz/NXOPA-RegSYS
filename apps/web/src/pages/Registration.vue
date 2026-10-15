@@ -51,6 +51,10 @@ const rank = ref<{ rank: number | null }>({ rank: null }),
 const invoiceTotal = computed(() => r.value?.invoiceIssuedCents ?? 0);
 const invoiceApplication = ref(false),
   invoiceDetail = ref<Data>();
+const invoiceApplicationForm = ref<InstanceType<typeof InvoiceApplication>>();
+async function closeInvoiceApplication(done: () => void) {
+  if (!invoiceApplicationForm.value || (await invoiceApplicationForm.value.mayClose())) done();
+}
 const voucherPage = usePagedList(
     'vouchers',
     () => `/registrations/${route.params.id}/finance/vouchers`,
@@ -1112,7 +1116,7 @@ async function memberSave(id: string, index: number) {
     </div>
     <div v-if="tab === 'accounts' && r.contest.modules.integrations" class="panel">
       <div class="notice">比赛账号与本站账号分别管理。请妥善保存比赛账号。</div>
-      <div v-if="integrationManager" class="actions">
+      <div v-if="integrationManager">
         <PaginatedList
           :items="bindings"
           page-key="registration-bindings"
@@ -1164,9 +1168,18 @@ async function memberSave(id: string, index: number) {
         </p>
       </div>
     </div>
-    <el-dialog v-model="invoiceApplication" title="申请开票" width="760px" destroy-on-close
+    <el-dialog
+      v-model="invoiceApplication"
+      title="申请开票"
+      width="760px"
+      destroy-on-close
+      :before-close="closeInvoiceApplication"
+      :close-on-click-modal="false"
+      :close-on-press-escape="!invoiceApplicationForm?.busy"
+      :show-close="!invoiceApplicationForm?.busy"
       ><InvoiceApplication
         v-if="r && invoicePolicy"
+        ref="invoiceApplicationForm"
         :registration-id="r.id"
         :available-cents="Math.max(0, r.netPaidCents - r.invoiceReservedCents)"
         :policy="invoicePolicy"

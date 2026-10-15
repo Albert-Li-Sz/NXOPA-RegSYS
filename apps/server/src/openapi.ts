@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   contestSchema,
+  contestDeletionSchema,
   roomSchema,
   seatingRequestSchema,
   seatingClearSchema,
@@ -155,6 +156,7 @@ export function describeApi(document: OpenAPIObject) {
     }),
     'post /api/v1/contests': 'ContestInput',
     'put /api/v1/contests/{id}': 'ContestInput',
+    'delete /api/v1/contests/{id}': contestDeletionSchema,
     'post /api/v1/registrations': object({ contestId: id }),
     'put /api/v1/registrations/{id}': 'RegistrationInput',
     'post /api/v1/registrations/{id}/submit': object({ version }),
@@ -446,7 +448,7 @@ export function describeApi(document: OpenAPIObject) {
       }
       if (url.startsWith('/api/v1/finance/accounts'))
         op.description =
-          'Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted.';
+          'Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. Account detail returns policy for historical fees/refunds and invoicePolicy for current invoice types, enabled status and required fields.';
       if (url === '/api/v1/registrations/review-queue') {
         op.description =
           'Scoped REGISTRATIONS permission required. Returns all submitted IDs matching the current list filters in review order, independent of page size; defaults to pending review.';
@@ -469,6 +471,30 @@ export function describeApi(document: OpenAPIObject) {
         ];
         op.description =
           '兼容原数组；传 page/pageSize 返回分页列表。managed=true 仅返回当前账号具有查看管理权限的活动，包含 registrationCounts.official/unofficial，按已提交及待补正报名中的有效成员人数统计，不含草稿、已撤回或删除报名，也不含指导老师。团队按成员人数计。';
+      }
+      if (url === '/api/v1/contests/{id}' && method === 'delete') {
+        op.description =
+          '仅系统管理员或高级管理员可永久删除无报名、无财务账户的活动。必须提供当前 version；草稿同样阻止删除。保留上传者私有附件和独立工单，撤销活动授权并清理配置、考场及平台关联。';
+        op.responses['200'] = {
+          description: 'Activity permanently deleted',
+          content: {
+            'application/json': {
+              schema: schema(object({ deleted: z.literal(true), contestId: id })),
+            },
+          },
+        };
+      }
+      if (url === '/api/v1/integrations/revocations' && method === 'get') {
+        op.parameters = [
+          {
+            name: 'contestId',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ];
+        op.description =
+          '指定活动需 INTEGRATIONS 权限；不指定活动仅系统管理员与高级管理员可查看全部待办，包含已删除活动。';
       }
       if (url === '/api/v1/files' && method === 'get') {
         op.parameters = [

@@ -284,6 +284,7 @@ export const activityModulesSchema = z.object({
   rooms: z.boolean().default(false),
   integrations: z.boolean().default(true),
 });
+export const contestDeletionSchema = z.object({ version: z.number().int().positive() });
 export const contestSchema = z
   .object({
     version: z.number().int().optional(),

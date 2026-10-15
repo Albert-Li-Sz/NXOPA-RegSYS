@@ -96,13 +96,18 @@ export class SupportService {
       })
       .extend(message.shape)
       .parse(body);
-    if (b.registrationId) {
-      const r = await getRegistration(u, b.registrationId);
-      if (b.contestId && b.contestId !== r.contestId)
-        throw new BadRequestException('竞赛与报名不一致');
-      b.contestId = r.contestId;
-    }
     return db.$transaction(async (tx) => {
+      if (b.registrationId) {
+        await lock(tx, b.registrationId);
+        const r = await getRegistration(u, b.registrationId);
+        if (b.contestId && b.contestId !== r.contestId)
+          throw new BadRequestException('竞赛与报名不一致');
+        b.contestId = r.contestId;
+      }
+      if (b.contestId) {
+        await lock(tx, b.contestId);
+        await tx.contest.findUniqueOrThrow({ where: { id: b.contestId } });
+      }
       const t = await tx.supportTicket.create({
         data: {
           ownerId: u.id,
@@ -118,7 +123,11 @@ export class SupportService {
         const f = await tx.attachment.findUniqueOrThrow({ where: { id } });
         if (f.deletedAt || f.public || (f.ticketId && f.ticketId !== t.id))
           throw new BadRequestException('附件已删除、公开或已绑定其他工单');
-        if (f.ownerId !== u.id || (f.registrationId && f.registrationId !== b.registrationId))
+        if (
+          f.ownerId !== u.id ||
+          (f.contestId && f.contestId !== b.contestId) ||
+          (f.registrationId && f.registrationId !== b.registrationId)
+        )
           throw new ForbiddenException('附件不属于此工单');
         await tx.attachment.update({ where: { id }, data: { ticketId: t.id } });
       }
@@ -196,6 +205,7 @@ export class SupportService {
         if (f.deletedAt || f.public) throw new BadRequestException('附件已删除或不能用于私有工单');
         if (
           f.ownerId !== u.id ||
+          (f.contestId && f.contestId !== t.contestId) ||
           (f.ticketId && f.ticketId !== id) ||
           (f.registrationId && f.registrationId !== t.registrationId)
         )

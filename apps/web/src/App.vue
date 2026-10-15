@@ -3,7 +3,9 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { defaultSite } from '@contest-center/contracts';
-import { api, auth, loadAuth } from './api';
+import { api, auth } from './api';
+import { setClientCsrf } from './generated-client';
+import { mayLeaveEdits } from './composables/useEditSession';
 import { adminLevelLabels } from '@contest-center/contracts';
 import { adminCenters, centerTabs } from './admin-centers';
 const router = useRouter();
@@ -17,6 +19,7 @@ const displayName = computed(() => {
   return typeof nickname === 'string' && nickname.trim() ? nickname : auth.user?.name || '';
 });
 const site = ref({ ...defaultSite });
+const loggingOut = ref(false);
 const brand = computed(() =>
   site.value.name.endsWith('在线报名系统')
     ? { name: site.value.name.slice(0, -6), subtitle: '在线报名系统' }
@@ -30,14 +33,25 @@ onMounted(async () => {
   } catch {}
 });
 async function logout() {
-  await api('/auth/logout', 'POST');
-  await loadAuth();
-  router.push('/');
+  if (loggingOut.value) return;
+  loggingOut.value = true;
+  try {
+    if (!(await mayLeaveEdits())) return;
+    await api('/auth/logout', 'POST');
+    auth.user = null;
+    auth.csrf = '';
+    setClientCsrf('');
+    await router.replace('/');
+  } catch {
+    // API failures already display an error; keep the current session available for retry.
+  } finally {
+    loggingOut.value = false;
+  }
 }
 </script>
 <template>
-  <div class="site-shell" :class="{ 'landing-shell': isLanding }">
-    <header class="site-header">
+  <div class="site-shell" :class="{ 'landing-shell': isLanding }" :aria-busy="loggingOut">
+    <header class="site-header" :inert="loggingOut || undefined">
       <div
         class="header-inner"
         :class="{ 'admin-header': visibleCenters.length > 0 && !isLanding }"
@@ -91,10 +105,10 @@ async function logout() {
         </template>
       </div>
     </header>
-    <main class="page">
+    <main class="page" :inert="loggingOut || undefined">
       <router-view :key="$route.fullPath" />
     </main>
-    <footer class="site-footer">
+    <footer class="site-footer" :inert="loggingOut || undefined">
       <div class="footer-brand">
         <img src="/brand/openatom-club.jpg" width="30" height="30" alt="" />
         <div>

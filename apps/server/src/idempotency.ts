@@ -1,6 +1,5 @@
 import {
   ConflictException,
-  ForbiddenException,
   type NestInterceptor,
   type ExecutionContext,
   type CallHandler,
@@ -13,6 +12,7 @@ import {
   encrypt,
   decrypt,
   getRegistration,
+  getSupportTicket,
   requireAdmin,
   requireManager,
 } from './security.js';
@@ -87,15 +87,7 @@ export class Idempotency implements NestInterceptor {
               await getFinance(actor, registrationId);
           }
           if (module === 'support' && resource) {
-            const t = await db.supportTicket.findUniqueOrThrow({ where: { id: resource } });
-            if (
-              t.ownerId !== actor.id &&
-              !actor.isAdmin &&
-              !actor.contestIds.includes(t.contestId ?? '')
-            ) {
-              if (!t.registrationId) throw new ForbiddenException();
-              await getRegistration(actor, t.registrationId);
-            }
+            await getSupportTicket(actor, resource);
           }
           const stored = existing.result as Record<string, unknown>;
           return stored.encrypted ? JSON.parse(decrypt(String(stored.encrypted))) : existing.result;

@@ -1,0 +1,328 @@
+{
+  "verifiedAt": "2026-10-15T05:34:55.543171+00:00",
+  "baseCommit": "ff14e82c61bcd3ad1fbec648943b2e499f033856",
+  "branch": "codex/activity-workflows",
+  "uncommittedChanges": true,
+  "environment": "Local development plus isolated PostgreSQL, Redis, Mailpit, API, web, worker and real XeLaTeX regression stack; production untouched",
+  "fixedDefects": [
+    "Reject duplicate registration member identifiers before modifying the captain or membership",
+    "Reject ticket and other-registration files in registration answers while allowing eligible unbound personal uploads",
+    "Serialize attachment distribution with registration removal to prevent orphan team files",
+    "Keep admission documents valid when room values or seat assignments are unchanged",
+    "Protect review drafts, lock in-flight submissions, require refresh after failed reload, and clearly recover when next-review loading fails",
+    "Freeze seating preview scope while loading and invalidate previews after errors",
+    "Protect invoice drafts, enforce acknowledgement in the submit handler, preserve failed applications and disallow personal special-invoice titles",
+    "Wait for support attachments before submitting and protect create/reply drafts across close, navigation and request failure",
+    "Protect identity drafts during tab changes, navigation and cancellation",
+    "Invalidate stale batch scope immediately during filter debounce and failed loads, preserving deliberate cross-page selections",
+    "Resolve dirty forms before logout, keep the session when cancelled and recover from logout failures"
+  ],
+  "newApiRegressionCases": 4,
+  "newBrowserRegressionCases": 14,
+  "browserTests": 75,
+  "unitTests": 13,
+  "bugRegression": [
+    {
+      "case": "duplicate-member-identifiers",
+      "status": "PASS"
+    },
+    {
+      "case": "unchanged-room-preserves-admission",
+      "status": "PASS"
+    },
+    {
+      "case": "registration-ticket-attachment-isolation",
+      "status": "PASS"
+    },
+    {
+      "case": "distribution-registration-deletion-race",
+      "status": "PASS"
+    },
+    {
+      "case": "old-verification-link",
+      "status": "PASS"
+    },
+    {
+      "case": "old-reset-link",
+      "status": "PASS"
+    },
+    {
+      "case": "cancellation-eligibility-event",
+      "status": "PASS"
+    },
+    {
+      "case": "unofficial-review-before-payment",
+      "status": "PASS"
+    },
+    {
+      "case": "team-member-support-list",
+      "status": "PASS"
+    },
+    {
+      "case": "registration-upload-deletion-race",
+      "status": "PASS"
+    },
+    {
+      "case": "support-creation-deletion-race",
+      "status": "PASS"
+    },
+    {
+      "case": "finance-current-invoice-policy",
+      "status": "PASS"
+    },
+    {
+      "case": "financial-attachment-context",
+      "status": "PASS"
+    },
+    {
+      "case": "removed-registration-financial-notifications",
+      "status": "PASS"
+    },
+    {
+      "case": "support-attachment-context",
+      "status": "PASS"
+    }
+  ],
+  "permissionRegression": [
+    {
+      "case": "job search retains contest authorization scope",
+      "status": "PASS"
+    },
+    {
+      "case": "VIEW grant cannot enumerate other users support tickets",
+      "status": "PASS"
+    },
+    {
+      "case": "VIEW grant cannot read standalone ticket",
+      "status": "PASS"
+    },
+    {
+      "case": "VIEW grant cannot read standalone support file",
+      "status": "PASS"
+    },
+    {
+      "case": "VIEW grant cannot upload to standalone ticket",
+      "status": "PASS"
+    },
+    {
+      "case": "VIEW grant cannot read standalone support mail status",
+      "status": "PASS"
+    },
+    {
+      "case": "VIEW grant cannot read registration-linked ticket",
+      "status": "PASS"
+    },
+    {
+      "case": "VIEW grant cannot read registration-linked support file",
+      "status": "PASS"
+    },
+    {
+      "case": "VIEW grant cannot upload to registration-linked ticket",
+      "status": "PASS"
+    },
+    {
+      "case": "VIEW grant cannot read registration-linked support mail status",
+      "status": "PASS"
+    },
+    {
+      "case": "invalid student year returns a validation error",
+      "status": "PASS"
+    },
+    {
+      "case": "invalid calendar date cannot enter identity approval queue",
+      "status": "PASS"
+    },
+    {
+      "case": "deleting a submitted form attachment invalidates qualification",
+      "status": "PASS"
+    },
+    {
+      "case": "deleted files cannot be bound to a new support ticket",
+      "status": "PASS"
+    },
+    {
+      "case": "a support attachment cannot be moved to another ticket",
+      "status": "PASS"
+    },
+    {
+      "case": "SUPPORT grant permits ticket, file and delivery reads",
+      "status": "PASS"
+    },
+    {
+      "case": "SUPPORT revocation removes access immediately",
+      "status": "PASS"
+    },
+    {
+      "case": "SUPPORT revocation also blocks idempotent reply replay",
+      "status": "PASS"
+    }
+  ],
+  "fullRegression": {
+    "success": true,
+    "results": [
+      {
+        "suite": "test:integration",
+        "success": true,
+        "elapsedMs": 10001,
+        "log": ".runtime/reports/full-test-integration.log"
+      },
+      {
+        "suite": "test:auth",
+        "success": true,
+        "elapsedMs": 5066,
+        "log": ".runtime/reports/full-test-auth.log"
+      },
+      {
+        "suite": "test:accounts",
+        "success": true,
+        "elapsedMs": 9189,
+        "log": ".runtime/reports/full-test-accounts.log"
+      },
+      {
+        "suite": "test:feishu",
+        "success": true,
+        "elapsedMs": 1827,
+        "log": ".runtime/reports/full-test-feishu.log"
+      },
+      {
+        "suite": "test:invitations",
+        "success": true,
+        "elapsedMs": 7318,
+        "log": ".runtime/reports/full-test-invitations.log"
+      },
+      {
+        "suite": "test:mail",
+        "success": true,
+        "elapsedMs": 8826,
+        "log": ".runtime/reports/full-test-mail.log"
+      },
+      {
+        "suite": "test:mail-failover",
+        "success": true,
+        "elapsedMs": 6417,
+        "log": ".runtime/reports/full-test-mail-failover.log"
+      },
+      {
+        "suite": "test:template-bugs",
+        "success": true,
+        "elapsedMs": 3958,
+        "log": ".runtime/reports/full-test-template-bugs.log"
+      },
+      {
+        "suite": "test:overview",
+        "success": true,
+        "elapsedMs": 854,
+        "log": ".runtime/reports/full-test-overview.log"
+      },
+      {
+        "suite": "test:enhancements",
+        "success": true,
+        "elapsedMs": 6715,
+        "log": ".runtime/reports/full-test-enhancements.log"
+      },
+      {
+        "suite": "test:admissions",
+        "success": true,
+        "elapsedMs": 5305,
+        "log": ".runtime/reports/full-test-admissions.log"
+      },
+      {
+        "suite": "test:activity-workflows",
+        "success": true,
+        "elapsedMs": 5778,
+        "log": ".runtime/reports/full-test-activity-workflows.log"
+      },
+      {
+        "suite": "test:workflow-upgrade",
+        "success": true,
+        "elapsedMs": 3247,
+        "log": ".runtime/reports/full-test-workflow-upgrade.log"
+      },
+      {
+        "suite": "test:bugs",
+        "success": true,
+        "elapsedMs": 9513,
+        "log": ".runtime/reports/full-test-bugs.log"
+      },
+      {
+        "suite": "test:permissions",
+        "success": true,
+        "elapsedMs": 1020,
+        "log": ".runtime/reports/full-test-permissions.log"
+      },
+      {
+        "suite": "test:file-race",
+        "success": true,
+        "elapsedMs": 1624,
+        "log": ".runtime/reports/full-test-file-race.log"
+      },
+      {
+        "suite": "test:load",
+        "success": true,
+        "elapsedMs": 11381,
+        "log": ".runtime/reports/full-test-load.log"
+      },
+      {
+        "suite": "test:mcp",
+        "success": true,
+        "elapsedMs": 1399,
+        "log": ".runtime/reports/full-test-mcp.log"
+      },
+      {
+        "suite": "test:e2e",
+        "success": true,
+        "elapsedMs": 251833,
+        "log": ".runtime/reports/full-test-e2e.log"
+      }
+    ],
+    "checkedAt": "2026-10-15T05:33:05.335Z",
+    "commit": "ff14e82c61bcd3ad1fbec648943b2e499f033856",
+    "workingTreeDirty": true
+  },
+  "checks": {
+    "typecheck": true,
+    "testTypecheck": true,
+    "build": true,
+    "format": true,
+    "diffCheck": true,
+    "localApiHealth": "ok",
+    "localWebStatus": 200,
+    "invoiceViewports": [1440, 831, 390],
+    "screenshotFollowup": "After the full run, added a test-only wait for the dismissed confirmation animation; the complete invoice workflow passed again. Application sources were unchanged."
+  },
+  "commands": [
+    "pnpm typecheck",
+    "pnpm exec tsc -p tests/tsconfig.json",
+    "pnpm test",
+    "pnpm build",
+    "pnpm format:check",
+    "git diff --check",
+    "pnpm test:bugs",
+    "PLATFORM_TEST_LATEX_IMAGE=ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.4.0 E2E_MAX_FAILURES=5 pnpm test:full",
+    "pnpm exec playwright test tests/e2e/activity-workflows.spec.ts -g 'invoice applications protect'"
+  ],
+  "localLogs": {
+    "full": ".runtime/reports/workflow-audit-full.log",
+    "browser": ".runtime/reports/full-test-e2e.log",
+    "bugs": ".runtime/reports/full-test-bugs.log",
+    "permissions": ".runtime/reports/full-test-permissions.log",
+    "upgrade": ".runtime/reports/full-test-workflow-upgrade.log",
+    "typecheck": ".runtime/reports/workflow-audit-typecheck.log",
+    "testTypecheck": ".runtime/reports/workflow-audit-tests-typecheck-final.log",
+    "build": ".runtime/reports/workflow-audit-build.log",
+    "unit": ".runtime/reports/workflow-audit-unit.log",
+    "format": ".runtime/reports/workflow-audit-format-final.log",
+    "invoiceFollowup": ".runtime/reports/workflow-invoice-final.log"
+  },
+  "screenshots": [
+    "docs/acceptance/workflow-invoice-1440.png",
+    "docs/acceptance/workflow-invoice-831.png",
+    "docs/acceptance/workflow-invoice-390.png"
+  ],
+  "limits": [
+    "No production deployment or production database mutation",
+    "Feishu sign-in uses the local protocol fixture; live third-party OAuth consent was not rerun",
+    "Hydro and DOMjudge live remote registration/revocation were not rerun; local authorization and task boundaries were tested",
+    "Existing Vite bundle-size warning and pg test-fixture query concurrency deprecation warning remain non-fatal"
+  ]
+}

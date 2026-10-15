@@ -50,6 +50,12 @@ GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
 
 `GET /finance/accounts?role=mine` 返回当前账号的独立财务账户；管理员按 `contestId` 查询需要 FINANCE 权限，均支持分页与活动标题搜索。`GET /finance/accounts/:id` 返回余额、财务策略、单据和 `canEdit/canManage`。账户 ID 沿用原报名 UUID，因此旧 `/registrations/:id/finance/{collection}` 和 `/finance/:id/{vouchers,refunds,invoices}` 接口继续解析；删除后仅创建者与 FINANCE 管理员可访问，报名管理员权限不等同于财务权限。删除不自动退款，不允许向已经删除的报名新增收款凭证，既有待核凭证可继续处理。
 
+财务详情的 `policy` 保留原计费及退款策略，`invoicePolicy` 返回当前活动的开票开关、票种和必填资料，用于开票表单并与提交接口保持一致。财务通知在事务内确定收件人，生成独立邮件事件并链接 `/finance/:id`；删除报名不会取消已排队的财务邮件，删除后新增退款、开票申请仍可正常通知。
+
+上传报名附件及创建关联工单与报名删除共用报名锁，取得锁后重新检查报名和访问权限。财务附件不能从独立工单或其他活动重新绑定；创建、回复工单也不能移动其他活动的私有附件。普通未绑定个人上传仍可用于本人的合法申请。
+
+工单写请求的幂等重放使用与普通工单详情相同的访问校验；撤销 SUPPORT 权限后，即使仍保留 VIEW 等其他活动权限，也不能借相同幂等键读取旧工单响应。
+
 报名详情补充 `displayState`、`actions`、审核历史和最近提交修订。`actions` 包含编辑、本人资料、提交、撤回、取消、管理员删除、首次审核 `review`、修改已有审核 `amendReview`、报名方财务申请 `requestFinance`、查看平台凭据 `credentials`，另有 `editReason`；写接口仍重新检查版本与权限。管理编辑不授予代提交、撤回提交或代申请财务的权限；管理员同时是该报名创建者或关联老师时，按其报名方身份保留相应操作。撤回仅用于待审核且未到账报名。个人入口查询显式使用 `role=mine`，不会因管理员身份扩大范围。`review=DRAFT|CORRECTION` 分别筛选草稿与补正，`review=PENDING` 仅包含已提交待审报名。搜索包含活动标题、队名和姓名。
 
 `GET /registrations/review-queue?contestId=…` 沿用当前列表筛选并返回全部匹配已提交报名的 `{ids}`，不受分页限制，默认待审核；仅 REGISTRATIONS 管理员可用。首次审核支持连续处理，已经审核的记录使用独立“修改审核”入口，不进入连续审核操作。审核正文仍为 `{version,decision,reason,participationType?}`，退回、拒绝及修改已有审核必须有原因，PAYMENT_FIRST 只阻止未付清时通过。尚未修改资料的补正记录可直接改为通过或拒绝；报名方已修改但尚未重新提交的资料不能被审核。版本冲突返回 409；客户端保留意见供刷新核对。
@@ -57,6 +63,10 @@ GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
 独立财务账户的 `canEdit` 表示报名方申请权限，`canManage` 表示 FINANCE 处理权限；管理员不能仅凭管理授权代替报名方上传缴费凭证、申请退款或开票。报名删除后申请权限仅保留给创建者。账簿项补充 `reversed`，已冲正的收款不再展示重复冲正操作；分页、筛选后的记录同样按完整账簿判断。未发放的 READY 准考证需要 ADMISSIONS 权限才能下载，VIEW 权限不能提前下载。
 
 ### 活动预设与排考
+
+`GET /integrations/revocations` 不传 `contestId` 时仅全局管理员可查询全部待办，包括已删除活动的记录；指定 `contestId` 时仍需该活动的 INTEGRATIONS 权限。活动删除后保留远端目标快照，管理员仍可调用 `POST /integrations/revocations/:id/complete` 登记人工处理结果，删除活动不表示已经在远端撤权。
+
+`DELETE /contests/:id` 正文为 `{version}`，仅系统管理员和高级管理员可调用。仅无报名（含草稿）、无独立财务账户的活动可删除，有关联记录返回 400，版本冲突返回 409，已经删除返回 404；成功返回 `{deleted:true,contestId}`。管理列表和管理员活动详情补充 `deletion: {allowed,reason}`，写接口仍在事务及活动锁内重新检查。删除清理表单版本、考场和平台关联，撤销活动授权、邀请及 Webhook，将共享令牌和平台允许列表中的该活动移除；仅绑定该活动的令牌会被撤销。已有文件改为上传者私有文件，工单解除活动关联继续保留。创建报名、上传活动文件和创建关联工单与删除活动共用活动锁，避免并发留下无归属记录。
 
 活动配置新增 `kind: ACTIVITY|COMPETITION`、`modules: {admissions,rooms,integrations}` 和 `seatingMode: REGISTRATION|PERSON`。新通用活动缺省关闭三个模块，人工审核、免费、个人报名且不关联老师；修改已有活动时保留明确提交的原配置。关闭已启用模块需提交 `confirmModuleChanges:true`，后端同步禁止相关操作，保留排考和字段数据，使相关准考证及本地账号交付失效。
 
@@ -234,6 +244,10 @@ X-ContestCenter-Signature: sha256=<hex HMAC>
 GET / POST `/auth/identity`、GET `/admin/identities`、POST `/admin/identities/:id/review` 完成实名审核；GET `/admin/students` 与详情按 STUDENTS 权限筛选竞赛。POST `/auth/verify-code`、`/auth/reset-code` 使用六位验证码，注销通过 POST `/auth/closure-code` 与 DELETE `/auth/account`（confirmation、password 或 code）完成。GET `/admissions/mine` 返回本人的有效已发放准考证。
 
 GET / PUT `/admin/storage`、POST `/admin/storage/test`、POST `/admin/storage/migrate` 配置、实测和迁移存储。POST `/files` 的 purpose 可为 PRIVATE / PERSONAL / AVATAR / TEAM / CONTEST_PUBLIC / CONTEST_PRIVATE，结合 registrationId / contestId / ticketId；GET `/files` 查询，DELETE `/files/:id` 删除，POST `/contests/:id/files/distribute` 分发指定 registrationIds。公开文件 GET `/files/public/:id`，私有文件下载仍校验会话及授权。附件页面中的 PDF 预览通过相同接口读取，使用临时 Blob URL 和 PDF.js 在页面内展示，支持翻页、缩放和加密文档密码输入，不生成额外公开链接，关闭预览后释放临时 URL 和阅读器资源。PDF.js 所需字体、CMap、WASM 和许可随前端构建一并打包。
+
+材料分发在事务内按报名编号排序加锁，再锁定附件并核对记录，避免与报名或附件删除并发时创建无效关联；报名已删除或不在该活动内返回 400。报名保存拒绝重复成员编号；提交时工单附件或其他报名专属附件返回 403，即使上传者为当前用户也不能改变其归属。未绑定的本人私有材料仍可作为报名附件。
+
+考场保存仍校验版本；内容完全相同时不递增排考版本或使准考证失效。排考提交比较实际座位变化，仅对发生变化的报名更新座位并撤销旧准考证。
 
 GET `/auth/sessions?page=1&pageSize=20` 返回当前账号尚未过期的登录会话及总数，默认每页 20 条，支持 20／50／100，其他 pageSize 返回 400。旧调用不传分页参数时返回最多 20 条的数组。会话撤销后，页面刷新当前页；最后一页为空时自动回到前一页。
 

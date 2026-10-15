@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import PaginatedTable from '../components/PaginatedTable.vue';
 import PaginatedList from '../components/PaginatedList.vue';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -31,6 +31,10 @@ const tab = ref(String(route.query.tab || 'overview')),
   feishu = ref({ enabled: false, linked: false }),
   closure = reactive({ confirmation: '', password: '', code: '' });
 const edit = useEditSession(profile);
+const identityEdit = useEditSession(identity);
+watch(tab, (value) => {
+  if (value === 'identity' && !identityEdit.editing.value) identityEdit.begin();
+});
 const {
   page: sessionsPage,
   pageSize: sessionsPageSize,
@@ -110,6 +114,7 @@ function reset() {
     profile: JSON.parse(JSON.stringify(auth.user.profile)),
     version: auth.user.version,
   });
+  identityEdit.begin();
 }
 async function refresh() {
   await loadAuth();
@@ -129,6 +134,7 @@ onMounted(async () => {
   if (auth.user?.grants?.length) contests.value = await api('/contests?all=true');
 });
 async function save() {
+  if (busy.value) return;
   busy.value = true;
   try {
     await api('/auth/profile', 'PUT', {
@@ -148,6 +154,7 @@ async function save() {
   }
 }
 async function submitIdentity() {
+  if (busy.value || requests.value.some((request) => request.status === 'PENDING')) return;
   busy.value = true;
   try {
     await api('/auth/identity', 'POST', { ...identity, version: auth.user!.version });
@@ -180,6 +187,7 @@ async function resend() {
   ElMessage.success('验证邮件已发送');
 }
 async function verify() {
+  if (!(await mayLeaveEdits())) return;
   await api('/auth/verify-code', 'POST', { code: code.value });
   await refresh();
   code.value = '';
@@ -267,11 +275,11 @@ const contestName = (id: string | null) =>
               type="warning"
               :closable="false"
             />
-            <EditActions :session="edit" />
+            <EditActions :session="edit" :allow="!busy" />
             <el-form
               :key="String(edit.editing.value)"
               label-position="top"
-              :disabled="!edit.editing.value"
+              :disabled="busy || !edit.editing.value"
               :class="{ 'read-mode': !edit.editing.value }"
               @submit.prevent="save"
               ><div class="form-grid">
@@ -298,7 +306,7 @@ const contestName = (id: string | null) =>
                 >
               </div>
               <DynamicFields
-                :disabled="!edit.editing.value"
+                :disabled="busy || !edit.editing.value"
                 :fields="overviewFields"
                 scope="PERSON"
                 :answers="profile.profile"
@@ -379,7 +387,7 @@ const contestName = (id: string | null) =>
           <p class="form-help">
             学号 / 工号、姓名、班级和院系用于关联报名记录。资料变更需管理员审核，通过后生效。
           </p>
-          <el-form label-position="top" @submit.prevent="submitIdentity"
+          <el-form label-position="top" :disabled="busy" @submit.prevent="submitIdentity"
             ><el-form-item label="姓名" for="identity-name"
               ><el-input id="identity-name" v-model="identity.name" /></el-form-item
             ><DynamicFields

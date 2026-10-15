@@ -980,7 +980,8 @@ export interface paths {
         get: operations["ApiController_contest"];
         put: operations["ApiController_saveContest"];
         post?: never;
-        delete?: never;
+        /** @description 仅系统管理员或高级管理员可永久删除无报名、无财务账户的活动。必须提供当前 version；草稿同样阻止删除。保留上传者私有附件和独立工单，撤销活动授权并清理配置、考场及平台关联。 */
+        delete: operations["ApiController_deleteContest"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1075,6 +1076,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description 指定活动需 INTEGRATIONS 权限；不指定活动仅系统管理员与高级管理员可查看全部待办，包含已删除活动。 */
         get: operations["ApiController_revocations"];
         put?: never;
         post?: never;
@@ -1107,7 +1109,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. */
+        /** @description Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. Account detail returns policy for historical fees/refunds and invoicePolicy for current invoice types, enabled status and required fields. */
         get: operations["ApiController_financeAccounts"];
         put?: never;
         post?: never;
@@ -1124,7 +1126,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. */
+        /** @description Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. Account detail returns policy for historical fees/refunds and invoicePolicy for current invoice types, enabled status and required fields. */
         get: operations["ApiController_financeAccount"];
         put?: never;
         post?: never;
@@ -2807,8 +2809,8 @@ export interface components {
             message: string;
             statusCode?: number;
         };
-        Value75___schema0: string | number | boolean | (null) | components["schemas"]["Value75___schema0"][] | {
-            [key: string]: components["schemas"]["Value75___schema0"];
+        Value77___schema0: string | number | boolean | (null) | components["schemas"]["Value77___schema0"][] | {
+            [key: string]: components["schemas"]["Value77___schema0"];
         };
     };
     responses: never;
@@ -8392,6 +8394,95 @@ export interface operations {
             };
         };
     };
+    ApiController_deleteContest: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    version: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Activity permanently deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {boolean} */
+                        deleted: true;
+                        /** Format: uuid */
+                        contestId: string;
+                    };
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     ApiController_rooms: {
         parameters: {
             query?: never;
@@ -9005,7 +9096,9 @@ export interface operations {
     };
     ApiController_revocations: {
         parameters: {
-            query?: never;
+            query?: {
+                contestId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -15854,7 +15947,7 @@ export interface operations {
                         username?: string;
                         error?: string;
                         verification?: {
-                            [key: string]: components["schemas"]["Value75___schema0"];
+                            [key: string]: components["schemas"]["Value77___schema0"];
                         };
                     };
                 };

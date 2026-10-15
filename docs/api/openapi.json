@@ -7196,6 +7196,150 @@
             }
           }
         }
+      },
+      "delete": {
+        "operationId": "ApiController_deleteContest",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Activity permanently deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "contestId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "required": [
+                    "deleted",
+                    "contestId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "contests"
+        ],
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "description": "仅系统管理员或高级管理员可永久删除无报名、无财务账户的活动。必须提供当前 version；草稿同样阻止删除。保留上传者私有附件和独立工单，撤销活动授权并清理配置、考场及平台关联。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "version"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/contests/{id}/rooms": {
@@ -8189,7 +8333,17 @@
     "/api/v1/integrations/revocations": {
       "get": {
         "operationId": "ApiController_revocations",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "contestId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -8262,7 +8416,8 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "description": "指定活动需 INTEGRATIONS 权限；不指定活动仅系统管理员与高级管理员可查看全部待办，包含已删除活动。"
       }
     },
     "/api/v1/integrations/revocations/{id}/complete": {
@@ -8440,7 +8595,7 @@
             "cookie": []
           }
         ],
-        "description": "Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted."
+        "description": "Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. Account detail returns policy for historical fees/refunds and invoicePolicy for current invoice types, enabled status and required fields."
       }
     },
     "/api/v1/finance/accounts/{id}": {
@@ -8520,7 +8675,7 @@
             "cookie": []
           }
         ],
-        "description": "Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted."
+        "description": "Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. Account detail returns policy for historical fees/refunds and invoicePolicy for current invoice types, enabled status and required fields."
       }
     },
     "/api/v1/registrations/{id}": {
@@ -18138,7 +18293,7 @@
                       "verification": {
                         "type": "object",
                         "additionalProperties": {
-                          "$ref": "#/components/schemas/Value75___schema0"
+                          "$ref": "#/components/schemas/Value77___schema0"
                         }
                       }
                     },
@@ -20338,7 +20493,7 @@
         ],
         "additionalProperties": false
       },
-      "Value75___schema0": {
+      "Value77___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -20359,13 +20514,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value75___schema0"
+              "$ref": "#/components/schemas/Value77___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value75___schema0"
+              "$ref": "#/components/schemas/Value77___schema0"
             }
           }
         ]

@@ -228,6 +228,74 @@ test('finance applications belong to applicants while administrators process the
   expect((await admin.api(`/finance/accounts/${r.id}`)).canEdit).toBe(false);
   expect((await alice.api(`/finance/accounts/${r.id}`)).canEdit).toBe(true);
 });
+test('retained finance accounts use current invoice settings after registration removal', async ({
+  page,
+}) => {
+  const c = await contest({
+    policy: policySchema.parse({
+      coachMode: 'DISABLED',
+      manualReview: false,
+      feeMode: 'FIXED',
+      feeCents: 1000,
+      invoicesEnabled: false,
+    }),
+  });
+  let r = await entry(c);
+  const file = await alice.upload(r.id);
+  const voucher = await alice.api(`/finance/${r.id}/vouchers`, 'POST', {
+    amountCents: 1000,
+    channel: '开票回归',
+    payer: '示例用户',
+    paidAt: new Date().toISOString(),
+    attachmentId: file.id,
+  });
+  await admin.api(`/finance/vouchers/${voucher.id}/review`, 'POST', { decision: 'CONFIRMED' });
+  r = await alice.api(`/registrations/${r.id}`);
+  await alice.api(`/registrations/${r.id}/cancel`, 'POST', { version: r.version });
+  const current = await admin.api(`/contests/${c.id}`);
+  await admin.api(`/contests/${c.id}`, 'PUT', {
+    ...current,
+    policy: {
+      ...current.policy,
+      invoicesEnabled: true,
+      invoiceTypes: ['SPECIAL'],
+      invoiceRequiredFields: ['phone'],
+    },
+  });
+  await login(page, 'alice');
+  await page.goto(`/finance/${r.id}`);
+  await page.getByRole('button', { name: '申请发票', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '申请发票', exact: true });
+  await expect(dialog).toContainText('专用发票');
+  await expect(
+    dialog.locator('.el-form-item.is-required').filter({ hasText: '联系电话' }),
+  ).toBeVisible();
+  await dialog
+    .locator('.el-form-item')
+    .filter({ hasText: '抬头类型' })
+    .locator('.el-select')
+    .click();
+  await page.getByRole('option', { name: '企业', exact: true }).click();
+  await dialog.locator('#invoice-title').fill('回归验收单位');
+  await dialog.getByRole('spinbutton').fill('5');
+  await dialog.locator('#invoice-tax').fill('TESTTAX2026');
+  await dialog.locator('#invoice-phone').fill('00000000000');
+  await dialog.locator('.el-checkbox').click();
+  await dialog.getByRole('button', { name: '提交开票申请', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const account = await alice.api(`/finance/accounts/${r.id}`);
+  expect(account.invoices).toHaveLength(1);
+  expect(account.invoices[0].invoiceType).toBe('SPECIAL');
+  expect(account.invoices[0].amountCents).toBe(500);
+  expect(account.invoices[0].phone).toBe('00000000000');
+  const latest = await admin.api(`/contests/${c.id}`);
+  await admin.api(`/contests/${c.id}`, 'PUT', {
+    ...latest,
+    policy: { ...latest.policy, invoicesEnabled: false },
+  });
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await expect(page.getByRole('button', { name: '申请发票', exact: true })).toHaveCount(0);
+});
 test('finance-only administrators can issue invoices without registration file-management permissions', async ({
   page,
 }) => {
@@ -582,6 +650,158 @@ test('multiple rooms preview allocations before commit and saved configuration s
     2,
   );
   await page.screenshot({ path: '.runtime/reports/seating-management.png', fullPage: true });
+});
+test('review comments survive cancelling dialog close and save failures', async ({ page }) => {
+  const c = await contest();
+  const r = await entry(c);
+  await login(page);
+  await page.goto(`/admin/contests/${c.id}?tab=registrations`);
+  await page
+    .getByRole('row')
+    .filter({ hasText: alice.user.name })
+    .getByRole('button', { name: '审核', exact: true })
+    .click();
+  const dialog = page.getByRole('dialog', { name: '报名审核', exact: true });
+  await dialog.locator('label.el-radio-button').filter({ hasText: '退回补正' }).click();
+  await dialog.locator('textarea').fill('请补齐所需资料');
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  const prompt = page.locator('.el-message-box');
+  await expect(prompt).toContainText('有未保存的修改');
+  await prompt.getByRole('button', { name: '继续编辑', exact: true }).click();
+  await expect(dialog.locator('textarea')).toHaveValue('请补齐所需资料');
+  await page.route(`**/api/v1/registrations/${r.id}/review`, (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: '报名已更新，请重新核对' }),
+    }),
+  );
+  await dialog.getByRole('button', { name: '确认审核', exact: true }).click();
+  await expect(dialog.getByText('报名已更新，请重新核对', { exact: true })).toBeVisible();
+  await expect(dialog.locator('textarea')).toHaveValue('请补齐所需资料');
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await prompt.getByRole('button', { name: '放弃并离开', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  expect((await admin.api(`/registrations/${r.id}`)).review).toBe('PENDING');
+});
+test('seating preview keeps its scope fixed while loading and releases it after errors', async ({
+  page,
+}) => {
+  const c = await contest({
+    modules: { admissions: true, rooms: true, integrations: false },
+    policy: policySchema.parse({ manualReview: false, coachMode: 'DISABLED' }),
+  });
+  await entry(c);
+  await admin.api(`/contests/${c.id}/rooms`, 'POST', { name: '预览核对考场', capacity: 5 });
+  await login(page);
+  await page.goto(`/admin/contests/${c.id}?tab=rooms`);
+  await page.getByRole('button', { name: '自动排考预览', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '排考预览与确认' });
+  let release!: () => void, ready!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  await page.route(`**/api/v1/contests/${c.id}/seating/preview`, async (route) => {
+    const response = await route.fetch();
+    ready();
+    await pending;
+    await route.fulfill({ response });
+  });
+  await dialog.getByRole('button', { name: '预览分配结果', exact: true }).click();
+  await started;
+  try {
+    await expect(
+      dialog.getByRole('checkbox', { name: '重新分配所选报名（替换已有座位）' }),
+    ).toBeDisabled();
+    await expect(dialog.getByRole('radio', { name: /仅已勾选/ })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: '手动填写座位', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toBeDisabled();
+  } finally {
+    release();
+  }
+  await expect(dialog.getByRole('button', { name: '确认保存本次排考', exact: true })).toBeEnabled();
+  await page.unroute(`**/api/v1/contests/${c.id}/seating/preview`);
+  await page.route(`**/api/v1/contests/${c.id}/seating/preview`, (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: '报名资料已变化' }),
+    }),
+  );
+  await dialog.getByRole('button', { name: '预览分配结果', exact: true }).click();
+  await expect(
+    dialog.getByRole('button', { name: '确认保存本次排考', exact: true }),
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole('checkbox', { name: '重新分配所选报名（替换已有座位）' }),
+  ).toBeEnabled();
+});
+test('invoice applications protect unsaved details and require acknowledgement on keyboard submission', async ({
+  page,
+}) => {
+  const c = await contest({
+    policy: policySchema.parse({
+      manualReview: false,
+      coachMode: 'DISABLED',
+      feeMode: 'FIXED',
+      feeCents: 1000,
+      invoicesEnabled: true,
+    }),
+  });
+  const r = await entry(c);
+  const file = await alice.upload(r.id);
+  const voucher = await alice.api(`/finance/${r.id}/vouchers`, 'POST', {
+    amountCents: 1000,
+    channel: '回归',
+    payer: '测试用户',
+    paidAt: new Date().toISOString(),
+    attachmentId: file.id,
+  });
+  await admin.api(`/finance/vouchers/${voucher.id}/review`, 'POST', { decision: 'CONFIRMED' });
+  await login(page, 'alice');
+  await page.goto(`/finance/${r.id}`);
+  await page.getByRole('button', { name: '申请发票', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '申请发票', exact: true });
+  await dialog.locator('#invoice-title').fill('未保存的抬头');
+  await dialog.getByRole('button', { name: '关闭此对话框' }).click();
+  const prompt = page.locator('.el-message-box');
+  await expect(prompt).toContainText('有未保存的修改');
+  await prompt.getByRole('button', { name: '继续编辑', exact: true }).click();
+  await expect(prompt).toHaveCount(0);
+  await expect(dialog.locator('#invoice-title')).toHaveValue('未保存的抬头');
+  // A form submit event (Enter / assistive technology) must use the same confirmation gate.
+  await dialog.locator('form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+  await expect(dialog.getByText('请先核对并确认开票信息', { exact: true })).toBeVisible();
+  expect((await alice.api(`/finance/accounts/${r.id}`)).invoices).toHaveLength(0);
+  for (const width of [1440, 831, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const bounds = await dialog.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    expect(
+      await dialog.evaluate((element) => element.scrollWidth - element.clientWidth),
+    ).toBeLessThanOrEqual(1);
+    await dialog.locator('#invoice-title').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `.runtime/reports/workflow-invoice-${width}.png` });
+  }
+  await dialog.locator('.el-checkbox').click();
+  await page.route(`**/api/v1/finance/${r.id}/invoices`, (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: '暂时无法提交，请重试' }),
+    }),
+  );
+  await dialog.getByRole('button', { name: '提交开票申请', exact: true }).click();
+  await expect(dialog.getByText('暂时无法提交，请重试', { exact: true })).toBeVisible();
+  await expect(dialog.locator('#invoice-title')).toHaveValue('未保存的抬头');
+  await page.unroute(`**/api/v1/finance/${r.id}/invoices`);
+  await dialog.getByRole('button', { name: '提交开票申请', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  expect((await alice.api(`/finance/accounts/${r.id}`)).invoices).toHaveLength(1);
 });
 test('new generic activities default to optional modules off and narrow screens remain usable', async ({
   page,

@@ -77,6 +77,7 @@ export class FinanceService {
       netPaidCents: r.netPaidCents,
       cancelledAt: r.cancelledAt,
       policy: policy(r),
+      invoicePolicy: policySchema.parse(r.contest.policy),
       version: r.version,
       canEdit: canEdit(u, r),
       canManage:
@@ -164,7 +165,7 @@ export class FinanceService {
         },
       });
       await audit(tx, u.id, 'VOUCHER_UPLOAD', id, { voucherId: v.id });
-      await event(tx, 'NOTIFY', id, { message: '缴费凭证已上传，等待管理员核账。' });
+      await financeNotify(tx, r, { message: '缴费凭证已上传，等待管理员核账。' });
       return v;
     });
   }
@@ -266,7 +267,7 @@ export class FinanceService {
         throw new BadRequestException('退款金额超过可退款余额');
       const x = await tx.refund.create({ data: { ...b, registrationId: id } });
       await audit(tx, u.id, 'REFUND_REQUEST', id, { refundId: x.id });
-      await event(tx, 'NOTIFY', id, { message: '退款申请已提交，等待管理员处理。' });
+      await financeNotify(tx, r, { message: '退款申请已提交，等待管理员处理。' });
       return x;
     });
   }
@@ -353,7 +354,7 @@ export class FinanceService {
         data: { ...b, snapshot: json(b), registrationId: id },
       });
       await audit(tx, u.id, 'INVOICE_REQUEST', id, { invoiceId: x.id });
-      await event(tx, 'NOTIFY', id, {
+      await financeNotify(tx, r, {
         message: '开票申请已提交，等待管理员上传发票。',
         category: 'INVOICE',
         status: 'REQUESTED',

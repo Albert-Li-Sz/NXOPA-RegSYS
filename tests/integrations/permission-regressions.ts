@@ -201,10 +201,31 @@ await check('SUPPORT grant permits ticket, file and delivery reads', async () =>
     );
   }
 });
+const replyKey = randomUUID();
+const replyBody = { version: linked.version, text: '工单重试权限回归' };
+await viewer.api(`/support/${linked.id}/messages`, 'POST', replyBody, replyKey);
+await viewer.api(`/support/${linked.id}/messages`, 'POST', replyBody, replyKey);
+assert.equal(
+  await db.supportMessage.count({ where: { ticketId: linked.id, text: replyBody.text } }),
+  1,
+);
 await check('SUPPORT revocation removes access immediately', async () => {
   await admin.api(`/admin/grants/${supportGrant.id}`, 'DELETE');
   assert.equal((await viewer.raw(`/api/v1/support/${linked.id}`)).status, 403);
   assert.equal((await owner.raw(`/api/v1/support/${linked.id}`)).status, 200);
+});
+await check('SUPPORT revocation also blocks idempotent reply replay', async () => {
+  const response = await viewer.raw(
+    `/api/v1/support/${linked.id}/messages`,
+    'POST',
+    replyBody,
+    replyKey,
+  );
+  assert.equal(
+    response.status,
+    403,
+    'Cached private ticket data must use current SUPPORT authorization',
+  );
 });
 await admin.api(`/admin/grants/${grant.id}`, 'DELETE');
 await writeFile(

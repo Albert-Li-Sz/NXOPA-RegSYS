@@ -13,7 +13,10 @@ export const adminCenters = [
     to: '/admin/platforms',
     label: '外接平台中心',
     description: '配置外部评测平台及竞赛绑定',
-    tabs: [{ name: 'instances', label: '评测平台' }],
+    tabs: [
+      { name: 'instances', label: '评测平台' },
+      { name: 'revocations', label: '撤权待办' },
+    ],
   },
   {
     key: 'users',
@@ -67,7 +70,7 @@ export function centerTabs(key: string, user: Principal | null) {
   if (key === 'settings') return user.isSystemAdmin ? center.tabs : [];
   if (key === 'reviews') return user.isAdmin ? center.tabs : [];
   return center.tabs.filter((tab) => {
-    if (['users', 'grants', 'audit'].includes(tab.name)) return user.isAdmin;
+    if (['users', 'grants', 'audit', 'revocations'].includes(tab.name)) return user.isAdmin;
     if (['students', 'teachers'].includes(tab.name))
       return (
         user.isAdmin ||

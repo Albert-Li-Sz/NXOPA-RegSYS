@@ -37,6 +37,7 @@ export interface ContestView {
   fields: FieldDefinition[];
   status: 'OPEN' | 'CLOSED' | 'UPCOMING';
   registrationCounts?: { official: number; unofficial: number };
+  deletion?: { allowed: boolean; reason: string };
 }
 export interface PersonView {
   active?: boolean;

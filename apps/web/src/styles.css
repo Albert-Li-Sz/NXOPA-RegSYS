@@ -235,15 +235,34 @@ button {
 }
 .toolbar .upload-label {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
   min-width: 0;
   max-width: 100%;
 }
 .toolbar .upload-label input {
-  width: 100%;
+  flex: 1;
+  width: 240px;
   min-width: 0;
   max-width: 100%;
+}
+input[type='file'] {
+  height: 32px;
+  max-width: 100%;
+  font: inherit;
+  color: var(--el-text-color-regular);
+}
+input[type='file']::file-selector-button {
+  height: 32px;
+  padding: 0 12px;
+  margin-right: 10px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 5px;
+  background: var(--el-fill-color-blank);
+  color: var(--el-text-color-regular);
+  font: inherit;
+  cursor: pointer;
 }
 .panel {
   background: var(--panel);
@@ -299,27 +318,74 @@ button {
   align-items: center;
   margin: 20px 0;
 }
-.actions .el-button + .el-button {
-  margin-left: 0;
-}
 .button-group {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
 }
-.button-group .el-button + .el-button,
-.toolbar .el-button + .el-button {
+.actions .el-button,
+.button-group .el-button,
+.toolbar .el-button,
+.el-dialog__footer .el-button,
+.el-message-box__btns .el-button {
   margin-left: 0;
 }
 .actions > a,
-.toolbar > a {
+.toolbar > a,
+.button-group > a,
+.action-control {
   display: inline-flex;
   align-items: center;
+  min-height: 32px;
 }
 .actions > *,
 .button-group > * {
   vertical-align: middle;
+}
+.el-table .cell:has(> .el-button),
+.el-table .cell:has(> a + a),
+.table-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.el-table .cell .el-button {
+  margin-left: 0;
+}
+.el-table .cell .el-button.is-text {
+  padding: 0 4px;
+}
+.el-table .cell > a,
+.table-actions > a,
+.button-group > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}
+.el-dialog__footer,
+.el-message-box__btns {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+@media (max-width: 600px) {
+  .page-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .el-dialog__footer,
+  .el-message-box__btns {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .el-dialog__footer > .el-button,
+  .el-message-box__btns > .el-button {
+    width: 100%;
+  }
 }
 .smtp-fallback .page-heading {
   margin-bottom: 16px;
@@ -426,6 +492,8 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 15px;
 }
 .member-heading h3 {

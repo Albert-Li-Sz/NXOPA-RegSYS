@@ -57,6 +57,14 @@ export class SeatingService {
         const old = await tx.examRoom.findUniqueOrThrow({ where: { id: roomId } });
         if (old.contestId !== id) throw new BadRequestException('考场不属于此活动');
         checkVersion(old.version, b.version);
+        if (
+          old.name === b.name &&
+          old.location === b.location &&
+          old.capacity === b.capacity &&
+          old.sortOrder === b.sortOrder &&
+          old.enabled === b.enabled
+        )
+          return old;
         const seats = await tx.seatAssignment.findMany({ where: { roomId } });
         if (seats.some((a) => a.seat > b.capacity) || (!b.enabled && seats.length))
           throw new BadRequestException('请先调整已有座位，再缩小容量或停用考场');
@@ -245,12 +253,32 @@ export class SeatingService {
         }
         if (commit && errors.length) throw new BadRequestException(errors.join('；'));
         if (commit) {
+          const changedIds = ids.filter((registrationId) => {
+            const previous = old.filter((seat) => seat.registrationId === registrationId);
+            const additions = planned.filter((seat) => seat.registrationId === registrationId);
+            const next = b.replace ? additions : [...previous, ...additions];
+            return (
+              previous.length !== next.length ||
+              next.some(
+                (seat) =>
+                  !previous.some(
+                    (before) =>
+                      before.unitKey === seat.unitKey &&
+                      before.roomId === seat.roomId &&
+                      before.seat === seat.seat,
+                  ),
+              )
+            );
+          });
+          const changed = planned.filter((seat) => changedIds.includes(seat.registrationId));
           if (b.replace)
-            await tx.seatAssignment.deleteMany({ where: { registrationId: { in: ids } } });
-          if (planned.length) await tx.seatAssignment.createMany({ data: planned });
-          await stale(tx, b.replace ? ids : [...new Set(planned.map((a) => a.registrationId))]);
-          await tx.contest.update({ where: { id }, data: { seatingVersion: { increment: 1 } } });
-          await audit(tx, u.id, 'SEATING_COMMIT', id, { count: planned.length });
+            await tx.seatAssignment.deleteMany({ where: { registrationId: { in: changedIds } } });
+          if (changed.length) await tx.seatAssignment.createMany({ data: changed });
+          if (changedIds.length) {
+            await stale(tx, changedIds);
+            await tx.contest.update({ where: { id }, data: { seatingVersion: { increment: 1 } } });
+            await audit(tx, u.id, 'SEATING_COMMIT', id, { count: changed.length });
+          }
         }
         return {
           seatingVersion: c.seatingVersion,

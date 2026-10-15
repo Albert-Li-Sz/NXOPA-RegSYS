@@ -11,6 +11,10 @@ const route = useRoute(),
   error = ref(''),
   busy = ref(false),
   invoiceDialog = ref(false);
+const invoiceForm = ref<InstanceType<typeof InvoiceApplication>>();
+async function closeInvoiceApplication(done: () => void) {
+  if (!invoiceForm.value || (await invoiceForm.value.mayClose())) done();
+}
 async function load() {
   try {
     account.value = await api(`/finance/accounts/${route.params.id}`);
@@ -125,7 +129,7 @@ async function reverse(row: Data) {
         @click="refund"
         >申请退款</el-button
       ><el-button
-        v-if="account.canEdit && account.policy.invoicesEnabled && available > 0"
+        v-if="account.canEdit && account.invoicePolicy.invoicesEnabled && available > 0"
         @click="invoiceDialog = true"
         >申请发票</el-button
       >
@@ -250,11 +254,20 @@ async function reverse(row: Data) {
         ></PaginatedTable
       >
     </div>
-    <el-dialog v-model="invoiceDialog" title="申请发票" width="760px" destroy-on-close
+    <el-dialog
+      v-model="invoiceDialog"
+      title="申请发票"
+      width="760px"
+      destroy-on-close
+      :before-close="closeInvoiceApplication"
+      :close-on-click-modal="false"
+      :close-on-press-escape="!invoiceForm?.busy"
+      :show-close="!invoiceForm?.busy"
       ><InvoiceApplication
+        ref="invoiceForm"
         :registration-id="account.id"
         :available-cents="available"
-        :policy="account.policy"
+        :policy="account.invoicePolicy"
         @submitted="
           invoiceDialog = false;
           load();

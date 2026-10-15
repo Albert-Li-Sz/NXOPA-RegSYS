@@ -17,6 +17,14 @@ export function usePagedList<T = Data>(
     error = ref(''),
     filters = ref<Record<string, string>>({});
   let sequence = 0;
+  let timer: ReturnType<typeof setTimeout>;
+  function invalidate() {
+    sequence++;
+    loading.value = true;
+    error.value = '';
+    items.value = [];
+    total.value = 0;
+  }
   function query(paged = true) {
     const params = new URLSearchParams(Object.entries(filters.value).filter(([, v]) => !!v));
     if (paged) {
@@ -26,8 +34,13 @@ export function usePagedList<T = Data>(
     return params.toString();
   }
   async function load() {
+    clearTimeout(timer);
     const source = endpoint();
-    if (!source) return;
+    if (!source) {
+      invalidate();
+      loading.value = false;
+      return;
+    }
     const current = ++sequence;
     loading.value = true;
     error.value = '';
@@ -41,28 +54,34 @@ export function usePagedList<T = Data>(
       if (page.value > 1 && page.value > Math.ceil(total.value / pageSize.value))
         page.value = Math.max(1, Math.ceil(total.value / pageSize.value));
     } catch (e) {
-      if (current === sequence) error.value = e instanceof Error ? e.message : '列表加载失败';
+      if (current === sequence) {
+        error.value = e instanceof Error ? e.message : '列表加载失败';
+        items.value = [];
+        total.value = 0;
+      }
     } finally {
       if (current === sequence) loading.value = false;
     }
   }
-  watch(page, load);
+  watch(page, load, { flush: 'sync' });
   watch(pageSize, (n) => {
     localStorage.setItem(`page-size:${key}`, String(n));
     if (page.value !== 1) page.value = 1;
     else load();
   });
-  let timer: ReturnType<typeof setTimeout>;
   watch(
     filters,
     () => {
       clearTimeout(timer);
+      // The displayed rows belong to the previous query throughout the debounce window.
+      // Invalidate them now, so late responses and batch actions cannot reuse that scope.
+      invalidate();
       timer = setTimeout(() => {
         if (page.value !== 1) page.value = 1;
         else load();
       }, 250);
     },
-    { deep: true },
+    { deep: true, flush: 'sync' },
   );
   onScopeDispose(() => {
     clearTimeout(timer);

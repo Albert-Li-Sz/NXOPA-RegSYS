@@ -98,7 +98,7 @@ test('administrator centers group their tabs and fit desktop and mobile widths',
   await login(page, 'admin');
   for (const [name, tabs] of [
     ['活动及竞赛管理中心', ['活动及竞赛管理']],
-    ['外接平台中心', ['评测平台']],
+    ['外接平台中心', ['评测平台', '撤权待办']],
     ['用户中心', ['学生视图', '教师视图', '用户与邀请', '管理员授权']],
     ['日志与任务中心', ['任务', '审计日志']],
     ['审核中心', ['实名审核']],
