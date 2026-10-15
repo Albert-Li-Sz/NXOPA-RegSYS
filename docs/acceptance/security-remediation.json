@@ -322,7 +322,7 @@
   ],
   "report": "docs/SECURITY_REMEDIATION_2026-10-15.md",
   "releasePreflight": {
-    "target": "v0.5.3",
+    "target": "v0.5.4",
     "previousAttempt": {
       "tag": "v0.5.2",
       "run": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38771814452",
@@ -341,6 +341,12 @@
       "redactionFalsePositive": 1,
       "releaseScanPending": true
     },
-    "releaseEvidence": "CI regression, installation and image verification are supplied with the release assets"
+    "releaseEvidence": "CI regression, installation and image verification are supplied with the release assets",
+    "layoutAttempt": {
+      "tag": "v0.5.3",
+      "run": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38773028565",
+      "result": "Stopped at 360px checkbox overflow; no images or public release",
+      "remediation": "Responsive label wrapping; complete Linux preflight before tagging"
+    }
   }
 }

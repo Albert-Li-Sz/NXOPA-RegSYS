@@ -738,6 +738,17 @@ h2 {
 .markdown-editor {
   width: 100%;
 }
+.el-checkbox {
+  max-width: 100%;
+  height: auto;
+  min-height: 32px;
+}
+.el-checkbox .el-checkbox__label {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
 .markdown-tools {
   display: flex;
   flex-wrap: wrap;
