@@ -20,7 +20,7 @@
     "@contest-center/connectors": "workspace:*",
     "@contest-center/contracts": "workspace:*",
     "@nestjs/common": "^11.1.0",
-    "@nestjs/core": "^11.1.0",
+    "@nestjs/core": "^12.1.3",
     "@nestjs/platform-express": "^11.1.0",
     "@nestjs/swagger": "^11.0.0",
     "@prisma/adapter-pg": "7.10.0",
