@@ -14,6 +14,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const targetTag =
   process.env.IMAGE_TAG ??
   `v${JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version}`;
+await mkdir(path.join(root, '.runtime'), { recursive: true });
 const stage = await mkdtemp(path.join(root, '.runtime/proxy-install-'));
 const envFile = path.join(stage, '.env');
 const project = `nxopa-proxy-check-${process.pid}`;

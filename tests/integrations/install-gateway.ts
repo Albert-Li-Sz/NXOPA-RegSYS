@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { request } from 'node:https';
 import { createServer } from 'node:net';
 import path from 'node:path';
@@ -24,6 +24,7 @@ async function unusedPort() {
 }
 
 export async function verifyGatewayTransport() {
+  await mkdir(path.join(root, '.runtime'), { recursive: true });
   const stage = await mkdtemp(path.join(root, '.runtime/gateway-transport-'));
   const project = `nxopa-gateway-transport-${process.pid}`;
   const gatewayPort = await unusedPort(),
