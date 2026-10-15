@@ -8,6 +8,10 @@ on:
         required: true
         default: v0.5.4
         type: string
+      proxy_only:
+        description: 仅复验 HTTPS 代理与迁移流程
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -36,20 +40,27 @@ jobs:
         run: |
           npm install --global pnpm@11.25.0
           pnpm install --frozen-lockfile
-          pnpm exec playwright install --with-deps chromium
+          if [[ '${{ inputs.proxy_only }}' != true ]]; then
+            pnpm exec playwright install --with-deps chromium
+          fi
       - name: 使用公开镜像验证安装、PDF 和备份恢复
+        if: ${{ !inputs.proxy_only }}
         env:
           INSTALL_TEST_MODE: images
           IMAGE_TAG: ${{ inputs.image_tag }}
           INSTALL_UPGRADE_FROM: v0.1.1
         run: pnpm test:install
       - name: 交互安装、升级及卸载实际验收
+        if: ${{ !inputs.proxy_only }}
         env:
           INTERACTIVE_INSTALL_FROM: v0.1.5
           INTERACTIVE_INSTALL_TO: ${{ inputs.image_tag }}
         run: pnpm test:install-interactive
       - name: 核验匿名拉取及镜像版本
-        run: node scripts/verify-published-images.mjs "${{ inputs.image_tag }}"
+        if: ${{ !inputs.proxy_only }}
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: node scripts/verify-published-images.mjs "$IMAGE_TAG"
       - name: HTTPS 双层代理与旧部署切换验收
         env:
           IMAGE_TAG: ${{ inputs.image_tag }}

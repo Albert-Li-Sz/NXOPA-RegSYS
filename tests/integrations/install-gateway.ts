@@ -35,7 +35,8 @@ export async function verifyGatewayTransport() {
   const arch = /arm64|aarch64/.test(platform) ? 'arm64' : 'amd64';
   const env = {
     ...process.env,
-    GATEWAY_PORT: `127.0.0.1:${gatewayPort}`,
+    GATEWAY_PORT: String(gatewayPort),
+    GATEWAY_BIND_ADDRESS: '127.0.0.1',
     GATEWAY_TEST_STAGE: stage,
     GATEWAY_TEST_ECHO: path.join(root, 'tests/fixtures/gateway-echo.mjs'),
     GATEWAY_TEST_TLS_PORT: String(tlsPort),
