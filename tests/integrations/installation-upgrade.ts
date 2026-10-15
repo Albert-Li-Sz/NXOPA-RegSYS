@@ -190,6 +190,12 @@ export async function verifyInstallationUpgrade(
   passed(`${previousTag} 升级到 ${targetTag} 自动备份并迁移，管理员会话、报名、附件和准考证保留`);
 
   for (const { client, purpose, token } of users) {
+    // Existing sessions survive upgrades, but a key-purpose change requires fresh CSRF data.
+    const session = await client.api('/auth/me');
+    assert.equal(session.user.id, client.user.id, 'Existing mailbox test session survives upgrade');
+    assert.equal(session.user.verified, false);
+    client.csrf = session.csrf;
+    client.user = session.user;
     const response = await client.raw(`/api/v1/auth/${purpose}`, 'POST', {
       token,
       ...(purpose === 'reset' ? { password: 'OldMailbox2026!' } : {}),
