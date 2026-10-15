@@ -29,7 +29,7 @@
     "ajv-formats": "^3.0.1",
     "archiver": "7.0.1",
     "argon2": "0.45.1",
-    "bullmq": "^5.0.0",
+    "bullmq": "^6.3.13",
     "cookie-parser": "1.4.7",
     "dotenv": "^17.2.0",
     "ioredis": "^5.0.0",
