@@ -322,7 +322,7 @@
   ],
   "report": "docs/SECURITY_REMEDIATION_2026-10-15.md",
   "releasePreflight": {
-    "target": "v0.5.4",
+    "target": "v0.5.5",
     "previousAttempt": {
       "tag": "v0.5.2",
       "run": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38771814452",
@@ -347,6 +347,28 @@
       "run": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38773028565",
       "result": "Stopped at 360px checkbox overflow; no images or public release",
       "remediation": "Responsive label wrapping; complete Linux preflight before tagging"
+    },
+    "imageAcceptance": {
+      "tag": "v0.5.4",
+      "imageCommit": "8151a52c74d19d8f759f206d7a6e1302f93edca7",
+      "imageBuilds": 10,
+      "architectures": ["amd64", "arm64"],
+      "install": {
+        "checksPerArchitecture": 16,
+        "upgradeFrom": "v0.1.1",
+        "run": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38780610754"
+      },
+      "interactive": {
+        "checksPerArchitecture": 4,
+        "upgradeFrom": "v0.1.5",
+        "run": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38780610754"
+      },
+      "proxy": {
+        "status": "PASS",
+        "checksPerArchitecture": 5,
+        "run": "https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/runs/38783079432"
+      },
+      "notes": "The initial all-in-one workflow stopped at stale CSRF test data. The fixed-harness run passed install, interactive and anonymous checks, then stopped at an outdated fixture port. Targeted proxy rerun passed after normalizing fixture port and runtime initialization. No application source changed in these test corrections."
     }
   }
 }
