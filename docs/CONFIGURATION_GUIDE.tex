@@ -28,7 +28,7 @@
 \fancyhf{}
 \fancyhead[L]{\small\color{muted}南晓开放原子社在线报名系统}
 \fancyhead[R]{\small\color{muted}配置教程}
-\fancyfoot[L]{\small\color{muted}v0.5.5 · 中文 · Asia/Shanghai}
+\fancyfoot[L]{\small\color{muted}v0.6.0 · 中文 · Asia/Shanghai}
 \fancyfoot[R]{\small\color{muted}\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
@@ -67,7 +67,7 @@ curl -fsSL https://raw.githubusercontent.com/Albert-Li-Sz/NXOPA-RegSYS/main/inst
 bash install.sh
 curl --fail http://127.0.0.1:8080/api/v1/health
 \end{Code}
-默认目录为 \code{/opt/nxopa-regsys}，可通过 \code{--dir} 指定其他目录。向导默认选择预构建镜像，完整源码支持源码构建。内部官方 Caddy 提供本机 HTTP 统一入口，默认 8080；用户自己的反向代理负责公网 HTTPS。自动生成随机密钥和权限为 600 的 \code{deploy/.env}，等待服务健康后创建首次管理员。已有配置与密钥保留，宿主机无需 Node.js 或 pnpm。上游健康检查应返回 \code{status: ok}；完成代理配置后，再通过浏览器地址检查健康接口与登录。PostgreSQL 按 Docker 服务端架构固定官方运行摘要。
+默认目录为 \code{/opt/nxopa-regsys}，可用 \code{--dir} 指定其他目录。向导默认拉取预构建镜像，完整源码也可构建。自动生成权限为 600 的 \code{deploy/.env}，服务健康后创建首次管理员；已有配置与密钥保留，宿主机无需 Node.js 或 pnpm。内部 Caddy 提供本机 HTTP 入口，默认 8080，由自有反向代理负责公网 HTTPS。健康接口应返回 \code{status: ok}，上线前还须检查代理下的健康接口与登录。安装镜像使用完整固定版本标签，并按 Docker 服务端选择平台；新入口转换旧包的自动摘要覆盖，保留下载校验。
 
 \textbf{更新与卸载。}不带参数显示安装、更新、卸载和状态菜单，也可在实际安装根目录分别执行：
 \begin{Code}
@@ -80,7 +80,8 @@ bash install.sh uninstall
 \begin{Code}
 PUBLIC_URL=https://contest.example.org
 REVERSE_PROXY_MODE=gateway
-GATEWAY_PORT=127.0.0.1:8080
+GATEWAY_PORT=8080
+GATEWAY_BIND_ADDRESS=127.0.0.1
 ALLOW_PRIVATE_INTEGRATIONS=true
 \end{Code}
 外层代理将整个站点转发到 \code{http://127.0.0.1:8080}，保留路径、Host 和原始协议；内部 Caddy 分流前端与 API。默认不占用公网 80 / 443、不申请证书。旧配置升级保留原代理模式。安装入口使用 \code{PUBLIC_URL}；旧根目录 Compose 使用 \code{DEPLOY_PUBLIC_URL}。内网联动默认开启，显式设置 false 可禁止私有地址；正式环境外部评测接口要求 HTTPS。

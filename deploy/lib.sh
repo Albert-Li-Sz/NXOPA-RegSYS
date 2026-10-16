@@ -199,7 +199,7 @@ require_config() {
   esac
   if [[ "$install_mode" == images ]]; then
     local image_tag="${IMAGE_TAG:-$(env_value IMAGE_TAG)}"
-    [[ "$image_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9][A-Za-z0-9.-]*)?$ ]] || fail 'IMAGE_TAG 必须为固定版本标签，例如 v0.5.5，不能使用 latest 或镜像摘要。'
+    [[ "$image_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9][A-Za-z0-9.-]*)?$ ]] || fail 'IMAGE_TAG 必须为固定版本标签，例如 v0.6.0，不能使用 latest 或镜像摘要。'
   fi
   if [[ "$install_mode" == source && ! -f "$repo_root/infra/Dockerfile" ]]; then
     fail '源码模式需要完整仓库。Release 安装包请使用 INSTALL_MODE=images。'
