@@ -129,6 +129,8 @@ try {
     for (const service of ['initialize', 'api', 'worker', 'web', 'latex', 'minio']) {
       assert.ok(!model.services[service].build, `${service} does not build in image mode`);
       assert.ok(model.services[service].image.startsWith('ghcr.io/'));
+      assert.ok(!model.services[service].image.includes('@'), `${service} uses a version tag`);
+      assert.ok(model.services[service].image.endsWith(`:${env.IMAGE_TAG ?? defaultTag}`));
     }
   }
   assert.ok(model.services.minio);
@@ -157,12 +159,10 @@ try {
   passed('默认内部 Caddy 仅发布本机 HTTP 单端口；前端、API、数据库与队列不映射端口');
 
   const officialImages = {
-    postgres: model.services.postgres.image,
+    postgres: 'postgres:17.6-alpine',
     redis: 'redis:7.4.5-alpine',
-    caddy: model.services.caddy.image,
+    caddy: 'caddy:2.10.2-alpine',
   };
-  assert.match(officialImages.caddy, /^caddy:2\.10\.2-alpine@sha256:[a-f0-9]{64}$/);
-  assert.match(officialImages.postgres, /^postgres:17\.6-alpine@sha256:[a-f0-9]{64}$/);
   for (const [service, image] of Object.entries(officialImages)) {
     assert.equal(model.services[service].image, image);
     assert.ok(!model.services[service].build, `${service} uses the official image directly`);
@@ -177,7 +177,7 @@ try {
   assert.deepEqual(Object.keys(model.services.web.networks), ['edge']);
   assert.deepEqual(Object.keys(model.services.postgres.networks), ['data']);
   assert.equal(model.networks.data.internal, true);
-  passed('官方 PostgreSQL 固定当前架构运行摘要；前端无后端凭据，服务与数据库网络隔离');
+  passed('官方基础服务使用固定版本标签；前端无后端凭据，服务与数据库网络隔离');
 
   const httpsModel = JSON.parse(
     await run(['compose', 'config', '--format', 'json'], {
