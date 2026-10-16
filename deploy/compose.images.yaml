@@ -1,20 +1,20 @@
 # With Compose >= 2.24.4, merge after compose.yaml to install published images.
 services:
   minio:
-    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-minio:${IMAGE_TAG:-v0.6.1}
+    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-minio:${IMAGE_TAG:-v0.6.2}
     build: !reset null
   initialize:
     build: !reset null
-    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-api:${IMAGE_TAG:-v0.6.1}
+    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-api:${IMAGE_TAG:-v0.6.2}
   api:
     build: !reset null
-    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-api:${IMAGE_TAG:-v0.6.1}
+    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-api:${IMAGE_TAG:-v0.6.2}
   worker:
     build: !reset null
-    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-worker:${IMAGE_TAG:-v0.6.1}
+    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-worker:${IMAGE_TAG:-v0.6.2}
   web:
     build: !reset null
-    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-web:${IMAGE_TAG:-v0.6.1}
+    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-web:${IMAGE_TAG:-v0.6.2}
   latex:
     build: !reset null
-    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-latex:${IMAGE_TAG:-v0.6.1}
+    image: ${IMAGE_PREFIX:-ghcr.io/albert-li-sz/nxopa-regsys}-latex:${IMAGE_TAG:-v0.6.2}
