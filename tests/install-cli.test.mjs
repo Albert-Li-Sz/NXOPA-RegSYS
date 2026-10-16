@@ -147,6 +147,8 @@ async function fixture(fn, { isolated = false } = {}) {
             PATH: `${bin}:${process.env.PATH}`,
             INSTALL_ENV_FILE: envFile,
             NXOPA_ROOT: entryRoot,
+            // The outer image-install job exports its release tag; fixtures use their own .env.
+            IMAGE_TAG: '',
             FAKE_LOG: log,
             NXOPA_SKIP_RELEASE_DOWNLOAD: '1',
             ...overrides,
@@ -334,7 +336,11 @@ test('维护命令拒绝浮动标签、缺失版本及摘要形式，尚未拉�
     for (const tag of ['latest', 'v0.5', '', `v0.5.5@sha256:${'1'.repeat(64)}`]) {
       await writeFile(envFile, original.replace(/^IMAGE_TAG=.*$/m, `IMAGE_TAG=${tag}`));
       const result = await run('install.sh', '', {}, ['up']);
-      assert.notEqual(result.code, 0);
+      assert.notEqual(
+        result.code,
+        0,
+        `Invalid fixture tag ${JSON.stringify(tag)}: ${result.output}`,
+      );
       assert.match(result.output, /IMAGE_TAG 必须为固定版本标签/);
     }
     assert.ok(!(await calls()).some((c) => ['pull', 'up'].includes(c.action)));
