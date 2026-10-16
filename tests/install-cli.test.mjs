@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, writeFile, stat, readdir, rm } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, writeFile, stat, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { test } from 'node:test';
@@ -95,13 +95,29 @@ test('默认备份成功后才执行卸载，保留环境及加密备份', () =>
     assert.ok((await readFile(envFile, 'utf8')) === original);
   }));
 
-async function fixture(fn) {
+async function fixture(fn, { isolated = false } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'nxopa-cli-'));
   const bin = path.join(dir, 'bin');
   const envFile = path.join(dir, '.env');
   const log = path.join(dir, 'commands.jsonl');
   await mkdir(bin);
   await writeFile(path.join(bin, 'docker'), fakeDocker, { mode: 0o755 });
+  const entryRoot = isolated ? path.join(dir, 'deployment') : root;
+  if (isolated) {
+    for (const name of [
+      'install.sh',
+      'deploy',
+      'scripts/backup.sh',
+      'scripts/restore.sh',
+      'scripts/compose-lib.sh',
+    ]) {
+      await mkdir(path.dirname(path.join(entryRoot, name)), { recursive: true });
+      await cp(path.join(root, name), path.join(entryRoot, name), {
+        recursive: true,
+        filter: (src) => !src.endsWith('/.env') && !src.includes('/backups/'),
+      });
+    }
+  }
   const calls = async () =>
     (await readFile(log, 'utf8').catch(() => ''))
       .trim()
@@ -113,7 +129,7 @@ async function fixture(fn) {
       const child = spawn(
         'bash',
         [
-          path.join(root, 'install.sh'),
+          path.join(entryRoot, 'install.sh'),
           ...(args.includes('--help')
             ? ['--help']
             : entry === 'update.sh'
@@ -130,6 +146,7 @@ async function fixture(fn) {
             ...process.env,
             PATH: `${bin}:${process.env.PATH}`,
             INSTALL_ENV_FILE: envFile,
+            NXOPA_ROOT: entryRoot,
             FAKE_LOG: log,
             NXOPA_SKIP_RELEASE_DOWNLOAD: '1',
             ...overrides,
@@ -166,7 +183,7 @@ async function fixture(fn) {
     return text;
   };
   try {
-    await fn({ dir, envFile, log, calls, run, init });
+    await fn({ dir, envFile, log, calls, run, init, entryRoot });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -252,7 +269,7 @@ test('没有原配置时拒绝复用已有项目；过旧 Compose 在写入前�
     await assert.rejects(stat(envFile), { code: 'ENOENT' });
   }));
 
-test('按 Docker 服务端架构选择 PostgreSQL 运行摘要，备份也沿用同一覆盖文件', () =>
+test('按 Docker 服务端架构选择固定版本镜像的平台，备份也沿用同一覆盖文件', () =>
   fixture(async ({ run, init, dir, calls }) => {
     await init();
     for (const [reported, file] of [
@@ -279,6 +296,48 @@ test('按 Docker 服务端架构选择 PostgreSQL 运行摘要，备份也沿用
       ).code,
       0,
     );
+  }));
+
+test('遗留摘要覆盖不影响启动、更新和备份，保持原配置与固定版本', () =>
+  fixture(
+    async ({ run, init, calls, dir, envFile, entryRoot }) => {
+      const previous = await init();
+      const stale = path.join(entryRoot, 'deploy/compose.digest.yaml');
+      const legacy = () =>
+        writeFile(
+          stale,
+          `# NXOPA_IMAGE_TAG=${currentTag}\nservices:\n  api:\n    image: ghcr.io/example/api@sha256:${'1'.repeat(64)}\n`,
+        );
+      await legacy();
+      let result = await run('install.sh', 'y\nn\n');
+      assert.equal(result.code, 0, result.output);
+      await assert.rejects(stat(stale), { code: 'ENOENT' });
+      await legacy();
+      result = await run('update.sh', '', {}, ['--yes']);
+      assert.equal(result.code, 0, result.output);
+      await legacy();
+      result = await run('install.sh', '', {}, ['backup', path.join(dir, 'backups')]);
+      assert.equal(result.code, 0, result.output);
+      const commands = await calls();
+      assert.ok(commands.some((c) => c.action === 'pull'));
+      assert.ok(commands.some((c) => c.action === 'run' && c.args.includes('encrypt')));
+      assert.ok(commands.every((c) => !c.files.includes(stale)));
+      assert.ok(commands.every((c) => c.tag === currentTag));
+      assert.equal(await readFile(envFile, 'utf8'), previous);
+    },
+    { isolated: true },
+  ));
+
+test('维护命令拒绝浮动标签、缺失版本及摘要形式，尚未拉取或启动服务', () =>
+  fixture(async ({ run, init, envFile, calls }) => {
+    const original = await init();
+    for (const tag of ['latest', 'v0.5', '', `v0.5.5@sha256:${'1'.repeat(64)}`]) {
+      await writeFile(envFile, original.replace(/^IMAGE_TAG=.*$/m, `IMAGE_TAG=${tag}`));
+      const result = await run('install.sh', '', {}, ['up']);
+      assert.notEqual(result.code, 0);
+      assert.match(result.output, /IMAGE_TAG 必须为固定版本标签/);
+    }
+    assert.ok(!(await calls()).some((c) => ['pull', 'up'].includes(c.action)));
   }));
 
 test('重复安装保留密钥，选定环境文件不执行代码且不受 shell 覆盖', () =>

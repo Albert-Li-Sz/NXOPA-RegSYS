@@ -79,7 +79,9 @@ bash install.sh compose ps
 
 多个实例用 `INSTALL_ENV_FILE=/absolute/path/.env` 选择配置。`init` 保留已有文件，`up` 按配置构建或拉取，`update --yes` 按已保存版本先备份再更新。不要公开 `.env` 或完整 `compose config`，其中包含密钥。
 
-业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v0.5.5`，支持 amd64/arm64。PostgreSQL 17.6 和 Caddy 2.10.2 按 Docker 服务端架构固定官方运行摘要，避免不完整镜像代理要求索引中的证明配置。保持原数据库版本和卷名；`content descriptor ... not found` 时检查具体镜像及镜像代理，不能把拉取失败当成安装完成。
+业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v0.5.5`，支持 amd64/arm64。所有安装服务使用固定版本标签：PostgreSQL 为 `postgres:17.6-alpine`，Redis 为 `redis:7.4.5-alpine`，Caddy 为 `caddy:2.10.2-alpine`；按 Docker 服务端选择平台，不附加 `@sha256`。`IMAGE_TAG` 必须为完整版本号，不能填写 `latest` 或浮动小版本。
+
+从 `main` 获取的新 `install.sh` 会在校验下载包后转换旧包的哈希覆盖，也会处理已有安装目录中的旧材料。新版安装、更新、备份和恢复不再自动加载遗留的 `compose.digest.yaml`；发布记录 `images.json` 仍保留摘要供核验，安装包 SHA-256 校验继续执行。保持原数据库版本和卷名；`content descriptor ... not found` 时检查具体镜像及镜像代理，不能把拉取失败当成安装完成。
 
 ## 账号与报名
 

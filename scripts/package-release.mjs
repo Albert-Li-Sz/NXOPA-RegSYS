@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { digestOverride } from './release-digests.mjs';
+import { validateReleaseImages } from './release-images.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
@@ -55,6 +55,14 @@ try {
     .replace(/^INSTALL_MODE=.+$/m, 'INSTALL_MODE=images')
     .replace(/^IMAGE_TAG=.+$/m, `IMAGE_TAG=${tag}`);
   await writeFile(envExample, envText);
+  const imageCompose = join(stage, folder, 'deploy/compose.images.yaml');
+  await writeFile(
+    imageCompose,
+    (await readFile(imageCompose, 'utf8')).replaceAll(
+      /\$\{IMAGE_TAG:-[^}]+\}/g,
+      `\${IMAGE_TAG:-${tag}}`,
+    ),
+  );
   await writeFile(
     join(stage, folder, 'RELEASE.json'),
     JSON.stringify({ tag, commit, mode: 'images' }, null, 2),
@@ -96,16 +104,7 @@ try {
     if (error.code !== 'ENOENT') throw error;
   }
   if (records) {
-    assert.equal(records.length, 5);
-    for (const record of records) {
-      assert.equal(record.tag, tag);
-      assert.equal(record.commit, commit);
-      assert.match(record.digest, /^sha256:[a-f0-9]{64}$/);
-    }
-    assert.deepEqual(
-      records.map((record) => record.image).sort(),
-      images.map((record) => record.image.slice(0, -(tag.length + 1))).sort(),
-    );
+    validateReleaseImages({ records, tag, commit, prefix });
     await writeFile(
       join(output, 'images.json'),
       JSON.stringify(
@@ -114,8 +113,6 @@ try {
         2,
       ),
     );
-    const pinned = digestOverride({ records, tag, commit, prefix });
-    await writeFile(join(stage, folder, 'deploy/compose.digest.yaml'), pinned);
     await writeFile(join(stage, folder, 'images.json'), JSON.stringify(records, null, 2));
     execFileSync('tar', ['-czf', join(output, `${folder}-install.tar.gz`), '-C', stage, folder], {
       env: { ...process.env, COPYFILE_DISABLE: '1' },

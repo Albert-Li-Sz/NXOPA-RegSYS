@@ -13,7 +13,7 @@ const version = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8
 const tag = `v${version}`;
 const parts = version.split('.').map(Number);
 const nextTag = `v${parts[0]}.${parts[1]}.${parts[2] + 1}`;
-async function fixture(fn) {
+async function fixture(fn, { legacyImages = false } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'nxopa-bootstrap-'));
   const packRoot = path.join(dir, `nxopa-regsys-${tag}`),
     standalone = path.join(dir, 'standalone'),
@@ -41,6 +41,40 @@ async function fixture(fn) {
     example,
     (await readFile(example, 'utf8')).replace('INSTALL_MODE=source', 'INSTALL_MODE=images'),
   );
+  if (legacyImages) {
+    // Reproduce a previously published bundle whose own entry/libraries still load digests.
+    const entry = path.join(packRoot, 'install.sh');
+    await writeFile(
+      entry,
+      (await readFile(entry, 'utf8'))
+        .replace('  use_versioned_images "$output/nxopa-regsys-$tag"\n', '')
+        .replace('  use_versioned_images "$target_root"\n', ''),
+    );
+    const lib = path.join(packRoot, 'deploy/lib.sh');
+    await writeFile(
+      lib,
+      (await readFile(lib, 'utf8')).replace(
+        'compose_args+=(-f "$install_dir/compose.images.yaml")',
+        'compose_args+=(-f "$install_dir/compose.images.yaml"); if [[ -f "$install_dir/compose.digest.yaml" ]]; then compose_args+=(-f "$install_dir/compose.digest.yaml"); fi',
+      ),
+    );
+    await writeFile(
+      path.join(packRoot, 'deploy/compose.digest.yaml'),
+      `# NXOPA_IMAGE_TAG=${tag}\nservices:\n  api:\n    image: ghcr.io/example/api@sha256:${'1'.repeat(64)}\n`,
+    );
+    for (const arch of ['amd64', 'arm64']) {
+      for (const file of [`compose.${arch}.yaml`, `compose.proxy.${arch}.yaml`]) {
+        const target = path.join(packRoot, 'deploy', file);
+        await writeFile(
+          target,
+          (await readFile(target, 'utf8')).replace(
+            /(image: [^\n]+)/,
+            `$1@sha256:${'1'.repeat(64)}`,
+          ),
+        );
+      }
+    }
+  }
   await cp(path.join(root, 'install.sh'), path.join(standalone, 'install.sh'));
   const archiveName = `nxopa-regsys-${tag}-install.tar.gz`,
     archive = path.join(dir, archiveName);
@@ -195,6 +229,56 @@ test('校验和错误不会安装配置或调用 Docker', () =>
     await assert.rejects(stat(path.join(target, 'deploy/.env')), { code: 'ENOENT' });
     await assert.rejects(stat(log), { code: 'ENOENT' });
   }));
+test('新单文件入口转换旧发布包与已有材料的摘要覆盖，保留版本、平台及实例配置', () =>
+  fixture(
+    async ({ run, target, log }) => {
+      const result = await run(
+        ['install'],
+        'legacy-images\n\n1\n\n3\n\nhttp://proxy.example.test\ny\nn\n',
+      );
+      assert.equal(result.code, 0, result.output);
+      const envFile = path.join(target, 'deploy/.env');
+      const previous = await readFile(envFile, 'utf8');
+      const check = async () => {
+        await assert.rejects(stat(path.join(target, 'deploy/compose.digest.yaml')), {
+          code: 'ENOENT',
+        });
+        for (const arch of ['amd64', 'arm64']) {
+          for (const [name, image] of [
+            [`compose.${arch}.yaml`, 'postgres:17.6-alpine'],
+            [`compose.proxy.${arch}.yaml`, 'caddy:2.10.2-alpine'],
+          ]) {
+            const text = await readFile(path.join(target, 'deploy', name), 'utf8');
+            assert.ok(text.includes(`image: ${image}\n`));
+            assert.ok(text.includes(`platform: linux/${arch}`));
+            assert.doesNotMatch(text, /@sha256/);
+          }
+        }
+        assert.equal(await readFile(envFile, 'utf8'), previous);
+      };
+      await check();
+      // Reintroduce legacy installed material without downloading a new bundle.
+      await writeFile(
+        path.join(target, 'deploy/compose.digest.yaml'),
+        `# NXOPA_IMAGE_TAG=${tag}\nservices: {}\n`,
+      );
+      const postgres = path.join(target, 'deploy/compose.amd64.yaml');
+      await writeFile(
+        postgres,
+        (await readFile(postgres, 'utf8')).replace(
+          'postgres:17.6-alpine',
+          `postgres:17.6-alpine@sha256:${'2'.repeat(64)}`,
+        ),
+      );
+      const config = await run(['config']);
+      assert.equal(config.code, 0, config.output);
+      await check();
+      const backup = await run(['backup', path.join(target, 'backups')], '', { installed: true });
+      assert.equal(backup.code, 0, backup.output);
+      assert.doesNotMatch(await readFile(log, 'utf8'), /compose\.digest\.yaml/);
+    },
+    { legacyImages: true },
+  ));
 test('自定义 GitHub 加速前缀用于安装包和校验文件并保存在配置中', () =>
   fixture(async ({ run, target, proxyPrefix, visited }) => {
     const result = await run(

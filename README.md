@@ -30,6 +30,8 @@ bash install.sh
 
 更新使用 `bash install.sh update`，卸载使用 `bash install.sh uninstall`。更新前自动加密备份；卸载默认保留数据，永久删除数据卷须输入项目名确认。原有 `init/up/admin/backup/restore` 维护命令继续可用。
 
+安装镜像使用固定版本标签（如 `:v0.5.5`），不使用 `@sha256` 或 `latest`。从 `main` 下载的新入口也会将旧发布包及已有安装材料中的自动哈希覆盖转换为版本标签，保留原版本、平台、配置与数据。
+
 本机试用打开 <http://localhost:8080>；公网部署由自己的反向代理配置 HTTP/HTTPS。浏览器写入允许同源、当前公网地址及显式配置的 `TRUSTED_MANAGEMENT_ORIGINS`；内网评测平台联动默认启用，Webhook 另行授权。初始化命令交互输入管理员邮箱和密码；首次创建后使用邮箱或 `administrator` 登录。正式容器固定为 production 模式，初始化不会创建演示账号，也不会覆盖已有账号。数据库迁移在 API 启动前自动执行。已有根目录 Compose 部署仍可沿用原入口和配置；默认安装项目名 `nxopa-regsys` 与旧项目 `contest-center` 使用不同数据卷，迁移入口时按安装说明保留原项目名和密钥。
 
 默认安装由内部 Caddy 合并前端和 API，提供 `127.0.0.1:8080` HTTP 入口，用户自己的反向代理负责公网 HTTPS。PostgreSQL、Redis、Caddy 使用官方镜像；Vue 前端、NestJS API、Worker 和 XeLaTeX 分别运行在独立容器，数据库和队列位于私有网络。各服务与数据卷说明见 [安装说明](deploy/README.md)。

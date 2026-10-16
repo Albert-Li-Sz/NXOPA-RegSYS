@@ -1,4 +1,4 @@
 services:
   caddy:
-    image: caddy:2.10.2-alpine@sha256:d8c17a862962def15cde69863a3a463f25a2664942eafd7bdbf050e9c3116b83
+    image: caddy:2.10.2-alpine
     platform: linux/amd64

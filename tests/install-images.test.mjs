@@ -1,18 +1,23 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { verifyManifestGraph } from '../scripts/verify-registry.mjs';
-import { digestOverride } from '../scripts/release-digests.mjs';
+import { validateReleaseImages } from '../scripts/release-images.mjs';
 
 const fixture = JSON.parse(
   await readFile(new URL('./fixtures/postgres-runtime.json', import.meta.url), 'utf8'),
 );
 const missing = 'sha256:f9989be93aaf18e0f2ee8da9e8cbaedc1979c5c1aa89e1c8a0dc18524e5eb7f9';
 const hash = (body) => `sha256:${createHash('sha256').update(body).digest('hex')}`;
+const currentTag = `v${JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version}`;
 
-test('发布安装包对五个服务及初始化锁定实际构建摘要', () => {
+test('发布镜像清单严格核验固定版本、来源提交及五类服务', () => {
   const prefix = 'ghcr.io/example/project',
     tag = 'v1.2.3',
     commit = 'fixture-commit';
@@ -23,13 +28,7 @@ test('发布安装包对五个服务及初始化锁定实际构建摘要', () =>
     digest: hash(service),
   }));
   const options = { records, tag, commit, prefix };
-  const output = digestOverride(options);
-  assert.ok(output.startsWith('# NXOPA_IMAGE_TAG=v1.2.3\n'));
-  assert.equal((output.match(/@sha256:/g) ?? []).length, 6);
-  assert.ok(
-    output.includes(`initialize:\n    image: \${IMAGE_PREFIX:-${prefix}}-api@${hash('api')}`),
-  );
-  assert.ok(!output.includes(':latest'));
+  assert.doesNotThrow(() => validateReleaseImages(options));
   for (const change of [
     { records: records.slice(1) },
     { commit: 'stale-source' },
@@ -37,8 +36,75 @@ test('发布安装包对五个服务及初始化锁定实际构建摘要', () =>
     { records: records.map((r) => ({ ...r, digest: 'sha256:invalid' })) },
     { records: [...records.slice(0, 4), records[0]] },
   ])
-    assert.throws(() => digestOverride({ ...options, ...change }));
+    assert.throws(() => validateReleaseImages({ ...options, ...change }));
 });
+
+for (const arch of ['amd64', 'arm64']) {
+  for (const proxy of ['gateway', 'caddy', 'external']) {
+    test(`${arch}/${proxy} 最终 Compose 对全部服务使用固定版本标签`, async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'nxopa-images-'));
+      const deploy = fileURLToPath(new URL('../deploy/', import.meta.url));
+      const envFile = join(dir, '.env');
+      await writeFile(envFile, '');
+      try {
+        const args = [
+          'compose',
+          '--project-directory',
+          deploy,
+          '--env-file',
+          envFile,
+          '--profile',
+          '*',
+          '-f',
+          join(deploy, 'compose.yaml'),
+          '-f',
+          join(deploy, `compose.${arch}.yaml`),
+          '-f',
+          join(deploy, 'compose.images.yaml'),
+        ];
+        if (proxy !== 'external')
+          args.push(
+            '-f',
+            join(deploy, `compose.${proxy}.yaml`),
+            '-f',
+            join(deploy, `compose.proxy.${arch}.yaml`),
+          );
+        const prefix = 'ghcr.io/example/fixture';
+        for (const tag of ['v1.2.3', '']) {
+          const config = JSON.parse(
+            execFileSync('docker', [...args, 'config', '--format', 'json'], {
+              encoding: 'utf8',
+              env: {
+                ...process.env,
+                INSTALL_ENV_FILE: envFile,
+                IMAGE_PREFIX: prefix,
+                IMAGE_TAG: tag,
+                POSTGRES_PASSWORD: 'fixture-only',
+                ENCRYPTION_KEY: '1'.repeat(64),
+              },
+            }),
+          );
+          for (const service of ['initialize', 'api', 'worker', 'web', 'latex', 'minio']) {
+            const image = service === 'initialize' ? 'api' : service;
+            assert.equal(config.services[service].image, `${prefix}-${image}:${tag || currentTag}`);
+            assert.equal(config.services[service].build, undefined);
+          }
+          assert.equal(config.services.postgres.image, 'postgres:17.6-alpine');
+          assert.equal(config.services.postgres.platform, `linux/${arch}`);
+          assert.equal(config.services.redis.image, 'redis:7.4.5-alpine');
+          if (proxy !== 'external') {
+            assert.equal(config.services.caddy.image, 'caddy:2.10.2-alpine');
+            assert.equal(config.services.caddy.platform, `linux/${arch}`);
+          }
+          for (const service of Object.values(config.services))
+            assert.doesNotMatch(service.image, /@|:latest$/);
+        }
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  }
+}
 
 async function withIncompleteMirror(check) {
   const bodies = new Map();
@@ -99,15 +165,9 @@ test('不完整镜像代理中的证明配置缺失会被捕获，不能只验�
   }));
 
 for (const arch of ['amd64', 'arm64']) {
-  test(`${arch} 安装使用同版本官方运行摘要，不访问缺失的证明配置`, () =>
+  test(`${arch} 发布核验能检查官方运行清单的架构及实际版本`, () =>
     withIncompleteMirror(async (request, visited) => {
-      const compose = await readFile(
-        new URL(`../deploy/compose.${arch}.yaml`, import.meta.url),
-        'utf8',
-      );
-      const reference = compose.match(/image: postgres:17\.6-alpine@(sha256:[a-f0-9]{64})/)[1];
-      assert.equal(reference, fixture[arch].digest);
-      const result = await verifyManifestGraph(reference, request);
+      const result = await verifyManifestGraph(fixture[arch].digest, request);
       assert.equal(result.records[0].config.architecture, arch);
       assert.ok(result.records[0].config.config.Env.includes('PG_VERSION=17.6'));
       assert.ok(!visited.includes(`blobs/${missing}`));

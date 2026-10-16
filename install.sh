@@ -28,6 +28,24 @@ github_url() {
   if [[ -n "$prefix" ]]; then printf '%s/%s\n' "${prefix%/}" "$1"; else printf '%s\n' "$1"; fi
 }
 
+use_versioned_images() {
+  local root="$1" name file staged
+  # A new single-file entry can still download an older, checksum-verified bundle.
+  # Preserve its exact versions and platforms while removing its digest policy.
+  file="$root/deploy/compose.digest.yaml"
+  if [[ -f "$file" && "$(head -n 1 "$file")" == '# NXOPA_IMAGE_TAG='* ]]; then rm -f "$file" || return 1; fi
+  for name in compose.amd64.yaml compose.arm64.yaml compose.proxy.amd64.yaml compose.proxy.arm64.yaml; do
+    file="$root/deploy/$name"
+    if [[ ! -f "$file" || "$(cat "$file")" != *'@sha256:'* ]]; then continue; fi
+    staged="$(mktemp "$file.tmp.XXXXXX")" || return 1
+    if ! cp -p "$file" "$staged"; then rm -f "$staged"; return 1; fi
+    if ! sed -E '/^[[:space:]]*image:/s/@sha256:[a-f0-9]{64}([[:space:]]*(#.*)?)$/\1/' "$file" > "$staged"; then
+      rm -f "$staged"; return 1
+    fi
+    if ! mv "$staged" "$file"; then rm -f "$staged"; return 1; fi
+  done
+}
+
 fetch_bundle() {
   local tag="$1" output="$2" repository="${NXOPA_REPOSITORY:-Albert-Li-Sz/NXOPA-RegSYS}"
   local base="${NXOPA_RELEASE_BASE_URL:-https://github.com/$repository/releases/download}" name="nxopa-regsys-$tag-install.tar.gz" expected actual entry
@@ -49,6 +67,7 @@ fetch_bundle() {
   done < <(tar -tzf "$output/$name")
   tar -xzf "$output/$name" -C "$output"
   [[ -f "$output/nxopa-regsys-$tag/install.sh" && -f "$output/nxopa-regsys-$tag/deploy/lib.sh" ]] || { echo '发布包不支持新版一键入口。' >&2; return 1; }
+  use_versioned_images "$output/nxopa-regsys-$tag"
 }
 
 copy_bundle() {
@@ -306,6 +325,7 @@ main() {
   if [[ -z "${NXOPA_GITHUB_PREFIX+x}" && -f "$target_root/deploy/.env" ]]; then
     NXOPA_GITHUB_PREFIX="$(awk -F= '$1=="NXOPA_GITHUB_PREFIX" {sub(/^[^=]*=/, ""); print; exit}' "$target_root/deploy/.env")"; export NXOPA_GITHUB_PREFIX
   fi
+  use_versioned_images "$target_root"
   material_tag="$(awk -F= '$1=="IMAGE_TAG" {print $2; exit}' "$target_root/deploy/.env.example" 2>/dev/null || true)"
   if [[ ! -f "$target_root/deploy/lib.sh" || ( "$material_tag" != "$NXOPA_INSTALLER_VERSION" && "${NXOPA_SKIP_RELEASE_DOWNLOAD:-}" != 1 ) ]]; then
     target_root="${NXOPA_ROOT:-${NXOPA_INSTALL_DIR:-/opt/nxopa-regsys}}"
