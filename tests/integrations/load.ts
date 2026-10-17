@@ -182,6 +182,8 @@ try {
   await writeFile('.runtime/reports/load.json', JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
   assert.equal(errors.length, 0);
+  assert.ok(report.p95Ms <= 10000, `p95 latency exceeded 10s: ${report.p95Ms}ms`);
+  assert.ok(report.maxMs <= 30000, `Maximum latency exceeded 30s: ${report.maxMs}ms`);
 } finally {
   if (contestId) {
     await db.registration.deleteMany({ where: { contestId } });

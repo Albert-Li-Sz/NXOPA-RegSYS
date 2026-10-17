@@ -134,11 +134,13 @@ export class AdminService {
       await lock(tx, `global-field:${f.key}`);
       const current = await tx.fieldDefinition.findUnique({ where: { key: f.key } });
       if (version !== undefined) checkVersion(current?.version ?? 0, version);
-      return tx.fieldDefinition.upsert({
+      const saved = await tx.fieldDefinition.upsert({
         where: { key: f.key },
         create: { key: f.key, definition: json(f) },
         update: { definition: json(f), version: { increment: 1 } },
       });
+      await audit(tx, u.id, 'GLOBAL_FIELD_SAVE', saved.id, { key: f.key, version: saved.version });
+      return saved;
     });
   }
 

@@ -1,13 +1,14 @@
 import { synchronizePlatform } from './platform-sync.js';
 import { postWebhook } from './webhook-http.js';
 import { Queue, Worker } from 'bullmq';
-import { mkdir, writeFile, readFile, rename, rm } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, rename, rm, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import { connector } from '@contest-center/connectors';
-import { db, json, event, lock, registrationInclude, type Registration } from './db.js';
+import { db, json, event, lock, enqueue, registrationInclude, type Registration } from './db.js';
+import { claimJob, renewJobLease, recoverExpiredJobs } from './job-lease.js';
 import { config } from './config.js';
-import { decrypt, hmac, safeUrl } from './security.js';
+import { decrypt, hmac, safeUrl, sha } from './security.js';
 import { platformConfig, envelope, scheduleSync } from './integrations.js';
 import { admissionMaterial, activeTemplate } from './admissions.js';
 import { modulesFor } from './workflow.js';
@@ -23,8 +24,13 @@ const connection = {
   password: redisUrl.password || undefined,
 };
 const queue = new Queue('contest-center', { connection });
-async function compile(id: string, source: string, assets: Record<string, string> = {}) {
-  const dir = path.join(config.spool, id);
+async function compile(
+  id: string,
+  leaseToken: string,
+  source: string,
+  assets: Record<string, string> = {},
+) {
+  const dir = path.join(config.spool, `${id}-${leaseToken}`);
   await rm(dir, { recursive: true, force: true });
   try {
     await mkdir(dir, { recursive: true, mode: 0o700 });
@@ -34,10 +40,12 @@ async function compile(id: string, source: string, assets: Record<string, string
     await rename(path.join(dir, 'request.tmp'), path.join(dir, 'request.json'));
     let result: { ok: boolean; error?: string } | undefined;
     for (let i = 0; i < 90; i++) {
-      if (
-        (await db.job.findUnique({ where: { id }, select: { state: true } }))?.state === 'CANCELLED'
-      )
-        throw new Error('任务已取消');
+      const current = await db.job.findUnique({
+        where: { id },
+        select: { state: true, leaseToken: true },
+      });
+      if (current?.state !== 'RUNNING' || current.leaseToken !== leaseToken)
+        throw new Error('任务已取消或执行租约已失效');
       try {
         result = JSON.parse(await readFile(path.join(dir, 'result.json'), 'utf8'));
         break;
@@ -50,7 +58,7 @@ async function compile(id: string, source: string, assets: Record<string, string
     const pdf = await readFile(path.join(dir, 'document.pdf'));
     if (pdf.length > 10 * 1024 * 1024 || pdf.subarray(0, 5).toString() !== '%PDF-')
       throw new Error('Invalid compiler output');
-    const storageKey = `pdf-${id}`;
+    const storageKey = `pdf-${id}-${leaseToken}`;
     const ref = await putBlob(storageKey, pdf, 'application/pdf');
     return ref;
   } finally {
@@ -63,11 +71,22 @@ const worker = new Worker(
   async (qjob) => {
     const j = await db.job.findUniqueOrThrow({ where: { id: qjob.data.id } });
     if (j.state === 'SUCCESS') return;
-    const claimed = await db.job.updateMany({
-      where: { id: j.id, state: { in: ['PENDING', 'FAILED'] } },
-      data: { state: 'RUNNING', attempts: { increment: 1 }, error: null },
-    });
-    if (!claimed.count) return;
+    const leaseToken = await claimJob(j.id);
+    if (!leaseToken) return;
+    const owned = { id: j.id, state: 'RUNNING', leaseToken };
+    let renewing = false;
+    const heartbeat = setInterval(async () => {
+      if (renewing) return;
+      renewing = true;
+      try {
+        await renewJobLease(j.id, leaseToken);
+      } catch (error) {
+        console.warn('Job lease renewal failed:', error instanceof Error ? error.name : 'error');
+      } finally {
+        renewing = false;
+      }
+    }, 20000);
+    heartbeat.unref();
     let producedBlob: StorageRef | undefined;
     try {
       const p = j.payload as Record<string, unknown>;
@@ -80,7 +99,7 @@ const worker = new Worker(
       ) {
         if (!(await db.registration.count({ where: { id: j.resourceId } }))) {
           await db.job.updateMany({
-            where: { id: j.id, state: 'RUNNING' },
+            where: owned,
             data: { state: 'CANCELLED', payload: {}, result: { deleted: true } },
           });
           return;
@@ -102,8 +121,8 @@ const worker = new Worker(
             verification.expiresAt <= new Date() ||
             verification.email !== p.to
           ) {
-            await db.job.update({
-              where: { id: j.id },
+            await db.job.updateMany({
+              where: owned,
               data: { state: 'SUCCESS', result: { skipped: true, reason: '注册验证码已失效' } },
             });
             return;
@@ -128,8 +147,8 @@ const worker = new Worker(
             tokenUser.bannedAt ||
             tokenUser.email !== p.to)
         ) {
-          await db.job.update({
-            where: { id: j.id },
+          await db.job.updateMany({
+            where: owned,
             data: { state: 'SUCCESS', result: { skipped: true, reason: '验证码已失效' } },
           });
           return;
@@ -154,14 +173,27 @@ const worker = new Worker(
             : undefined,
         );
       } else if (j.kind === 'PDF_PREVIEW') {
-        result = await compile(j.id, String(p.source));
+        result = await compile(j.id, leaseToken, String(p.source));
+        producedBlob = result as StorageRef;
       } else if (j.kind === 'STORAGE_MIGRATION') {
         result = await migrateObjects(String(p.profileId), j.id);
       } else if (j.kind === 'SPOOL_DELETE') {
         if (!/^[a-f0-9-]{36}$/.test(String(p.jobId))) throw new Error('Invalid spool job');
-        await rm(path.join(config.spool, String(p.jobId)), { recursive: true, force: true });
+        for (const name of await readdir(config.spool))
+          if (name === p.jobId || name.startsWith(`${p.jobId}-`))
+            await rm(path.join(config.spool, name), { recursive: true, force: true });
       } else if (j.kind === 'OBJECT_DELETE') {
         await removeBlob(p.storageRef as StorageRef);
+        await db.attachment.updateMany({
+          where: {
+            id: j.resourceId,
+            deletedAt: { not: null },
+            storageKey: (p.storageRef as StorageRef).storageKey!,
+            storageBackend: (p.storageRef as StorageRef).storageBackend ?? 'LOCAL',
+            storageConfigId: (p.storageRef as StorageRef).storageConfigId ?? null,
+          },
+          data: { purgedAt: new Date() },
+        });
       } else if (j.kind === 'ADMISSION') {
         const document = await db.admissionDocument.findUniqueOrThrow({
           where: { id: String(p.documentId) },
@@ -185,10 +217,11 @@ const worker = new Worker(
           throw new Error('Document or template version has changed');
         const material = await admissionMaterial(r, document);
         const source = renderTemplate(template.source, material.context);
-        const storageRef = await compile(j.id, source, material.assets);
+        const storageRef = await compile(j.id, leaseToken, source, material.assets);
         producedBlob = storageRef;
         await db.$transaction(async (tx) => {
           await lock(tx, r.id);
+          if (!(await tx.job.count({ where: owned }))) throw new Error('执行租约已失效');
           const current = await tx.registration.findUniqueOrThrow({ where: { id: r.id } });
           if (
             !current.eligible ||
@@ -235,17 +268,19 @@ const worker = new Worker(
           !!hook.privateApprovedBy,
         );
       }
-      await db.job.updateMany({
-        where: { id: j.id, state: 'RUNNING' },
-        data: { state: 'SUCCESS', result: json(result) },
+      const completed = await db.job.updateMany({
+        where: owned,
+        data: { state: 'SUCCESS', result: json(result), leaseToken: null, leaseUntil: null },
       });
+      if (!completed.count) throw new Error('执行租约已失效');
+      producedBlob = undefined;
     } catch (error) {
       if (producedBlob) await removeBlob(producedBlob).catch(() => undefined);
-      if ((await db.job.findUnique({ where: { id: j.id } }))?.state === 'CANCELLED') return;
+      if (!(await db.job.count({ where: owned }))) return;
       const message = (error instanceof Error ? error.message : 'Task failed').slice(0, 1500);
       await db.job.updateMany({
-        where: { id: j.id, state: 'RUNNING' },
-        data: { state: 'FAILED', error: message },
+        where: owned,
+        data: { state: 'FAILED', error: message, leaseToken: null, leaseUntil: null },
       });
       if (j.kind === 'ADMISSION')
         await db.admissionDocument.updateMany({
@@ -276,6 +311,12 @@ const worker = new Worker(
           });
       }
       throw new Error(message);
+    } finally {
+      clearInterval(heartbeat);
+      await db.job.updateMany({
+        where: { id: j.id, leaseToken },
+        data: { leaseToken: null, leaseUntil: null },
+      });
     }
   },
   { connection, concurrency: 2 },
@@ -299,179 +340,215 @@ async function dispatch() {
           createdAt: { lt: new Date(Date.now() - 86400000) },
         },
       });
+    const unpurged = await db.attachment.findMany({
+      where: { deletedAt: { not: null }, purgedAt: null },
+      take: 100,
+      orderBy: { deletedAt: 'asc' },
+    });
+    for (const file of unpurged)
+      await db.$transaction((tx) =>
+        enqueue(
+          tx,
+          'OBJECT_DELETE',
+          file.id,
+          `purge-file:${file.id}:${sha(JSON.stringify([file.storageBackend, file.storageConfigId, file.storageKey]))}`,
+          { storageRef: file },
+        ),
+      );
     nextRetentionCleanup = Date.now() + 60000;
   }
   const events = await db.outboxEvent.findMany({
-    where: { deliveredAt: null },
+    where: {
+      deliveredAt: null,
+      OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }],
+    },
     orderBy: { createdAt: 'asc' },
     take: 50,
   });
   for (const e of events) {
-    await db.$transaction(async (tx) => {
-      await lock(tx, `outbox:${e.id}`);
-      const currentEvent = await tx.outboxEvent.findUnique({ where: { id: e.id } });
-      if (!currentEvent || currentEvent.deliveredAt) return;
-      const p = e.payload as Record<string, unknown>;
-      const registrationMail =
-        e.type === 'MAIL' &&
-        String(p.actionPath ?? '').startsWith('/registrations/') &&
-        p.finance !== true;
-      if (['NOTIFY', 'ELIGIBILITY'].includes(e.type) || registrationMail)
-        await lock(tx, e.resourceId);
-      if (registrationMail && !(await tx.registration.count({ where: { id: e.resourceId } }))) {
-        await tx.outboxEvent.deleteMany({ where: { id: e.id } });
-        return;
-      }
-      if (e.type === 'TASK')
-        await tx.job.updateMany({
-          where: { id: String(p.jobId), state: 'OUTBOX' },
-          data: { state: 'PENDING' },
-        });
-      else if (e.type === 'MAIL')
-        await tx.job.upsert({
-          where: { dedupeKey: `event:${e.id}` },
-          create: {
-            kind: 'MAIL',
-            resourceId: e.resourceId,
-            dedupeKey: `event:${e.id}`,
-            payload: json(p),
-          },
-          update: {},
-        });
-      else if (e.type === 'NOTIFY') {
-        const r = await tx.registration.findUnique({
-          where: { id: e.resourceId },
-          include: { coaches: true },
-        });
-        if (r) {
-          const people = await tx.registrationPerson.findMany({
-            where: { registrationId: r.id, active: true },
-            select: { userId: true },
+    try {
+      await db.$transaction(async (tx) => {
+        await lock(tx, `outbox:${e.id}`);
+        const currentEvent = await tx.outboxEvent.findUnique({ where: { id: e.id } });
+        if (!currentEvent || currentEvent.deliveredAt) return;
+        const p = e.payload as Record<string, unknown>;
+        const registrationMail =
+          e.type === 'MAIL' &&
+          String(p.actionPath ?? '').startsWith('/registrations/') &&
+          p.finance !== true;
+        if (['NOTIFY', 'ELIGIBILITY'].includes(e.type) || registrationMail)
+          await lock(tx, e.resourceId);
+        if (registrationMail && !(await tx.registration.count({ where: { id: e.resourceId } }))) {
+          await tx.outboxEvent.deleteMany({ where: { id: e.id } });
+          return;
+        }
+        if (e.type === 'TASK')
+          await tx.job.updateMany({
+            where: { id: String(p.jobId), state: 'OUTBOX' },
+            data: { state: 'PENDING' },
           });
-          const ids = [
-            r.ownerId,
-            ...r.coaches.map((c) => c.userId),
-            ...people.flatMap((x) => (x.userId ? [x.userId] : [])),
-          ];
-          const personIds = (
-            await tx.user.findMany({ where: { id: { in: ids } }, select: { personId: true } })
-          ).flatMap((x) => (x.personId ? [x.personId] : []));
-          const users = await tx.user.findMany({
-            where: {
-              OR: [{ id: { in: ids } }, { personId: { in: personIds } }],
-              verified: true,
-              deactivatedAt: null,
+        else if (e.type === 'SYNC_REQUEST') {
+          const registration = await tx.registration.findUnique({ where: { id: e.resourceId } });
+          const binding = await tx.platformBinding.findUnique({
+            where: { id: String(p.bindingId) },
+            include: { instance: true },
+          });
+          if (registration?.eligible && binding?.enabled && binding.instance.enabled)
+            await scheduleSync(tx, registration.id, binding.id);
+        } else if (e.type === 'MAIL')
+          await tx.job.upsert({
+            where: { dedupeKey: `event:${e.id}` },
+            create: {
+              kind: 'MAIL',
+              resourceId: e.resourceId,
+              dedupeKey: `event:${e.id}`,
+              payload: json(p),
             },
+            update: {},
           });
-          for (const u of users)
+        else if (e.type === 'NOTIFY') {
+          const r = await tx.registration.findUnique({
+            where: { id: e.resourceId },
+            include: { coaches: true },
+          });
+          if (r) {
+            const people = await tx.registrationPerson.findMany({
+              where: { registrationId: r.id, active: true },
+              select: { userId: true },
+            });
+            const ids = [
+              r.ownerId,
+              ...r.coaches.map((c) => c.userId),
+              ...people.flatMap((x) => (x.userId ? [x.userId] : [])),
+            ];
+            const personIds = (
+              await tx.user.findMany({ where: { id: { in: ids } }, select: { personId: true } })
+            ).flatMap((x) => (x.personId ? [x.personId] : []));
+            const users = await tx.user.findMany({
+              where: {
+                OR: [{ id: { in: ids } }, { personId: { in: personIds } }],
+                verified: true,
+                deactivatedAt: null,
+              },
+            });
+            for (const u of users)
+              await tx.job.upsert({
+                where: { dedupeKey: `mail:${e.id}:${u.id}` },
+                create: {
+                  kind: 'MAIL',
+                  resourceId: r.id,
+                  dedupeKey: `mail:${e.id}:${u.id}`,
+                  payload: json({
+                    to: u.email,
+                    subject:
+                      p.category === 'ADMISSION'
+                        ? '准考证已发放'
+                        : p.category === 'INVOICE'
+                          ? '开票处理结果'
+                          : '竞赛报名状态更新',
+                    name: u.name,
+                    status: typeof p.status === 'string' ? p.status : '',
+                    text: String(p.message),
+                    category: String(p.category ?? 'REGISTRATION'),
+                    actionPath: `/registrations/${r.id}`,
+                  }),
+                },
+                update: {},
+              });
+          }
+        } else if (e.type === 'REGISTRATION_REMOVED') {
+          const hooks = await tx.webhook.findMany({
+            where: { enabled: true, OR: [{ contestId: String(p.contestId) }, { contestId: null }] },
+          });
+          for (const hook of hooks)
             await tx.job.upsert({
-              where: { dedupeKey: `mail:${e.id}:${u.id}` },
+              where: { dedupeKey: `hook:${e.id}:${hook.id}` },
               create: {
-                kind: 'MAIL',
-                resourceId: r.id,
-                dedupeKey: `mail:${e.id}:${u.id}`,
+                kind: 'WEBHOOK',
+                resourceId: e.resourceId,
+                dedupeKey: `hook:${e.id}:${hook.id}`,
                 payload: json({
-                  to: u.email,
-                  subject:
-                    p.category === 'ADMISSION'
-                      ? '准考证已发放'
-                      : p.category === 'INVOICE'
-                        ? '开票处理结果'
-                        : '竞赛报名状态更新',
-                  name: u.name,
-                  status: typeof p.status === 'string' ? p.status : '',
-                  text: String(p.message),
-                  category: String(p.category ?? 'REGISTRATION'),
-                  actionPath: `/registrations/${r.id}`,
+                  webhookId: hook.id,
+                  body: {
+                    schemaVersion: 1,
+                    eventId: e.id,
+                    type: 'registration.eligibility',
+                    registrationId: e.resourceId,
+                    contestId: p.contestId,
+                    version: p.version,
+                    eligible: false,
+                    deleted: true,
+                  },
+                }),
+              },
+              update: {},
+            });
+        } else if (e.type === 'ELIGIBILITY') {
+          const r = await tx.registration.findUnique({ where: { id: e.resourceId } });
+          if (!r) {
+            await tx.outboxEvent.updateMany({
+              where: { id: e.id },
+              data: { deliveredAt: new Date() },
+            });
+            return;
+          }
+          if (r.eligible) {
+            const bindings = await tx.platformBinding.findMany({
+              where: {
+                contestId: r.contestId,
+                automatic: true,
+                enabled: true,
+                instance: { enabled: true },
+              },
+            });
+            for (const b of bindings) await scheduleSync(tx, r.id, b.id);
+          } else
+            await tx.accountMapping.updateMany({
+              where: { registrationId: r.id, state: 'VERIFIED' },
+              data: { state: 'REVOKED_LOCALLY' },
+            });
+          const hooks = await tx.webhook.findMany({
+            where: { enabled: true, OR: [{ contestId: r.contestId }, { contestId: null }] },
+          });
+          for (const hook of hooks)
+            await tx.job.upsert({
+              where: { dedupeKey: `hook:${e.id}:${hook.id}` },
+              create: {
+                kind: 'WEBHOOK',
+                resourceId: r.id,
+                dedupeKey: `hook:${e.id}:${hook.id}`,
+                payload: json({
+                  webhookId: hook.id,
+                  body: {
+                    schemaVersion: 1,
+                    eventId: e.id,
+                    type: 'registration.eligibility',
+                    registrationId: r.id,
+                    contestId: r.contestId,
+                    version: r.version,
+                    eligible: r.eligible,
+                  },
                 }),
               },
               update: {},
             });
         }
-      } else if (e.type === 'REGISTRATION_REMOVED') {
-        const hooks = await tx.webhook.findMany({
-          where: { enabled: true, OR: [{ contestId: String(p.contestId) }, { contestId: null }] },
-        });
-        for (const hook of hooks)
-          await tx.job.upsert({
-            where: { dedupeKey: `hook:${e.id}:${hook.id}` },
-            create: {
-              kind: 'WEBHOOK',
-              resourceId: e.resourceId,
-              dedupeKey: `hook:${e.id}:${hook.id}`,
-              payload: json({
-                webhookId: hook.id,
-                body: {
-                  schemaVersion: 1,
-                  eventId: e.id,
-                  type: 'registration.eligibility',
-                  registrationId: e.resourceId,
-                  contestId: p.contestId,
-                  version: p.version,
-                  eligible: false,
-                  deleted: true,
-                },
-              }),
-            },
-            update: {},
-          });
-      } else if (e.type === 'ELIGIBILITY') {
-        const r = await tx.registration.findUnique({ where: { id: e.resourceId } });
-        if (!r) {
-          await tx.outboxEvent.updateMany({
-            where: { id: e.id },
-            data: { deliveredAt: new Date() },
-          });
-          return;
-        }
-        if (r.eligible) {
-          const bindings = await tx.platformBinding.findMany({
-            where: {
-              contestId: r.contestId,
-              automatic: true,
-              enabled: true,
-              instance: { enabled: true },
-            },
-          });
-          for (const b of bindings) await scheduleSync(tx, r.id, b.id);
-        } else
-          await tx.accountMapping.updateMany({
-            where: { registrationId: r.id, state: 'VERIFIED' },
-            data: { state: 'REVOKED_LOCALLY' },
-          });
-        const hooks = await tx.webhook.findMany({
-          where: { enabled: true, OR: [{ contestId: r.contestId }, { contestId: null }] },
-        });
-        for (const hook of hooks)
-          await tx.job.upsert({
-            where: { dedupeKey: `hook:${e.id}:${hook.id}` },
-            create: {
-              kind: 'WEBHOOK',
-              resourceId: r.id,
-              dedupeKey: `hook:${e.id}:${hook.id}`,
-              payload: json({
-                webhookId: hook.id,
-                body: {
-                  schemaVersion: 1,
-                  eventId: e.id,
-                  type: 'registration.eligibility',
-                  registrationId: r.id,
-                  contestId: r.contestId,
-                  version: r.version,
-                  eligible: r.eligible,
-                },
-              }),
-            },
-            update: {},
-          });
-      }
-      await tx.outboxEvent.updateMany({ where: { id: e.id }, data: { deliveredAt: new Date() } });
-    });
+        await tx.outboxEvent.updateMany({ where: { id: e.id }, data: { deliveredAt: new Date() } });
+      });
+    } catch (error) {
+      await db.outboxEvent.updateMany({
+        where: { id: e.id, deliveredAt: null },
+        data: {
+          attempts: { increment: 1 },
+          nextAttemptAt: new Date(
+            Date.now() + Math.min(300000, 30000 * 2 ** Math.min(e.attempts, 4)),
+          ),
+        },
+      });
+      console.warn(`Outbox event ${e.id} deferred:`, error instanceof Error ? error.name : 'error');
+    }
   }
-  await db.job.updateMany({
-    where: { state: 'RUNNING', updatedAt: { lt: new Date(Date.now() - 5 * 60000) } },
-    data: { state: 'PENDING' },
-  });
+  await recoverExpiredJobs();
   const pending = await db.job.findMany({
     where: {
       OR: [
@@ -482,7 +559,7 @@ async function dispatch() {
     take: 50,
   });
   for (const j of pending) {
-    const queueId = `${j.id}-${j.attempts}`;
+    const queueId = j.id;
     const previous = await queue.getJob(queueId);
     if (previous) {
       const state = await previous.getState();

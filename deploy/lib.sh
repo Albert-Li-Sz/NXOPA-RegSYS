@@ -39,7 +39,8 @@ env_value() {
 set_env_value() {
   local key="$1" value="$2" staged
   staged="$(mktemp "$install_env.tmp.XXXXXX")"
-  if ! awk -v key="$key" -v value="$value" '
+  if ! printf '%s\n' "$value" | awk -v key="$key" '
+    BEGIN { getline value < "/dev/stdin" }
     $0 ~ "^[[:space:]]*(export[[:space:]]+)?" key "[[:space:]]*=" {
       if (!found) print key "=" value
       found=1; next
@@ -110,6 +111,7 @@ ask_tag() {
 init_env() {
   if [[ -f "$install_env" ]]; then
     chmod 600 "$install_env"
+    validate_secrets
     printf '保留已有配置：%s\n' "$install_env"
     return
   fi
@@ -121,14 +123,26 @@ init_env() {
   minio_password="$(openssl rand -hex 32)"
   (
     set -o noclobber
-    sed -e "s/^POSTGRES_PASSWORD=GENERATE_ON_INSTALL$/POSTGRES_PASSWORD=$database_password/" \
-      -e "s/^ENCRYPTION_KEY=GENERATE_ON_INSTALL$/ENCRYPTION_KEY=$encryption_key/" \
-      -e "s/^MINIO_ROOT_USER=GENERATE_ON_INSTALL$/MINIO_ROOT_USER=$minio_user/" \
-      -e "s/^MINIO_ROOT_PASSWORD=GENERATE_ON_INSTALL$/MINIO_ROOT_PASSWORD=$minio_password/" \
-      "$install_dir/.env.example" > "$install_env"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      case "$line" in
+        POSTGRES_PASSWORD=GENERATE_ON_INSTALL) printf 'POSTGRES_PASSWORD=%s\n' "$database_password" ;;
+        ENCRYPTION_KEY=GENERATE_ON_INSTALL) printf 'ENCRYPTION_KEY=%s\n' "$encryption_key" ;;
+        MINIO_ROOT_USER=GENERATE_ON_INSTALL) printf 'MINIO_ROOT_USER=%s\n' "$minio_user" ;;
+        MINIO_ROOT_PASSWORD=GENERATE_ON_INSTALL) printf 'MINIO_ROOT_PASSWORD=%s\n' "$minio_password" ;;
+        *) printf '%s\n' "$line" ;;
+      esac
+    done < "$install_dir/.env.example" > "$install_env"
   )
   chmod 600 "$install_env"
+  validate_secrets
   printf '已生成配置：%s（权限 600，密钥不在终端显示）\n' "$install_env"
+}
+validate_secrets() {
+  local encryption_value database_value
+  encryption_value="$(env_value ENCRYPTION_KEY)"
+  database_value="$(env_value POSTGRES_PASSWORD)"
+  [[ "$encryption_value" =~ ^[a-fA-F0-9]{64}$ ]] || fail 'ENCRYPTION_KEY 缺失或无效；请恢复原有的 64 位十六进制密钥，不要为已有数据重置密钥。'
+  [[ -n "$database_value" && "$database_value" != GENERATE_ON_INSTALL ]] || fail 'POSTGRES_PASSWORD 缺失或未生成，请修复已有配置。'
 }
 
 compose() {
@@ -184,6 +198,7 @@ normalize_private_ports() {
 }
 require_config() {
   [[ -f "$install_env" ]] || fail '尚未生成配置，请先运行 bash ../install.sh 或 bash ../install.sh init。'
+  validate_secrets
   if [[ "$(env_value STORAGE_MODE)" == MINIO ]]; then
     [[ -n "$(env_value MINIO_ROOT_USER)" && -n "$(env_value MINIO_ROOT_PASSWORD)" ]] || fail '内置 MinIO 需要设置私有凭据。'
     [[ "$(env_value MINIO_ROOT_USER)" != GENERATE_ON_INSTALL && "$(env_value MINIO_ROOT_PASSWORD)" != GENERATE_ON_INSTALL ]] || fail '请先运行 init 生成 MinIO 凭据。'
@@ -199,7 +214,7 @@ require_config() {
   esac
   if [[ "$install_mode" == images ]]; then
     local image_tag="${IMAGE_TAG:-$(env_value IMAGE_TAG)}"
-    [[ "$image_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9][A-Za-z0-9.-]*)?$ ]] || fail 'IMAGE_TAG 必须为固定版本标签，例如 v0.6.2，不能使用 latest 或镜像摘要。'
+    [[ "$image_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9][A-Za-z0-9.-]*)?$ ]] || fail 'IMAGE_TAG 必须为固定版本标签，例如 v0.6.3，不能使用 latest 或镜像摘要。'
   fi
   if [[ "$install_mode" == source && ! -f "$repo_root/infra/Dockerfile" ]]; then
     fail '源码模式需要完整仓库。Release 安装包请使用 INSTALL_MODE=images。'

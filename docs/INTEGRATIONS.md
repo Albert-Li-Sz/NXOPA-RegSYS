@@ -16,13 +16,13 @@
 
 ## Hydro 5.0.7：下载与安装
 
-插件 **0.2.0** 在[Pages 下载区](https://albert-li-sz.github.io/NXOPA-RegSYS/#hydro-plugin)提供版本化包、稳定入口和 SHA-256。正式包白名单为 `index.ts`、`package.json`、`README.md`、`LICENSE`，不包含验收辅助插件、密钥或运行数据。
+插件 **0.2.1** 在[Pages 下载区](https://albert-li-sz.github.io/NXOPA-RegSYS/#hydro-plugin)提供版本化包、稳定入口和 SHA-256。正式包白名单为 `index.ts`、`package.json`、`README.md`、`LICENSE`，不包含验收辅助插件、密钥或运行数据。
 
 ```bash
-curl -fLO https://albert-li-sz.github.io/NXOPA-RegSYS/downloads/hydro-contest-center-0.2.0.tgz
-curl -fLO https://albert-li-sz.github.io/NXOPA-RegSYS/downloads/hydro-contest-center-0.2.0.tgz.sha256
-sha256sum -c hydro-contest-center-0.2.0.tgz.sha256
-npm install --prefix /opt/hydro hydro-contest-center-0.2.0.tgz
+curl -fLO https://albert-li-sz.github.io/NXOPA-RegSYS/downloads/hydro-contest-center-0.2.1.tgz
+curl -fLO https://albert-li-sz.github.io/NXOPA-RegSYS/downloads/hydro-contest-center-0.2.1.tgz.sha256
+sha256sum -c hydro-contest-center-0.2.1.tgz.sha256
+npm install --prefix /opt/hydro hydro-contest-center-0.2.1.tgz
 ```
 
 原生部署以 Hydro 实际运行用户安装，向该用户的 `~/.hydro/addon.json` 添加安装后的完整插件路径，保留其他插件，例如：
@@ -48,13 +48,13 @@ pm2 restart hydro --update-env
 Docker 部署在自己的 Hydro 镜像内安装 tgz，或只读挂载插件目录；修改容器中运行用户的 addon.json，在 Compose 的 environment／受保护环境文件配置变量，再重建或重启对应服务。不要仅修改宿主机 addon.json。
 
 ```dockerfile
-COPY hydro-contest-center-0.2.0.tgz /tmp/bridge.tgz
+COPY hydro-contest-center-0.2.1.tgz /tmp/bridge.tgz
 RUN npm install --prefix /opt/hydro /tmp/bridge.tgz && rm /tmp/bridge.tgz
 ```
 
 本站完整示例：实例“社团 Hydro 评测平台”，基址 `https://hydro.example.org`，允许使用指定本站竞赛；绑定域 `training`，比赛 `0123456789abcdef01234567`，跟随报名性质、启用昵称、导入非正式报名。从目标比赛 URL `/d/training/contest/0123456789abcdef01234567` 读取域与 ObjectId，省略默认域时填写 `system`。
 
-探测 `/contest-center/v1/probe` 应返回 Hydro 5.0.7、插件 0.2.0，以及 `nickname`、`unofficial`、`contest_linkage` 能力。旧插件缺失能力会明确提示升级。插件的完整路径为 `/contest-center/v1/provision`、`/contest-center/v1/result`，使用 Bearer Token 与域白名单。
+探测 `/contest-center/v1/probe` 应返回 Hydro 5.0.7、插件 0.2.1，以及 `nickname`、`unofficial`、`contest_linkage` 能力。旧插件缺失能力会明确提示升级。插件的完整路径为 `/contest-center/v1/provision`、`/contest-center/v1/result`，使用 Bearer Token 与域白名单。
 
 团队队名／个人姓名写入目标域昵称；账号加入域与目标比赛，比赛内设置 `unrank`。重复导入复用用户名和参赛关联，更新昵称与性质并读回核验。Hydro 5.0.7 公开比赛详情的 `tsdoc` 会省略 `unrank`，不能据此判断丢失标记；插件读取实际比赛状态记录，管理员也可在参赛用户管理核对。域昵称显示遵循 Hydro 原有隐私权限。
 

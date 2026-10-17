@@ -18,5 +18,13 @@ export const config = {
   allowPrivate: (process.env.ALLOW_PRIVATE_INTEGRATIONS ?? 'true') === 'true',
 };
 if (!config.databaseUrl) throw new Error('DATABASE_URL is required');
+if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535)
+  throw new Error('PORT must be an integer between 1 and 65535');
+if (
+  process.env.UPLOAD_QUOTA_MB !== undefined &&
+  (!Number.isFinite(Number(process.env.UPLOAD_QUOTA_MB)) ||
+    Number(process.env.UPLOAD_QUOTA_MB) <= 0)
+)
+  throw new Error('UPLOAD_QUOTA_MB must be a positive number');
 if (!/^[a-f0-9]{64}$/i.test(config.encryptionKey))
   throw new Error('ENCRYPTION_KEY must be 32 random bytes in hexadecimal; run pnpm setup');

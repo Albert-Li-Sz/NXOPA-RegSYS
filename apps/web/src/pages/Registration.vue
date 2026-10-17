@@ -106,7 +106,7 @@ const platformProfiles = computed(() =>
 const invoicePolicy = computed(() =>
   r.value ? policySchema.parse(r.value.contest.policy) : undefined,
 );
-const canSave = computed(() => edit.editing.value && !!r.value?.actions.edit);
+const canSave = computed(() => !busy.value && edit.editing.value && !!r.value?.actions.edit);
 const savingDraft = computed(() => r.value?.status === 'DRAFT' && r.value.actions.requestFinance);
 const canUploadVoucher = computed(
   () =>
@@ -140,10 +140,14 @@ async function openReview() {
   await refresh();
   reviewOpen.value = true;
 }
+let refreshSequence = 0;
 async function refresh() {
+  const sequence = ++refreshSequence;
   try {
     loadError.value = '';
-    r.value = await api(`/registrations/${route.params.id}?history=false`);
+    const next = await api(`/registrations/${route.params.id}?history=false`);
+    if (sequence !== refreshSequence) return;
+    r.value = next;
     const x = r.value!;
     if (!rankEdit.editing.value) rank.value = { rank: x.publicRank };
     form.value = JSON.parse(
@@ -161,6 +165,7 @@ async function refresh() {
       bindings.value = await api(`/integrations/bindings?contestId=${x.contestId}`);
     if (tab.value === 'finance') await loadFinance();
   } catch (e) {
+    if (sequence !== refreshSequence) return;
     if (route.query.tab === 'finance') {
       try {
         await api(`/finance/accounts/${route.params.id}`);
@@ -470,7 +475,7 @@ async function memberSave(id: string, index: number) {
         :closable="false"
       />
       <RegistrationReadout v-if="!edit.editing.value" :registration="r" />
-      <el-form v-else label-position="top"
+      <el-form v-else label-position="top" :disabled="busy"
         ><el-alert
           v-if="platformProfiles.length && !r.organization"
           title="评测平台基础信息待补充"

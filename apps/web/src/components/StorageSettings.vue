@@ -11,6 +11,7 @@ const form = ref<Data>({ mode: 'LOCAL', version: 0 }),
   error = ref('');
 const edit = useEditSession(form);
 let timer: ReturnType<typeof setTimeout> | undefined;
+let alive = true;
 async function load() {
   try {
     form.value = {
@@ -51,11 +52,16 @@ async function probe() {
   }
 }
 async function poll() {
-  if (!job.value) return;
-  const next = await api<Data>(`/jobs/${job.value.id}`);
-  job.value = next;
-  if (['OUTBOX', 'PENDING', 'RUNNING'].includes(next.state))
-    timer = setTimeout(() => void poll(), 3000);
+  if (!alive || !job.value) return;
+  try {
+    const next = await api<Data>(`/jobs/${job.value.id}`);
+    if (!alive) return;
+    job.value = next;
+    if (['OUTBOX', 'PENDING', 'RUNNING'].includes(next.state))
+      timer = setTimeout(() => void poll(), 3000);
+  } catch (e) {
+    if (alive) error.value = e instanceof Error ? e.message : '迁移状态加载失败';
+  }
 }
 async function migrate() {
   await ElMessageBox.confirm(
@@ -67,7 +73,10 @@ async function migrate() {
   await poll();
 }
 onMounted(load);
-onScopeDispose(() => clearTimeout(timer));
+onScopeDispose(() => {
+  alive = false;
+  clearTimeout(timer);
+});
 </script>
 <template>
   <div class="card">

@@ -169,7 +169,7 @@ try {
     );
     assert.deepEqual(JSON.parse(after), JSON.parse(before));
     assert.ok(await db.attachment.findUnique({ where: { id: receipt } }));
-    assert.equal(await db.attachment.count({ where: { id: privateFile } }), 0);
+    assert.equal(await db.attachment.count({ where: { id: privateFile, deletedAt: null } }), 0);
     assert.equal(await db.registrationRevision.count(), 0);
     assert.equal(await db.registrationPerson.count(), 0);
     assert.equal(await db.admissionDocument.count(), 0);

@@ -2813,8 +2813,11 @@ export interface components {
             message: string;
             statusCode?: number;
         };
-        Value77___schema0: string | number | boolean | (null) | components["schemas"]["Value77___schema0"][] | {
-            [key: string]: components["schemas"]["Value77___schema0"];
+        Value23___schema0: string | number | boolean | (null) | components["schemas"]["Value23___schema0"][] | {
+            [key: string]: components["schemas"]["Value23___schema0"];
+        };
+        Value89___schema0: string | number | boolean | (null) | components["schemas"]["Value89___schema0"][] | {
+            [key: string]: components["schemas"]["Value89___schema0"];
         };
     };
     responses: never;
@@ -2907,7 +2910,24 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    version: number;
+                    /** @enum {string} */
+                    mode: "LOCAL" | "S3";
+                    name?: string;
+                    endpoint?: string;
+                    region?: string;
+                    bucket?: string;
+                    prefix?: string;
+                    accessKey?: string;
+                    secretKey?: string;
+                    forcePathStyle?: boolean;
+                    createBucket?: boolean;
+                };
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -3057,7 +3077,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3356,7 +3378,21 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    userId: string;
+                    /** @enum {string} */
+                    level: "SYSTEM" | "SENIOR" | "CONTEST";
+                    /** Format: uuid */
+                    contestId?: string | null;
+                    permissions?: ("VIEW" | "CONTEST" | "REGISTRATIONS" | "FINANCE" | "ADMISSIONS" | "FILES" | "SUPPORT" | "STUDENTS" | "INTEGRATIONS")[];
+                    /** Format: date-time */
+                    expiresAt?: string | null;
+                };
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -3428,7 +3464,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3582,7 +3620,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3736,7 +3776,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3807,7 +3849,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3882,7 +3926,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -3971,7 +4017,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -4054,7 +4102,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -4208,10 +4258,20 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    decision: "APPROVED" | "REJECTED";
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -4357,7 +4417,19 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    kind: "STUDENT" | "TEACHER";
+                    name: string;
+                    profile: {
+                        [key: string]: components["schemas"]["Value23___schema0"];
+                    };
+                    version: number;
+                };
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -4429,7 +4501,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4570,11 +4644,21 @@ export interface operations {
     ApiController_verifyCode: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -4645,7 +4729,16 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                    /** Format: email */
+                    email: string;
+                    password: string;
+                };
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -4795,7 +4888,16 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    confirmation: "注销账号";
+                    password?: string;
+                    code?: string;
+                };
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -4938,7 +5040,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                key: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -5015,7 +5119,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5090,10 +5196,22 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                key: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    version: number;
+                    enabled: boolean;
+                    subject: string;
+                    text: string;
+                    html: string;
+                };
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -5161,7 +5279,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5232,7 +5352,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5307,10 +5429,19 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    rank: number | null;
+                    expectedRank?: number | null;
+                };
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -5540,7 +5671,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5615,7 +5748,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5690,10 +5825,20 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attachmentId: string;
+                    registrationIds: string[];
+                };
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -5761,7 +5906,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -6713,7 +6860,17 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    version: number;
+                    enabled: boolean;
+                    clientId: string;
+                    clientSecret?: string;
+                    callbackUrl?: string;
+                };
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -6856,10 +7013,19 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    version: number;
+                    tags: unknown;
+                };
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -6927,7 +7093,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -7619,7 +7787,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -8252,7 +8422,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -8327,7 +8499,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -8406,7 +8580,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -8491,7 +8667,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -8566,7 +8744,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -8655,7 +8835,10 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+                roomId: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -8744,7 +8927,10 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+                roomId: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -8825,7 +9011,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -8924,7 +9112,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -9023,7 +9213,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -9179,7 +9371,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -9321,7 +9515,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -9392,7 +9588,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -9467,7 +9665,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -9546,7 +9746,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -10019,7 +10221,10 @@ export interface operations {
                 to?: string;
             };
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+                collection: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -10097,7 +10302,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -10178,7 +10385,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -10264,7 +10473,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -10350,7 +10561,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -10431,7 +10644,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -10593,7 +10808,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                token: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -10668,7 +10885,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                token: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -10750,7 +10969,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -10825,7 +11046,10 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+                coachId: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -10909,7 +11133,10 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+                coachId: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -10990,7 +11217,10 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+                personId: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -11075,7 +11305,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -11163,7 +11395,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -11248,7 +11482,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -11329,7 +11565,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -11411,7 +11649,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -11496,7 +11736,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -11604,7 +11846,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -11856,7 +12100,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -11931,7 +12177,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -12351,7 +12599,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -12575,7 +12825,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -12646,7 +12898,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -12720,7 +12974,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -12959,7 +13215,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -13219,7 +13477,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -13294,7 +13554,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -13372,7 +13634,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -13530,7 +13794,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -13762,7 +14028,9 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -14667,7 +14935,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -15113,7 +15383,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -15193,7 +15465,9 @@ export interface operations {
                 to?: string;
             };
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -15271,7 +15545,10 @@ export interface operations {
                 /** @description Same actor, method, URL and body replay the encrypted saved result. */
                 "Idempotency-Key"?: string;
             };
-            path?: never;
+            path: {
+                id: string;
+                schoolId: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -15497,7 +15774,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -15639,7 +15918,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -15855,7 +16136,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -15933,7 +16216,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -15954,7 +16239,7 @@ export interface operations {
                         username?: string;
                         error?: string;
                         verification?: {
-                            [key: string]: components["schemas"]["Value77___schema0"];
+                            [key: string]: components["schemas"]["Value89___schema0"];
                         };
                     };
                 };
@@ -16027,7 +16312,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;

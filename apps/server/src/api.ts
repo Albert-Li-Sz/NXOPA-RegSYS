@@ -13,6 +13,7 @@ import {
   UseInterceptors,
   Inject,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { BoundedUpload } from './upload-interceptor.js';
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
@@ -751,8 +752,14 @@ export class ApiController {
   }
   private async sendBatch(r: AuthRequest, ids: string[], res: Response) {
     const documents = [];
-    for (const id of new Set(ids))
-      documents.push(await this.admissions.downloadLocation(user(r), id));
+    let bytes = 0;
+    for (const id of new Set(ids)) {
+      const document = await this.admissions.downloadLocation(user(r), id);
+      bytes += document.buffer.length;
+      if (bytes > 100 * 1024 * 1024)
+        throw new BadRequestException('准考证文件总量超过 100 MB，请分批下载');
+      documents.push(document);
+    }
     res
       .status(200)
       .type('application/zip')

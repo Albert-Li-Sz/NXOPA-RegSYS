@@ -74,9 +74,7 @@ export function centerTabs(key: string, user: Principal | null) {
     if (['students', 'teachers'].includes(tab.name))
       return (
         user.isAdmin ||
-        user.contestIds.some(
-          (id) => user.permissions?.[id]?.includes('STUDENTS') ?? !user.permissions,
-        )
+        user.contestIds.some((id) => user.permissions?.[id]?.includes('STUDENTS') ?? true)
       );
     return true;
   });

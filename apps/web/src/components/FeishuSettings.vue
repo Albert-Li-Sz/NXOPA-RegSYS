@@ -8,9 +8,16 @@ import type { Data } from '../types';
 const settings = ref<Data>(),
   busy = ref(false);
 const edit = useEditSession(settings);
-onMounted(async () => {
-  settings.value = await api('/admin/feishu');
-});
+const error = ref('');
+async function load() {
+  error.value = '';
+  try {
+    settings.value = await api('/admin/feishu');
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '飞书配置加载失败';
+  }
+}
+onMounted(load);
 async function save() {
   busy.value = true;
   try {
@@ -23,6 +30,9 @@ async function save() {
 }
 </script>
 <template>
+  <el-alert v-if="error" :title="error" type="error" :closable="false"
+    ><el-button @click="load">重试</el-button></el-alert
+  >
   <div v-if="settings" class="card" style="max-width: 860px">
     <h3>飞书登录</h3>
     <p class="form-help">

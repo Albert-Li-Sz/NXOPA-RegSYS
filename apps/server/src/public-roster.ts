@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
 import type { Principal } from '@contest-center/contracts';
 import { db, audit } from './db.js';
@@ -77,9 +77,14 @@ export class PublicRosterService {
   }
   async csv(id: string) {
     const data = await this.list(id, { page: '1', pageSize: '100' });
+    if (data.total > 10000) throw new BadRequestException('公示名单超过单次导出上限（10000 条）');
+    let bytes = Buffer.byteLength(JSON.stringify(data.items));
     for (let page = 2; data.items.length < data.total; page++) {
       const next = await this.list(id, { page: String(page), pageSize: '100' });
       if (!next.items.length) break;
+      bytes += Buffer.byteLength(JSON.stringify(next.items));
+      if (bytes > 10 * 1024 * 1024 || data.items.length + next.items.length > 10000)
+        throw new BadRequestException('公示名单超过单次导出大小限制（10 MB）');
       data.items.push(...next.items);
     }
     const cell = (value: unknown) => {

@@ -296,6 +296,7 @@ model Attachment {
   purpose String @default("PRIVATE")
   public Boolean @default(false)
   deletedAt DateTime?
+  purgedAt DateTime?
   name String
   mime String
   size Int
@@ -306,6 +307,7 @@ model Attachment {
   teamFiles TeamFile[]
   createdAt DateTime @default(now())
   @@index([ownerId,deletedAt])
+  @@index([ownerId,purgedAt])
   @@index([contestId,purpose])
 }
 model TeamFile {
@@ -543,11 +545,14 @@ model Job {
   payload Json
   state String @default("PENDING")
   attempts Int @default(0)
+  leaseToken String? @db.Uuid
+  leaseUntil DateTime?
   error String?
   result Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([state,updatedAt])
+  @@index([state,leaseUntil])
   @@index([createdAt,id])
 }
 model OutboxEvent {
@@ -556,8 +561,11 @@ model OutboxEvent {
   resourceId String
   payload Json
   deliveredAt DateTime?
+  attempts Int @default(0)
+  nextAttemptAt DateTime?
   createdAt DateTime @default(now())
   @@index([deliveredAt,createdAt])
+  @@index([deliveredAt,nextAttemptAt,createdAt])
 }
 model ApiToken {
   id String @id @default(uuid()) @db.Uuid
@@ -597,6 +605,7 @@ model IdempotencyRecord {
   requestHash String
   result Json
   createdAt DateTime @default(now())
+  @@index([createdAt])
 }
 
 /// The id stays equal to the source registration id so existing finance links remain valid.

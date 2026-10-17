@@ -12,7 +12,7 @@ try {
     await rm(directory, { recursive: true, force: true });
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const files = await db.attachment.findMany({
-        where: { storageBackend: 'S3', deletedAt: null },
+        where: { storageBackend: 'S3', purgedAt: null },
       }),
       documents = await db.admissionDocument.findMany({
         where: { storageBackend: 'S3', storageKey: { not: null } },
@@ -41,11 +41,42 @@ try {
     console.log(`Exported ${records.length} S3 objects for the encrypted backup.`);
   } else if (operation === 'restore') {
     const manifest = path.join(directory, 'manifest.json');
+    const [attachments, admissions, previews] = await Promise.all([
+      db.attachment.findMany({ where: { storageBackend: 'S3', purgedAt: null } }),
+      db.admissionDocument.findMany({ where: { storageBackend: 'S3', storageKey: { not: null } } }),
+      db.job.findMany({ where: { kind: 'PDF_PREVIEW', state: 'SUCCESS' } }),
+    ]);
+    const expected = [
+      ...attachments.map((r) => `attachment-${r.id}`),
+      ...admissions.map((r) => `admission-${r.id}`),
+      ...previews
+        .filter((r) => (r.result as any)?.storageBackend === 'S3')
+        .map((r) => `preview-${r.id}`),
+    ];
     let rows: any[] = [];
     try {
       rows = JSON.parse(await readFile(manifest, 'utf8'));
     } catch (error) {
-      if ((error as any).code !== 'ENOENT') throw error;
+      if ((error as any).code !== 'ENOENT' || expected.length) throw error;
+    }
+    if (
+      !Array.isArray(rows) ||
+      new Set(rows.map((r) => r.name)).size !== rows.length ||
+      expected.some((name) => !rows.some((r) => r.name === name))
+    )
+      throw new Error('Storage backup manifest is incomplete or invalid');
+    // Validate the complete manifest and every object before mutating restored references.
+    for (const row of rows) {
+      if (
+        !['attachment', 'admission', 'preview'].includes(row.kind) ||
+        !/^[a-f0-9-]{36}$/.test(row.id) ||
+        row.name !== `${row.kind}-${row.id}` ||
+        !expected.includes(row.name)
+      )
+        throw new Error('Invalid backup object path');
+      const bytes = await readFile(path.join(directory, row.name));
+      if (row.sha256 && createHash('sha256').update(bytes).digest('hex') !== row.sha256)
+        throw new Error('Backup object checksum mismatch');
     }
     for (const row of rows) {
       if (!/^(attachment|admission|preview)-[a-f0-9-]{36}$/.test(row.name))
@@ -59,7 +90,7 @@ try {
         storageKey: key,
         storageBackend: 'LOCAL',
         storageConfigId: null,
-        sha256: row.sha256 ?? '',
+        sha256: createHash('sha256').update(bytes).digest('hex'),
       };
       if (row.kind === 'attachment')
         await db.attachment.update({ where: { id: row.id }, data: ref });

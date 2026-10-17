@@ -1,7 +1,6 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
 import type { Principal } from '@contest-center/contracts';
-import { db, enqueue, audit } from './db.js';
+import { db, lock, audit } from './db.js';
 import { getRegistration, getSupportTicket, manages, owns } from './security.js';
 import { getFinance } from './finance-accounts.js';
 import { rateLimit } from './auth.js';
@@ -79,9 +78,14 @@ export class MailDeliveryService {
       throw new ForbiddenException('仅可重发发送给本人的邮件');
     await rateLimit(`mail-retry:${u.id}`, 3);
     return db.$transaction(async (tx) => {
-      const next = await enqueue(tx, 'MAIL', job.resourceId, `mail-retry:${randomUUID()}`, payload);
-      await audit(tx, u.id, 'MAIL_RETRY', job.id, { nextJobId: next.id });
-      return { jobId: next.id };
+      await lock(tx, `mail-retry:${id}`);
+      const reset = await tx.job.updateMany({
+        where: { id, kind: 'MAIL', state: 'FAILED' },
+        data: { state: 'PENDING', attempts: 0, error: null, leaseToken: null, leaseUntil: null },
+      });
+      if (!reset.count) throw new BadRequestException('邮件已开始重试，请刷新投递状态');
+      await audit(tx, u.id, 'MAIL_RETRY', job.id);
+      return { jobId: job.id };
     });
   }
 }

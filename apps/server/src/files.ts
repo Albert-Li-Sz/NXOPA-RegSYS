@@ -19,7 +19,7 @@ import {
   manages,
   requireManager,
 } from './security.js';
-import { putBlob, readBlob, type StorageRef } from './storage.js';
+import { putBlob, readBlob, removeBlob, type StorageRef } from './storage.js';
 import { getFinance } from './finance-accounts.js';
 import { publicLink } from './site-settings.js';
 import { paginated, pageOptions, type ListQuery } from './pagination.js';
@@ -64,119 +64,140 @@ export class FileService {
     const limit = purpose === 'AVATAR' ? 5 : purpose === 'PRIVATE' ? 10 : 50;
     if (!file?.buffer?.length || file.size > limit * 1024 * 1024)
       throw new BadRequestException(`文件需小于 ${limit} MB`);
-    return db.$transaction(async (tx) => {
-      // Serialize with removal before checking ownership or writing the object.
-      if (registrationId) await lock(tx, registrationId);
-      if (ticketId) await lock(tx, ticketId);
-      let contestId = options.contestId;
-      if (registrationId) {
-        const registration = await getRegistration(u, registrationId);
-        if (contestId && contestId !== registration.contestId)
-          throw new BadRequestException('文件的竞赛与队伍不一致');
-        contestId = registration.contestId;
-        if (
-          !owns(u, registration.ownerId) &&
-          !registration.people.some((p) => p.active && p.userId && owns(u, p.userId)) &&
-          !registration.coaches.some((c) => owns(u, c.userId))
-        )
+    let stored: StorageRef | undefined;
+    try {
+      return await db.$transaction(async (tx) => {
+        // Serialize with removal before checking ownership or writing the object.
+        if (registrationId) await lock(tx, registrationId);
+        if (ticketId) await lock(tx, ticketId);
+        let contestId = options.contestId;
+        if (registrationId) {
+          const registration = await getRegistration(u, registrationId);
+          if (contestId && contestId !== registration.contestId)
+            throw new BadRequestException('文件的竞赛与队伍不一致');
+          contestId = registration.contestId;
+          if (
+            !owns(u, registration.ownerId) &&
+            !registration.people.some((p) => p.active && p.userId && owns(u, p.userId)) &&
+            !registration.coaches.some((c) => owns(u, c.userId))
+          )
+            requireManager(u, contestId, 'FILES');
+        }
+        if (purpose.startsWith('CONTEST_')) {
+          if (!contestId || registrationId || ticketId)
+            throw new BadRequestException('竞赛材料需指定竞赛');
           requireManager(u, contestId, 'FILES');
-      }
-      if (purpose.startsWith('CONTEST_')) {
-        if (!contestId || registrationId || ticketId)
-          throw new BadRequestException('竞赛材料需指定竞赛');
-        requireManager(u, contestId, 'FILES');
-      } else if (purpose === 'TEAM' && !registrationId)
-        throw new BadRequestException('队伍附件需指定报名');
-      else if (
-        ['PERSONAL', 'AVATAR'].includes(purpose) &&
-        (registrationId || ticketId || contestId)
-      )
-        throw new BadRequestException('个人文件不能绑定其他对象');
-      if (purpose === 'PRIVATE' && contestId && !registrationId && !ticketId)
-        requireManager(u, contestId, 'FILES');
-      if (ticketId) {
-        const ticket = await getSupportTicket(u, ticketId);
-        if (
-          (contestId && contestId !== ticket.contestId) ||
-          (registrationId && registrationId !== ticket.registrationId)
+        } else if (purpose === 'TEAM' && !registrationId)
+          throw new BadRequestException('队伍附件需指定报名');
+        else if (
+          ['PERSONAL', 'AVATAR'].includes(purpose) &&
+          (registrationId || ticketId || contestId)
         )
-          throw new BadRequestException('工单与文件的竞赛或报名不一致');
-        contestId = ticket.contestId ?? undefined;
-      }
-      let mime = '';
-      const bytes = file.buffer;
-      if (bytes.subarray(0, 5).toString() === '%PDF-') mime = 'application/pdf';
-      else if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
-        mime = 'image/png';
-      else if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) mime = 'image/jpeg';
-      else if (file.mimetype === 'text/plain' && !bytes.includes(0)) mime = 'text/plain';
-      else if (
-        purpose !== 'PRIVATE' &&
-        bytes[0] === 80 &&
-        bytes[1] === 75 &&
-        [3, 5, 7].includes(bytes[2]!)
-      )
-        mime = 'application/zip';
-      if (!mime || (purpose === 'AVATAR' && !mime.startsWith('image/')))
-        throw new BadRequestException(
-          purpose === 'AVATAR'
-            ? '头像支持 PNG、JPEG 图片'
-            : '支持 PDF、PNG、JPEG、文本及附件 ZIP 文件',
-        );
-      if (contestId) {
-        await lock(tx, contestId);
-        await tx.contest.findUniqueOrThrow({ where: { id: contestId } });
-      }
-      await lock(tx, `upload-owner:${u.id}`);
-      const used = await tx.attachment.aggregate({
-        where: { ownerId: u.id, deletedAt: null },
-        _sum: { size: true },
-      });
-      const quota = Number(process.env.UPLOAD_QUOTA_MB ?? (u.isAdmin ? 10240 : 1024));
-      if (
-        !Number.isFinite(quota) ||
-        quota <= 0 ||
-        (used._sum.size ?? 0) + file.size > quota * 1024 * 1024
-      )
-        throw new PayloadTooLargeException(
-          '附件总量已达到账号配额，请清理不再使用的文件或联系管理员',
-        );
-      const id = randomUUID(),
-        ref = await putBlob(id, bytes, mime);
-      const result = await tx.attachment.create({
-        data: {
-          id,
-          ...ref,
-          ownerId: u.id,
-          registrationId,
-          ticketId,
-          contestId,
+          throw new BadRequestException('个人文件不能绑定其他对象');
+        if (purpose === 'PRIVATE' && contestId && !registrationId && !ticketId)
+          requireManager(u, contestId, 'FILES');
+        if (ticketId) {
+          const ticket = await getSupportTicket(u, ticketId);
+          if (
+            (contestId && contestId !== ticket.contestId) ||
+            (registrationId && registrationId !== ticket.registrationId)
+          )
+            throw new BadRequestException('工单与文件的竞赛或报名不一致');
+          contestId = ticket.contestId ?? undefined;
+        }
+        let mime = '';
+        const bytes = file.buffer;
+        if (bytes.subarray(0, 5).toString() === '%PDF-') mime = 'application/pdf';
+        else if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
+          mime = 'image/png';
+        else if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) mime = 'image/jpeg';
+        else if (file.mimetype === 'text/plain' && !bytes.includes(0)) mime = 'text/plain';
+        else if (
+          purpose !== 'PRIVATE' &&
+          bytes[0] === 80 &&
+          bytes[1] === 75 &&
+          [3, 5, 7].includes(bytes[2]!)
+        )
+          mime = 'application/zip';
+        if (!mime || (purpose === 'AVATAR' && !mime.startsWith('image/')))
+          throw new BadRequestException(
+            purpose === 'AVATAR'
+              ? '头像支持 PNG、JPEG 图片'
+              : '支持 PDF、PNG、JPEG、文本及附件 ZIP 文件',
+          );
+        if (contestId) {
+          await lock(tx, contestId);
+          await tx.contest.findUniqueOrThrow({ where: { id: contestId } });
+        }
+        await lock(tx, `upload-owner:${u.id}`);
+        const used = await tx.attachment.aggregate({
+          where: { ownerId: u.id, purgedAt: null },
+          _sum: { size: true },
+        });
+        const quota = Number(process.env.UPLOAD_QUOTA_MB ?? (u.isAdmin ? 10240 : 1024));
+        if (
+          !Number.isFinite(quota) ||
+          quota <= 0 ||
+          (used._sum.size ?? 0) + file.size > quota * 1024 * 1024
+        )
+          throw new PayloadTooLargeException(
+            '附件总量已达到账号配额，请清理不再使用的文件或联系管理员',
+          );
+        const id = randomUUID(),
+          ref = await putBlob(id, bytes, mime);
+        stored = ref;
+        const result = await tx.attachment.create({
+          data: {
+            id,
+            ...ref,
+            ownerId: u.id,
+            registrationId,
+            ticketId,
+            contestId,
+            purpose,
+            public: ['CONTEST_PUBLIC', 'AVATAR'].includes(purpose),
+            name: uploadFilename(file.originalname),
+            mime,
+            size: file.size,
+          },
+        });
+        if (purpose === 'TEAM')
+          await tx.teamFile.create({
+            data: { attachmentId: id, registrationId: registrationId!, assignedBy: u.id },
+          });
+        await audit(tx, u.id, 'FILE_UPLOAD', id, {
           purpose,
-          public: ['CONTEST_PUBLIC', 'AVATAR'].includes(purpose),
-          name: uploadFilename(file.originalname),
+          contestId,
+          registrationId,
+          size: file.size,
+        });
+        return {
+          id,
+          name: result.name,
           mime,
           size: file.size,
-        },
+          public: result.public,
+          url: await publicLink(`/api/v1/files/${result.public ? 'public/' : ''}${id}`),
+        };
       });
-      if (purpose === 'TEAM')
-        await tx.teamFile.create({
-          data: { attachmentId: id, registrationId: registrationId!, assignedBy: u.id },
-        });
-      await audit(tx, u.id, 'FILE_UPLOAD', id, {
-        purpose,
-        contestId,
-        registrationId,
-        size: file.size,
-      });
-      return {
-        id,
-        name: result.name,
-        mime,
-        size: file.size,
-        public: result.public,
-        url: await publicLink(`/api/v1/files/${result.public ? 'public/' : ''}${id}`),
-      };
-    });
+    } catch (error) {
+      if (stored) {
+        try {
+          await removeBlob(stored);
+        } catch {
+          await db.$transaction((tx) =>
+            enqueue(
+              tx,
+              'OBJECT_DELETE',
+              stored!.storageKey!,
+              `orphan-upload:${stored!.storageKey}`,
+              { storageRef: stored },
+            ),
+          );
+        }
+      }
+      throw error;
+    }
   }
   async read(u: Principal | null, id: string) {
     const file = await db.attachment.findUnique({ where: { id } });

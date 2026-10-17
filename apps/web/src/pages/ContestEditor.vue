@@ -12,6 +12,7 @@ import {
   platformTemplates,
   mergePlatformFields,
   registrationReviewPhase,
+  fieldSchema,
 } from '@contest-center/contracts';
 import { api, date, label, money, downloadArchive } from '../api';
 import type { Data, FieldDefinition } from '../types';
@@ -20,7 +21,7 @@ import RegistrationReview from '../components/RegistrationReview.vue';
 import RemoteRevocations from '../components/RemoteRevocations.vue';
 import SeatingManager from '../components/SeatingManager.vue';
 import FinanceList from '../components/FinanceList.vue';
-import { useEditSession, mayLeaveEdits } from '../composables/useEditSession';
+import { useEditSession, mayLeaveEdits, confirmLeaveEdits } from '../composables/useEditSession';
 import MarkdownEditor from '../components/MarkdownEditor.vue';
 import PlatformBindings from '../components/PlatformBindings.vue';
 import FileLibrary from '../components/FileLibrary.vue';
@@ -65,6 +66,7 @@ const form = ref<Data>({
   policy: policySchema.parse({}),
   fields: JSON.parse(JSON.stringify(defaultFields)),
 });
+const savedTitle = ref('');
 const template = ref({ name: '活动准考证模板', source: defaultTemplate, version: 0 });
 const feeYuan = computed({
   get: () => form.value.policy.feeCents / 100,
@@ -139,6 +141,7 @@ function bindingSaved(value: Data) {
     return;
   }
   form.value = value;
+  savedTitle.value = value.title;
   savedModules.value = JSON.stringify(value.modules);
 }
 async function applyPreset() {
@@ -206,6 +209,7 @@ async function load() {
     registry.value = await api('/admin/fields');
     if (!isNew.value) {
       form.value = await api(`/contests/${route.params.id}`);
+      savedTitle.value = form.value.title;
       form.value.policy = policySchema.parse(form.value.policy);
       savedModules.value = JSON.stringify(form.value.modules);
       if (tab.value === 'settings' && !permission('CONTEST')) tab.value = 'registrations';
@@ -316,6 +320,7 @@ async function save() {
     if (isNew.value) router.replace(`/admin/contests/${c.id}`);
     else {
       form.value = await api(`/contests/${c.id}`);
+      savedTitle.value = form.value.title;
       savedModules.value = JSON.stringify(form.value.modules);
       if (permission('INTEGRATIONS'))
         revocations.value = await api(`/integrations/revocations?contestId=${route.params.id}`);
@@ -344,13 +349,44 @@ function editField(index = -1) {
   fieldDialog.value = true;
 }
 function saveField() {
-  const f = {
+  const parsed = fieldSchema.safeParse({
     ...field.value,
     options: options.value.split('\n').filter(Boolean),
-  } as FieldDefinition;
+  });
+  if (!parsed.success) {
+    ElMessage.error(parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('；'));
+    return;
+  }
+  const f = parsed.data;
+  if (
+    form.value.fields.some(
+      (item: FieldDefinition, index: number) =>
+        index !== editingField.value && item.scope === f.scope && item.key === f.key,
+    )
+  ) {
+    ElMessage.error('同一作用域内字段键名不能重复');
+    return;
+  }
   if (editingField.value < 0) form.value.fields.push(f);
   else form.value.fields[editingField.value] = f;
   fieldDialog.value = false;
+}
+const conditionSource = computed<FieldDefinition | undefined>(() =>
+  form.value.fields.find(
+    (f: FieldDefinition) => f.key === field.value.condition?.key && f.scope === field.value.scope,
+  ),
+);
+const conditionFields = computed(() =>
+  (form.value.fields as FieldDefinition[]).filter(
+    (f) => f.scope === field.value.scope && f.key !== field.value.key,
+  ),
+);
+function changeConditionKey(key: string) {
+  const type = conditionSource.value?.type;
+  field.value.condition =
+    type === 'multiselect'
+      ? { key, includes: '' }
+      : { key, equals: type === 'boolean' ? false : type === 'number' ? 0 : '' };
 }
 function importField(key: string) {
   const item = registry.value.find((x) => x.key === key);
@@ -477,11 +513,11 @@ function insertVariable(v: string) {
         <DeleteContestButton
           :contest="{
             id: form.id,
-            title: form.title,
+            title: savedTitle,
             version: form.version,
             deletion: form.deletion,
           }"
-          :before-remove="mayLeaveEdits"
+          :before-remove="confirmLeaveEdits"
           @deleted="router.push('/admin/contests')"
         />
       </div>
@@ -608,7 +644,7 @@ function insertVariable(v: string) {
           <el-form-item v-if="form.publicRosterEnabled" label="公示的审核状态"
             ><el-checkbox-group v-model="form.publicRosterReviews"
               ><el-checkbox
-                v-for="state in ['APPROVED', 'PENDING', 'CORRECTION', 'REJECTED']"
+                v-for="state in ['APPROVED', 'PENDING', 'REJECTED']"
                 :key="state"
                 :value="state"
                 >{{ label(state) }}</el-checkbox
@@ -1127,7 +1163,36 @@ function insertVariable(v: string) {
               (v: boolean) => (field.condition = v ? { key: '', equals: '' } : undefined)
             " />
           <div v-if="field.condition" class="form-grid">
-            <el-input v-model="field.condition.key" placeholder="依据字段键名" /><el-input
+            <el-select
+              v-model="field.condition.key"
+              placeholder="依据字段"
+              @change="changeConditionKey"
+            >
+              <el-option
+                v-for="source in conditionFields"
+                :key="source.key"
+                :label="source.label"
+                :value="source.key"
+              />
+            </el-select>
+            <el-switch
+              v-if="conditionSource?.type === 'boolean'"
+              v-model="field.condition.equals"
+              active-text="值为是时显示"
+            />
+            <el-input-number
+              v-else-if="conditionSource?.type === 'number'"
+              v-model="field.condition.equals"
+            />
+            <el-select
+              v-else-if="conditionSource?.type === 'multiselect'"
+              v-model="field.condition.includes"
+              placeholder="包含此选项时显示"
+            >
+              <el-option v-for="value in conditionSource.options" :key="value" :value="value" />
+            </el-select>
+            <el-input
+              v-else
               v-model="field.condition.equals"
               placeholder="等于此值时显示"
             /></div></el-form-item></el-form

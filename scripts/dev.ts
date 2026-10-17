@@ -1,6 +1,9 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-if (!existsSync('.env')) spawnSync('pnpm', ['run', 'setup'], { stdio: 'inherit' });
+if (!existsSync('.env')) {
+  const setup = spawnSync('pnpm', ['run', 'setup'], { stdio: 'inherit' });
+  if (setup.status !== 0) process.exit(setup.status ?? 1);
+}
 for (const args of [
   [
     'compose',

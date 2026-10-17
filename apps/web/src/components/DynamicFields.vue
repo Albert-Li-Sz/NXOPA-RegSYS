@@ -45,7 +45,7 @@ async function file(e: Event, key: string) {
             v-model="answers[f.key]"
             :type="f.type === 'textarea' ? 'textarea' : 'text'"
             :rows="3"
-            :maxlength="f.max || 1000"
+            :maxlength="f.max ?? (f.type === 'textarea' ? 10000 : 1000)"
             :disabled="disabled"
             :placeholder="`请填写${f.label}`"
           />

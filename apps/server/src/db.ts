@@ -6,6 +6,7 @@ const client = new PrismaClient({
   adapter: new PrismaPg({ connectionString: config.databaseUrl, max: 30 }),
 });
 const requestTransaction = new AsyncLocalStorage<Prisma.TransactionClient>();
+export const inRequestTransaction = () => !!requestTransaction.getStore();
 // HTTP idempotency records and business writes commit in the same transaction.
 export const db = new Proxy(client, {
   get(target, key) {
@@ -46,10 +47,26 @@ export async function enqueue(
   resourceId: string,
   dedupeKey: string,
   payload: unknown,
+  options: { restart?: boolean } = {},
 ) {
   await lock(tx, `enqueue:${dedupeKey}`);
   const prior = await tx.job.findUnique({ where: { dedupeKey } });
-  if (prior) return prior;
+  if (prior) {
+    if (options.restart && ['SUCCESS', 'FAILED', 'CANCELLED'].includes(prior.state))
+      return tx.job.update({
+        where: { id: prior.id },
+        data: {
+          state: 'PENDING',
+          attempts: 0,
+          error: null,
+          result: Prisma.DbNull,
+          payload: json(payload),
+          leaseToken: null,
+          leaseUntil: null,
+        },
+      });
+    return prior;
+  }
   const job = await tx.job.create({
     data: { kind, resourceId, dedupeKey, payload: json(payload), state: 'OUTBOX' },
   });

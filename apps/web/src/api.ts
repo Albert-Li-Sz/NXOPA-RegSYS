@@ -38,6 +38,7 @@ async function requestApi<T = any>(
 ): Promise<T> {
   const form = body instanceof FormData;
   const response = await fetch(`/api/v1${path}`, {
+    signal: AbortSignal.timeout(form ? 180000 : 120000),
     method,
     credentials: 'same-origin',
     headers: {
@@ -71,6 +72,7 @@ export async function loadAuth() {
 }
 export async function downloadArchive(path: string, body: unknown, name: string) {
   const response = await fetch(`/api/v1${path}`, {
+    signal: AbortSignal.timeout(180000),
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': auth.csrf },

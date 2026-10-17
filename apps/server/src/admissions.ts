@@ -9,6 +9,7 @@ import type { Principal } from '@contest-center/contracts';
 import { fieldsSchema } from '@contest-center/contracts';
 import {
   db,
+  inRequestTransaction,
   json,
   audit,
   event,
@@ -139,9 +140,18 @@ export class AdmissionService {
       },
     });
     const result = [];
+    const templates = await db.admissionTemplate.findMany({
+      where: {
+        active: true,
+        OR: [{ contestId: { in: registrations.map((r) => r.contestId) } }, { contestId: null }],
+      },
+      orderBy: { version: 'desc' },
+    });
     for (const registration of registrations) {
       if (!modulesFor(registration.contest).admissions) continue;
-      const template = await activeTemplate(registration.contestId);
+      const template =
+        templates.find((t) => t.contestId === registration.contestId) ??
+        templates.find((t) => t.contestId === null);
       for (const document of registration.admissions)
         if (
           document.registrationVersion === registration.version &&
@@ -263,7 +273,7 @@ export class AdmissionService {
           .string()
           .regex(/^[A-Z0-9-]{1,20}$/)
           .optional(),
-        releaseAt: z.iso.datetime({ offset: true }).optional(),
+        releaseAt: z.iso.datetime({ offset: true }).nullable().optional(),
         seats: z.array(seatSchema).max(10000).optional(),
       })
       .parse(body);
@@ -273,10 +283,33 @@ export class AdmissionService {
       (b.seats && new Set(b.seats.map((s) => s.registrationId)).size !== b.seats.length)
     )
       throw new BadRequestException('座位表包含重复或未选择的报名');
-    for (const [index, id] of b.registrationIds.entries()) {
+    if (new Set(b.registrationIds).size !== b.registrationIds.length)
+      throw new BadRequestException('报名列表包含重复记录');
+    const registrations = new Map<string, Registration>();
+    for (const id of b.registrationIds) {
       const r = await getRegistration(u, id);
       requireManager(u, r.contestId, 'ADMISSIONS');
       if (!modulesFor(r.contest).admissions) throw new BadRequestException('此活动未启用准考证');
+      registrations.set(id, r);
+    }
+    const numbers = (b.seats ?? []).flatMap((s) => (s.number ? [s.number] : []));
+    if (new Set(numbers).size !== numbers.length)
+      throw new BadRequestException('准考证编号重复，请检查座位表');
+    const existing = await db.admissionDocument.findMany({ where: { number: { in: numbers } } });
+    for (const assignment of b.seats ?? []) {
+      if (!assignment.number) continue;
+      const prior = existing.find((d) => d.number === assignment.number);
+      const registration = registrations.get(assignment.registrationId)!;
+      if (
+        prior &&
+        (prior.registrationId !== registration.id ||
+          prior.registrationVersion !== registration.version ||
+          prior.templateId !== (await activeTemplate(registration.contestId))?.id)
+      )
+        throw new BadRequestException(`准考证编号 ${assignment.number} 已被使用，请修改后重试`);
+    }
+    for (const [index, id] of b.registrationIds.entries()) {
+      const r = registrations.get(id)!;
       if (!r.eligible) {
         results.push({ registrationId: id, error: '尚未取得参赛资格' });
         continue;
@@ -287,116 +320,134 @@ export class AdmissionService {
         assignment?.seat ??
         (b.incrementSeats && /^\d+$/.test(b.seat) ? String(Number(b.seat) + index) : b.seat);
       let location = assignment?.location ?? (b.location || r.contest.location);
-      const a = await db.$transaction(async (tx) => {
-        await lock(tx, id);
-        await lock(tx, `seating:${r.contestId}`);
-        const currentContest = await tx.contest.findUniqueOrThrow({ where: { id: r.contestId } });
-        if (!modulesFor(currentContest).admissions)
-          throw new BadRequestException('此活动已关闭准考证');
-        if (currentContest.version !== r.contest.version)
-          throw new BadRequestException('活动配置已改变，请刷新后重新生成');
-        const seats = await tx.seatAssignment.findMany({
-          where: { registrationId: id },
-          include: { room: true },
-          orderBy: { seat: 'asc' },
-        });
-        if (modulesFor(r.contest).rooms) {
-          const expected =
-            r.contest.seatingMode === 'PERSON' ? r.people.filter((p) => p.active).length : 1;
-          if (
-            seats.length !== expected ||
-            seats.some(
-              (a) =>
-                !a.room.enabled ||
-                (a.personId && !r.people.some((p) => p.id === a.personId && p.active)),
+      try {
+        const a = await db.$transaction(async (tx) => {
+          await lock(tx, id);
+          await lock(tx, `seating:${r.contestId}`);
+          const currentContest = await tx.contest.findUniqueOrThrow({ where: { id: r.contestId } });
+          if (!modulesFor(currentContest).admissions)
+            throw new BadRequestException('此活动已关闭准考证');
+          if (currentContest.version !== r.contest.version)
+            throw new BadRequestException('活动配置已改变，请刷新后重新生成');
+          const seats = await tx.seatAssignment.findMany({
+            where: { registrationId: id },
+            include: { room: true },
+            orderBy: { seat: 'asc' },
+          });
+          if (modulesFor(r.contest).rooms) {
+            const expected =
+              r.contest.seatingMode === 'PERSON' ? r.people.filter((p) => p.active).length : 1;
+            if (
+              seats.length !== expected ||
+              seats.some(
+                (a) =>
+                  !a.room.enabled ||
+                  (a.personId && !r.people.some((p) => p.id === a.personId && p.active)),
+              )
             )
-          )
-            throw new BadRequestException('请先完成此报名的有效排考');
-          room = [...new Set(seats.map((a) => a.room.name))].join('、');
-          location = [...new Set(seats.map((a) => a.room.location || r.contest.location))].join(
-            '、',
-          );
-          seat = seats
-            .map((a) =>
-              a.personId
-                ? `${r.people.find((p) => p.id === a.personId)?.name}: ${a.seat}`
-                : String(a.seat),
-            )
-            .join('；');
-        }
-        const current = await tx.registration.findUniqueOrThrow({ where: { id } });
-        if (!current.eligible || current.version !== r.version)
-          throw new BadRequestException('报名资料已改变');
-        const template = await activeTemplate(r.contestId, tx);
-        if (!template) throw new BadRequestException('请先配置准考证模板');
-        let document = await tx.admissionDocument.upsert({
-          where: {
-            registrationId_registrationVersion_templateId: {
-              registrationId: id,
-              registrationVersion: r.version,
-              templateId: template.id,
-            },
-          },
-          create: {
-            registrationId: id,
-            number:
-              assignment?.number ??
-              `${b.numberPrefix ?? 'CC'}${new Date().getFullYear()}${randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`,
-            location,
-            room,
-            seat,
-            registrationVersion: r.version,
-            templateId: template.id,
-            templateVersion: template.version,
-            releaseAt: b.releaseAt ? new Date(b.releaseAt) : null,
-          },
-          update: {},
-        });
-        if (
-          document.room !== room ||
-          document.seat !== seat ||
-          document.location !== location ||
-          (assignment?.number && document.number !== assignment.number) ||
-          ['FAILED', 'STALE'].includes(document.state)
-        ) {
-          if (document.storageKey)
-            await enqueue(
-              tx,
-              'OBJECT_DELETE',
-              document.id,
-              `replaced-document:${document.id}:${document.version}`,
-              {
-                storageRef: {
-                  storageKey: document.storageKey,
-                  storageBackend: document.storageBackend,
-                  storageConfigId: document.storageConfigId,
-                  sha256: document.sha256,
-                },
-              },
+              throw new BadRequestException('请先完成此报名的有效排考');
+            room = [...new Set(seats.map((a) => a.room.name))].join('、');
+            location = [...new Set(seats.map((a) => a.room.location || r.contest.location))].join(
+              '、',
             );
-          document = await tx.admissionDocument.update({
-            where: { id: document.id },
-            data: {
+            seat = seats
+              .map((a) =>
+                a.personId
+                  ? `${r.people.find((p) => p.id === a.personId)?.name}: ${a.seat}`
+                  : String(a.seat),
+              )
+              .join('；');
+          }
+          const current = await tx.registration.findUniqueOrThrow({ where: { id } });
+          if (!current.eligible || current.version !== r.version)
+            throw new BadRequestException('报名资料已改变');
+          const template = await activeTemplate(r.contestId, tx);
+          if (!template) throw new BadRequestException('请先配置准考证模板');
+          let document = await tx.admissionDocument.upsert({
+            where: {
+              registrationId_registrationVersion_templateId: {
+                registrationId: id,
+                registrationVersion: r.version,
+                templateId: template.id,
+              },
+            },
+            create: {
+              registrationId: id,
+              number:
+                assignment?.number ??
+                `${b.numberPrefix ?? 'CC'}${new Date().getFullYear()}${randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`,
               location,
               room,
               seat,
-              ...(assignment?.number ? { number: assignment.number } : {}),
-              version: { increment: 1 },
-              state: 'QUEUED',
-              releasedAt: null,
-              storageKey: null,
-              error: null,
+              registrationVersion: r.version,
+              templateId: template.id,
+              templateVersion: template.version,
+              releaseAt: b.releaseAt ? new Date(b.releaseAt) : null,
             },
+            update: {},
           });
-        }
-        await enqueue(tx, 'ADMISSION', id, `admission:${document.id}:${document.version}`, {
-          documentId: document.id,
-          documentVersion: document.version,
+          const releaseAt =
+            b.releaseAt === undefined
+              ? document.releaseAt
+              : b.releaseAt
+                ? new Date(b.releaseAt)
+                : null;
+          if (
+            document.room !== room ||
+            document.seat !== seat ||
+            document.location !== location ||
+            (assignment?.number && document.number !== assignment.number) ||
+            ['FAILED', 'STALE'].includes(document.state) ||
+            document.releaseAt?.getTime() !== releaseAt?.getTime()
+          ) {
+            if (document.storageKey)
+              await enqueue(
+                tx,
+                'OBJECT_DELETE',
+                document.id,
+                `replaced-document:${document.id}:${document.version}`,
+                {
+                  storageRef: {
+                    storageKey: document.storageKey,
+                    storageBackend: document.storageBackend,
+                    storageConfigId: document.storageConfigId,
+                    sha256: document.sha256,
+                  },
+                },
+              );
+            document = await tx.admissionDocument.update({
+              where: { id: document.id },
+              data: {
+                location,
+                room,
+                seat,
+                ...(assignment?.number ? { number: assignment.number } : {}),
+                version: { increment: 1 },
+                state: 'QUEUED',
+                releasedAt: null,
+                releaseAt,
+                storageKey: null,
+                error: null,
+              },
+            });
+          }
+          await enqueue(tx, 'ADMISSION', id, `admission:${document.id}:${document.version}`, {
+            documentId: document.id,
+            documentVersion: document.version,
+          });
+          await audit(tx, u.id, 'ADMISSION_GENERATE', id, { documentId: document.id, room, seat });
+          return document;
         });
-        await audit(tx, u.id, 'ADMISSION_GENERATE', id, { documentId: document.id, room, seat });
-        return document;
-      });
-      results.push({ registrationId: id, documentId: a.id, state: a.state });
+        results.push({ registrationId: id, documentId: a.id, state: a.state });
+      } catch (error) {
+        if ((error as { code?: string }).code === 'P2002') {
+          // A failed SQL statement aborts the outer HTTP idempotency transaction.
+          // Let it roll back before the interceptor writes a replay record.
+          if (inRequestTransaction())
+            throw new BadRequestException('准考证编号已被使用，请修改后重试');
+          results.push({ registrationId: id, error: '准考证编号已被使用，请修改后重试' });
+        } else throw error;
+      }
     }
     return { results };
   }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { Client, until, base } from './client.js';
 import {
   policySchema,
@@ -18,6 +18,7 @@ const record = (name: string, details?: unknown) => {
   console.log(`PASS ${name}`);
 };
 try {
+  await rm('.runtime/acceptance-context.json', { force: true });
   await redis.del('rate:login:::ffff:127.0.0.1', 'rate:login:127.0.0.1');
   const admin = await new Client().login('admin'),
     alice = await new Client().login('alice'),
@@ -403,6 +404,7 @@ try {
     ),
     { mode: 0o600 },
   );
+  assert.equal(report.length, 14, 'All business cases must complete');
   console.log(`Business acceptance: ${report.length} cases passed`);
 } finally {
   await mkdir('.runtime/reports', { recursive: true });

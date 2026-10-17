@@ -20,6 +20,9 @@ class AuthorizedHandler extends Handler {
   }
 }
 function parse(args: any) {
+  for (const key of ['unrank', 'nickname'])
+    if (args[key] !== undefined && typeof args[key] !== 'boolean')
+      throw new Error(`${key} must be a boolean`);
   const { username, password, envelope, domainId, contestId } = args;
   if (
     !/^cc_[a-f0-9]{24}$/.test(username) ||
@@ -84,7 +87,7 @@ class ProbeHandler extends AuthorizedHandler {
   async get() {
     this.response.body = {
       version: '5.0.7',
-      pluginVersion: '0.2.0',
+      pluginVersion: '0.2.1',
       capabilities: [
         'provision',
         'query',

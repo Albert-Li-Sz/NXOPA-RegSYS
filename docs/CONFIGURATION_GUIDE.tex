@@ -28,7 +28,7 @@
 \fancyhf{}
 \fancyhead[L]{\small\color{muted}南晓开放原子社在线报名系统}
 \fancyhead[R]{\small\color{muted}配置教程}
-\fancyfoot[L]{\small\color{muted}v0.6.2 · 中文 · Asia/Shanghai}
+\fancyfoot[L]{\small\color{muted}v0.6.3 · 中文 · Asia/Shanghai}
 \fancyfoot[R]{\small\color{muted}\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
@@ -190,13 +190,13 @@ GitHub OAuth App 的真实凭据由部署管理员配置。本版本以独立模
 
 \newpage
 \section{接入 Hydro 评测平台}
-Hydro 接入使用 \code{hydro-contest-center} 插件，当前插件 0.2.0 适配 Hydro 5.0.7。下载入口位于\href{https://albert-li-sz.github.io/NXOPA-RegSYS/#hydro-plugin}{教程网页的 Hydro 插件下载区}；同时提供版本化安装包、稳定入口和 SHA-256。安装前核对包名、版本与摘要。不要把实例 Token 写入安装包。
+Hydro 接入使用 \code{hydro-contest-center} 插件，当前插件 0.2.1 适配 Hydro 5.0.7。下载入口位于\href{https://albert-li-sz.github.io/NXOPA-RegSYS/#hydro-plugin}{教程网页的 Hydro 插件下载区}；同时提供版本化安装包、稳定入口和 SHA-256。安装前核对包名、版本与摘要。不要把实例 Token 写入安装包。
 \begin{Code}
-curl -fLO https://albert-li-sz.github.io/NXOPA-RegSYS/downloads/hydro-contest-center-0.2.0.tgz
-curl -fLO https://albert-li-sz.github.io/NXOPA-RegSYS/downloads/hydro-contest-center-0.2.0.tgz.sha256
-sha256sum -c hydro-contest-center-0.2.0.tgz.sha256
+curl -fLO https://albert-li-sz.github.io/NXOPA-RegSYS/downloads/hydro-contest-center-0.2.1.tgz
+curl -fLO https://albert-li-sz.github.io/NXOPA-RegSYS/downloads/hydro-contest-center-0.2.1.tgz.sha256
+sha256sum -c hydro-contest-center-0.2.1.tgz.sha256
 # macOS 也可用 shasum -a 256 比对网页摘要
-npm install --prefix /opt/hydro hydro-contest-center-0.2.0.tgz
+npm install --prefix /opt/hydro hydro-contest-center-0.2.1.tgz
 \end{Code}
 \textbf{原生部署。}确认运行 Hydro 的用户、工作目录和 addon.json 所在位置。以 Hydro 运行用户安装到其 Node.js 工作目录，将安装后的插件目录添加到该用户的 \code{~/.hydro/addon.json}，保留原有其他插件。项目提供的包只含源码、说明和许可证。
 \begin{Code}
@@ -216,7 +216,7 @@ pm2 restart hydro --update-env
 \textbf{Docker 部署。}在自己的 Hydro 镜像中安装下载包，或将插件目录只读挂载到容器，再更新容器内实际运行用户的 addon.json。Token 与域白名单放入 Compose 的 environment 或受保护环境文件，重建／重启容器使变量进入进程；不要仅修改宿主机文件后假定容器已生效。
 \begin{Code}
 # 自有镜像示例，基底应与自己的 Hydro 部署一致
-COPY hydro-contest-center-0.2.0.tgz /tmp/bridge.tgz
+COPY hydro-contest-center-0.2.1.tgz /tmp/bridge.tgz
 RUN npm install --prefix /opt/hydro /tmp/bridge.tgz && rm /tmp/bridge.tgz
 # Compose 相应服务
 # environment:
@@ -235,7 +235,7 @@ https://hydro.example.org/d/training/contest/0123456789abcdef01234567
 
 \textbf{完整配置示例。}实例名称“社团 Hydro 评测平台”、地址 \code{https://hydro.example.org}，类型 Hydro；选择可使用的本站竞赛。在比赛绑定填域 training、目标比赛 24 位编号，启用昵称映射、同步非正式报名，参赛性质选择“跟随报名性质”。队伍名称写入目标域昵称；个人报名使用姓名。独立比赛用户名与密码由本站生成，不复制本站密码。
 
-非正式报名经管理员审核后，在比赛内写入 \code{unrank=true}；正式报名写入 false。“全部作为非正式参赛”覆盖两类报名的远端性质。“不导入非正式报名”则跳过该类报名并明确显示状态。插件探测应返回版本 0.2.0 及昵称、非正式、比赛关联能力；旧插件缺失能力时提示升级。
+非正式报名经管理员审核后，在比赛内写入 \code{unrank=true}；正式报名写入 false。“全部作为非正式参赛”覆盖两类报名的远端性质。“不导入非正式报名”则跳过该类报名并明确显示状态。插件探测应返回版本 0.2.1 及昵称、非正式、比赛关联能力；旧插件缺失能力时提示升级。
 
 \textbf{验收与故障排查。}依次探测、提交／审核报名、查看任务、领取比赛账号、实际登录目标比赛；核对域昵称与比赛状态，再重复同步确认远端用户编号不变。Hydro 的昵称属于域用户资料，某些排行榜视图按原平台权限隐藏昵称；不要为了显示昵称给所有用户开放私人资料权限。
 \begin{itemize}

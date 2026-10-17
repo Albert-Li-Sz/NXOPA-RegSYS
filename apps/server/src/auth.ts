@@ -18,6 +18,7 @@ import { feishuSignup, attachFeishuSignup, clearFeishuSignup } from './feishu.js
 import { paginated, type ListQuery } from './pagination.js';
 
 export const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
+const missingAccountHash = hash(opaqueToken(), { type: argon2id });
 export type AuthRequest = Request & {
   principal?: Principal;
   sessionId?: string;
@@ -297,7 +298,8 @@ export class AuthService {
     const u = await db.user.findFirst({
       where: { OR: [{ email: b.account.toLowerCase() }, { username: b.account }] },
     });
-    if (!u?.passwordHash || u.deactivatedAt || !(await verify(u.passwordHash, b.password))) {
+    const validPassword = await verify(u?.passwordHash ?? (await missingAccountHash), b.password);
+    if (!u?.passwordHash || u.deactivatedAt || !validPassword) {
       if ((await redis.incr(failureKey)) === 1) await redis.expire(failureKey, 900);
       throw new UnauthorizedException('账号或密码错误');
     }

@@ -19,6 +19,7 @@ import {
   db,
   json,
   audit,
+  event,
   lock,
   enqueue,
   registrationInclude,
@@ -145,6 +146,7 @@ export async function platformConfig(
   return {
     type: b.instance.type,
     configuration: {
+      request: (await import('./integration-http.js')).integrationRequest,
       baseUrl: b.instance.baseUrl,
       credentials: JSON.parse(decrypt(b.instance.credentials)),
       remoteContestId: b.remoteContestId,
@@ -158,7 +160,12 @@ export async function platformConfig(
     },
   };
 }
-export async function scheduleSync(tx: Tx, registrationId: string, bindingId: string) {
+export async function scheduleSync(
+  tx: Tx,
+  registrationId: string,
+  bindingId: string,
+  restart = false,
+) {
   await lock(tx, registrationId);
   const r = await tx.registration.findUniqueOrThrow({ where: { id: registrationId } });
   const activity = await tx.contest.findUniqueOrThrow({ where: { id: r.contestId } });
@@ -234,6 +241,7 @@ export async function scheduleSync(tx: Tx, registrationId: string, bindingId: st
       organizationId: school?.remoteId ?? b.organizationId,
       remoteTeamId: m.remoteTeamId ?? `cc-${sha(`${bindingId}:${registrationId}`).slice(0, 32)}`,
     },
+    { restart },
   );
   return { mappingId: m.id, jobId: job.id, state: job.state };
 }
@@ -290,6 +298,7 @@ export async function verifyCallback(id: string, body: unknown) {
   )
     throw new BadRequestException('回调的学校或平台配置已改变，请重新发起同步');
   const c = await platformConfig(b.bindingId);
+  c.configuration.requestDeadline = Date.now() + 60000;
   c.configuration.organizationId = school?.remoteId ?? c.configuration.organizationId;
   const verified = await connector(c.type).getProvisioningResult(c.configuration, {
     envelope: await envelope(r),
@@ -303,8 +312,8 @@ export async function verifyCallback(id: string, body: unknown) {
   )
     throw new BadRequestException('回调结果未通过远端核验');
   return db.$transaction(async (tx) => {
-    await lock(tx, `sync:${mapping.id}`);
     await lock(tx, id);
+    await lock(tx, `sync:${mapping.id}`);
     const current = await tx.registration.findUniqueOrThrow({ where: { id } });
     if (!current.eligible || current.version !== b.registrationVersion)
       throw new BadRequestException('报名在核验期间已变更');
@@ -500,7 +509,14 @@ export class IntegrationService {
             where: { contestId: saved.contestId, eligible: true },
             select: { id: true },
           });
-          for (const row of rows) await scheduleSync(tx, row.id, saved.id);
+          if (rows.length)
+            await tx.outboxEvent.createMany({
+              data: rows.map((row) => ({
+                type: 'SYNC_REQUEST',
+                resourceId: row.id,
+                payload: { bindingId: saved.id },
+              })),
+            });
         }
       }
       await audit(tx, u.id, 'PLATFORM_BINDING_SAVE', saved.contestId, {
@@ -562,39 +578,47 @@ export class IntegrationService {
         create: z.boolean().default(false),
       })
       .parse(body);
+    const m = await db.organizationMapping.findUniqueOrThrow({ where: { id } });
+    if (m.instanceId !== b.instanceId) throw new ForbiddenException();
+    const candidates = await db.registration.findMany({
+      where: { contestId: b.contestId },
+      select: { organization: true },
+    });
+    const registration = candidates.find(
+      (r) =>
+        r.organization && organizationKey(organizationSchema.parse(r.organization)) === m.nameKey,
+    );
+    if (!registration) throw new ForbiddenException('学校不属于该竞赛');
+    checkVersion(m.version, input.version);
+    const c = await platformConfig(bindingId);
+    const adapter = new (await import('@contest-center/connectors')).DOMjudgeConnector();
+    const remoteId = input.create
+      ? `cc-${sha(`${m.instanceId}:${m.nameKey}`).slice(0, 32)}`
+      : input.remoteId;
+    if (!remoteId) throw new BadRequestException('请选择已有组织或确认创建');
+    if (input.create) await adapter.createOrganization(c.configuration, remoteId, input);
+    const remote = (await adapter.organizations(c.configuration)).find(
+      (x: any) => String(x.id) === remoteId,
+    );
+    if (!remote) throw new BadRequestException('远端学校不存在');
+    if (
+      input.create &&
+      (remote.formal_name !== input.name ||
+        remote.name !== input.shortName ||
+        (remote.country !== undefined && remote.country !== input.country))
+    )
+      throw new BadRequestException('学校全称、简称或国家读回校验失败，请检查远端资料');
+    const info = organizationSchema.parse(input);
     return db.$transaction(async (tx) => {
       await lock(tx, `school:${id}`);
-      const m = await tx.organizationMapping.findUniqueOrThrow({ where: { id } });
-      if (m.instanceId !== b.instanceId) throw new ForbiddenException();
-      const candidates = await tx.registration.findMany({
-        where: { contestId: b.contestId },
-        select: { organization: true },
+      checkVersion(
+        (await tx.organizationMapping.findUniqueOrThrow({ where: { id } })).version,
+        input.version,
+      );
+      const currentBinding = await tx.platformBinding.findUniqueOrThrow({
+        where: { id: bindingId },
       });
-      const registration = candidates.find(
-        (r) =>
-          r.organization && organizationKey(organizationSchema.parse(r.organization)) === m.nameKey,
-      );
-      if (!registration) throw new ForbiddenException('学校不属于该竞赛');
-      checkVersion(m.version, input.version);
-      const c = await platformConfig(bindingId);
-      const adapter = new (await import('@contest-center/connectors')).DOMjudgeConnector();
-      const remoteId = input.create
-        ? `cc-${sha(`${m.instanceId}:${m.nameKey}`).slice(0, 32)}`
-        : input.remoteId;
-      if (!remoteId) throw new BadRequestException('请选择已有组织或确认创建');
-      if (input.create) await adapter.createOrganization(c.configuration, remoteId, input);
-      const remote = (await adapter.organizations(c.configuration)).find(
-        (x: any) => String(x.id) === remoteId,
-      );
-      if (!remote) throw new BadRequestException('远端学校不存在');
-      if (
-        input.create &&
-        (remote.formal_name !== input.name ||
-          remote.name !== input.shortName ||
-          (remote.country !== undefined && remote.country !== input.country))
-      )
-        throw new BadRequestException('学校全称、简称或国家读回校验失败，请检查远端资料');
-      const info = organizationSchema.parse(input);
+      checkVersion(currentBinding.version, b.version);
       const saved = await tx.organizationMapping.update({
         where: { id },
         data: { ...info, remoteId, status: 'CONFIRMED', version: { increment: 1 } },
@@ -631,7 +655,7 @@ export class IntegrationService {
               where: { registrationId: row.id, bindingId: binding.id },
               data: { state: 'STALE', details: { message: '学校映射已更新，等待重新同步' } },
             });
-            await scheduleSync(tx, row.id, binding.id);
+            await event(tx, 'SYNC_REQUEST', row.id, { bindingId: binding.id });
           }
       }
       return saved;
@@ -654,7 +678,7 @@ export class IntegrationService {
     const { bindingId } = z.object({ bindingId: z.string().uuid() }).parse(body);
     const r = await getRegistration(u, id);
     requireManager(u, r.contestId, 'INTEGRATIONS');
-    return db.$transaction((tx) => scheduleSync(tx, id, bindingId));
+    return db.$transaction((tx) => scheduleSync(tx, id, bindingId, true));
   }
   async credentials(u: Principal, id: string) {
     const r = await getRegistration(u, id);

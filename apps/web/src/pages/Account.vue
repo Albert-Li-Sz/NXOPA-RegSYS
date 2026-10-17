@@ -134,10 +134,6 @@ onMounted(async () => {
     }
   }
   if (action.value === 'reset') mode.value = 'reset';
-  if (auth.user) {
-    Object.assign(profile, JSON.parse(JSON.stringify(auth.user)));
-    sessions.value = await api('/auth/sessions');
-  }
 });
 async function submit() {
   busy.value = true;

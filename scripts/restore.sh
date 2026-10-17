@@ -8,7 +8,17 @@ input="$(cd "$(dirname "$input")" && pwd)/$(basename "$input")"
 mkdir -p .runtime
 stage="$(mktemp -d "$(pwd)/.runtime/.restore-XXXXXX")"
 services_stopped=false
-finish(){ if [[ "$services_stopped" == true ]]; then compose start api worker >/dev/null; fi; rm -rf "$stage"; }
+running_services=()
+for service in api worker; do
+  if [[ -n "$(compose ps --status running -q "$service")" ]]; then running_services+=("$service"); fi
+done
+finish(){
+  local status=$?
+  trap - EXIT
+  if [[ "$services_stopped" == true && ${#running_services[@]} -gt 0 ]]; then compose start "${running_services[@]}" >/dev/null || status=1; fi
+  rm -rf "$stage" || status=1
+  exit "$status"
+}
 trap finish EXIT
 cp "$input" "$stage/input.ccbak"
 # Match the host owner so the installer can inspect and extract the private archive.

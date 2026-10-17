@@ -160,7 +160,7 @@ async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
   let output = '',
     success = false;
   try {
-    const result = await exec(
+    const execution = exec(
       'pnpm',
       [
         suite,
@@ -176,6 +176,19 @@ async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
         maxBuffer: 5 * 1024 * 1024,
       },
     );
+    if (suite === 'test:e2e')
+      execution.child.stdout?.on('data', (chunk: Buffer) => {
+        const lines = chunk
+          .toString()
+          .replace(/\u001b\[[0-9;]*m/g, '')
+          .split('\n');
+        for (const line of lines) {
+          const match = line.match(/\s([✓✘×])\s+(\d+)\s/);
+          if (match && (Number(match[2]) % 10 === 0 || match[1] !== '✓'))
+            console.log(`[浏览器回归] ${line.trim()}`);
+        }
+      });
+    const result = await execution;
     output = result.stdout + result.stderr;
     success = true;
   } catch (error) {
@@ -211,7 +224,7 @@ try {
   await wait(`${env.FEISHU_API_BASE_URL}/fixture`);
   const suites = (
     process.env.FULL_REGRESSION_SUITES ??
-    'test:integration,test:auth,test:accounts,test:feishu,test:invitations,test:mail,test:mail-failover,test:template-bugs,test:overview,test:enhancements,test:admissions,test:activity-workflows,test:workflow-upgrade,test:bugs,test:security,test:permissions,test:file-race,test:load,test:mcp,test:e2e'
+    'test:integration,test:auth,test:accounts,test:feishu,test:invitations,test:mail,test:mail-failover,test:template-bugs,test:overview,test:enhancements,test:admissions,test:activity-workflows,test:workflow-upgrade,test:bugs,test:security,test:audit-fixes,test:permissions,test:file-race,test:load,test:mcp,test:e2e'
   )
     .split(',')
     .filter(Boolean);

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+if (process.env.NODE_ENV === 'production')
+  throw new Error('Acceptance fixtures must not run in production');
 export const base = process.env.TEST_URL ?? 'http://localhost:3000';
 export class Client {
   cookie = '';

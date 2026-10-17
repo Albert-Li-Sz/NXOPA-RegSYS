@@ -22,6 +22,8 @@ import {
   invoiceSchema,
   organizationSchema,
   participationSchema,
+  adminPermissions,
+  userTagsSchema,
 } from '@contest-center/contracts';
 import type { OpenAPIObject } from '@nestjs/swagger';
 const id = z.string().uuid(),
@@ -98,6 +100,70 @@ export function describeApi(document: OpenAPIObject) {
   for (const [name, s] of Object.entries(named))
     document.components.schemas[name] = schema(s) as never;
   const bodies: Record<string, z.ZodType | string> = {
+    'put /api/v1/admin/storage': object({
+      version,
+      mode: z.enum(['LOCAL', 'S3']),
+      name: text.optional(),
+      endpoint: text.optional(),
+      region: text.optional(),
+      bucket: text.optional(),
+      prefix: text.optional(),
+      accessKey: text.optional(),
+      secretKey: text.optional(),
+      forcePathStyle: z.boolean().optional(),
+      createBucket: z.boolean().optional(),
+    }),
+    'post /api/v1/admin/grants': object({
+      userId: id,
+      level: z.enum(['SYSTEM', 'SENIOR', 'CONTEST']),
+      contestId: id.nullable().optional(),
+      permissions: z.array(z.enum(adminPermissions)).optional(),
+      expiresAt: date.nullable().optional(),
+    }),
+    'post /api/v1/admin/identities/{id}/review': object({
+      decision: z.enum(['APPROVED', 'REJECTED']),
+      reason: text.optional(),
+    }),
+    'post /api/v1/auth/identity': object({
+      kind: z.enum(['STUDENT', 'TEACHER']),
+      name: text,
+      profile: z.record(text, z.json()),
+      version,
+    }),
+    'post /api/v1/auth/verify-code': object({ code: z.string().regex(/^\d{6}$/) }),
+    'post /api/v1/auth/reset-code': object({
+      code: z.string().regex(/^\d{6}$/),
+      email: z.email(),
+      password: z.string().min(10).max(128),
+    }),
+    'delete /api/v1/auth/account': object({
+      confirmation: z.literal('注销账号'),
+      password: text.optional(),
+      code: text.optional(),
+    }),
+    'put /api/v1/admin/mail/templates/{key}': object({
+      version,
+      enabled: z.boolean(),
+      subject: text,
+      text: text,
+      html: text,
+    }),
+    'put /api/v1/registrations/{id}/public-rank': object({
+      rank: z.number().int().positive().nullable(),
+      expectedRank: z.number().int().nullable().optional(),
+    }),
+    'post /api/v1/contests/{id}/files/distribute': object({
+      attachmentId: id,
+      registrationIds: z.array(id).min(1).max(500),
+    }),
+    'put /api/v1/admin/github': object({
+      version,
+      enabled: z.boolean(),
+      clientId: text,
+      clientSecret: text.optional(),
+      callbackUrl: text.optional(),
+    }),
+    'put /api/v1/admin/users/{id}/tags': object({ version, tags: userTagsSchema }),
     'delete /api/v1/registrations/{id}': registrationDeletionSchema,
     'post /api/v1/contests/{id}/rooms': roomSchema,
     'put /api/v1/contests/{id}/rooms/{roomId}': roomSchema,
@@ -344,11 +410,31 @@ export function describeApi(document: OpenAPIObject) {
       const op = raw as any;
       const external = url.startsWith('/api/automation') || url.startsWith('/api/integration');
       const publicPath =
-        /\/auth\/(me|login|register|forgot|reset|verify)/.test(url) ||
+        (method === 'post' &&
+          [
+            '/api/v1/auth/login',
+            '/api/v1/auth/register',
+            '/api/v1/auth/register/code',
+            '/api/v1/auth/forgot',
+            '/api/v1/auth/verify',
+            '/api/v1/auth/reset',
+            '/api/v1/auth/reset-code',
+          ].includes(url)) ||
         (url.startsWith('/api/v1/auth/feishu') && method === 'get') ||
-        (['/api/v1/health', '/api/v1/site', '/api/v1/contests', '/api/v1/contests/{id}'].includes(
-          url,
-        ) &&
+        ([
+          '/api/v1/health',
+          '/api/v1/site',
+          '/api/v1/contests',
+          '/api/v1/contests/{id}',
+          '/api/v1/contests/{id}/public-teams',
+          '/api/v1/contests/{id}/public-teams/export',
+          '/api/v1/files/public/{id}',
+          '/api/v1/auth/me',
+          '/api/v1/auth/verify',
+          '/api/v1/auth/providers',
+          '/api/v1/auth/github',
+          '/api/v1/auth/github/callback',
+        ].includes(url) &&
           method === 'get');
       op.security = external ? [{ bearer: [] }] : publicPath ? [] : [{ cookie: [] }];
       op.tags = [external ? 'External API' : (url.split('/')[3] ?? 'System')];
@@ -652,6 +738,19 @@ export function describeApi(document: OpenAPIObject) {
           description: 'Persistent job state',
           content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } },
         };
+      for (const [, name] of url.matchAll(/\{([^}]+)\}/g)) {
+        op.parameters ??= [];
+        if (!op.parameters.some((p: any) => p.in === 'path' && p.name === name))
+          op.parameters.push({
+            name,
+            in: 'path',
+            required: true,
+            schema: {
+              type: 'string',
+              ...(['id', 'roomId', 'personId'].includes(name!) ? { format: 'uuid' } : {}),
+            },
+          });
+      }
     }
   return document;
 }

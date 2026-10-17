@@ -116,7 +116,7 @@ try {
   checks.push(
     'PDF, source ZIP and LaTeX downloads have the exact hashes of the delivered artifacts',
   );
-  assert.equal(info.plugin.version, '0.2.0');
+  assert.equal(info.plugin.version, '0.2.1');
   assert.equal(info.plugin.hydroVersion, '5.0.7');
   assert.deepEqual(
     [...info.plugin.files].sort(),
@@ -139,7 +139,7 @@ try {
   }
   await expect(page.locator('#hydro-plugin .digest')).toContainText(info.plugin.sha256);
   checks.push(
-    'Versioned and stable Hydro 0.2.0 downloads match the whitelist, supported version and SHA-256',
+    'Versioned and stable Hydro 0.2.1 downloads match the whitelist, supported version and SHA-256',
   );
 
   await page.setViewportSize({ width: 390, height: 844 });

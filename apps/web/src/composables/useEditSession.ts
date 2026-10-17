@@ -2,11 +2,18 @@ import { computed, ref, onScopeDispose, type Ref } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
 const sessions = new Set<{ mayLeave: () => Promise<boolean>; cancel: () => void }>();
-export async function mayLeaveEdits() {
+export async function confirmLeaveEdits() {
   const active = [...sessions];
   for (const session of active) if (!(await session.mayLeave())) return false;
-  for (const session of active) session.cancel();
   return true;
+}
+export async function mayLeaveEdits() {
+  if (!(await confirmLeaveEdits())) return false;
+  discardEdits();
+  return true;
+}
+export function discardEdits() {
+  for (const session of sessions) session.cancel();
 }
 export function useEditSession<T extends object | undefined>(
   model: Ref<T> | T,

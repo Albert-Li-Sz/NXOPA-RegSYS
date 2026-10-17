@@ -6,7 +6,7 @@ import {
   DeleteObjectCommand,
   CreateBucketCommand,
 } from '@aws-sdk/client-s3';
-import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm, open } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -190,9 +190,16 @@ export async function putBlob(
 export async function readBlob(ref: StorageRef) {
   const key = safeKey(ref.storageKey);
   let bytes: Buffer;
-  if (!ref.storageBackend || ref.storageBackend === 'LOCAL')
-    bytes = await readFile(path.join(config.storage, key));
-  else {
+  if (!ref.storageBackend || ref.storageBackend === 'LOCAL') {
+    const file = await open(path.join(config.storage, key), 'r');
+    try {
+      if ((await file.stat()).size > 50 * 1024 * 1024)
+        throw new BadRequestException('存储文件超出大小限制');
+      bytes = await file.readFile();
+    } finally {
+      await file.close();
+    }
+  } else {
     const profile = await profileFor(ref.storageConfigId),
       s3 = client(profile);
     try {
@@ -345,13 +352,28 @@ export async function migrateObjects(profileId: string, jobId: string) {
     for (const row of rows) {
       const bytes = await readBlob(row),
         ref = await putBlob(
-          row.storageKey!,
+          `migrated-${randomUUID()}`,
           bytes,
           'mime' in row ? row.mime : 'application/pdf',
           profileId,
         );
-      if (kind === 'attachment') await db.attachment.update({ where: { id: row.id }, data: ref });
-      else await db.admissionDocument.update({ where: { id: row.id }, data: ref });
+      const unchanged = {
+        id: row.id,
+        storageKey: row.storageKey,
+        storageBackend: row.storageBackend,
+        storageConfigId: row.storageConfigId,
+      };
+      const updated =
+        kind === 'attachment'
+          ? await db.attachment.updateMany({
+              where: { ...unchanged, storageKey: row.storageKey!, deletedAt: null },
+              data: ref,
+            })
+          : await db.admissionDocument.updateMany({ where: unchanged, data: ref });
+      if (!updated.count) {
+        await removeBlob(ref);
+        continue;
+      }
       await db.job.update({ where: { id: jobId }, data: { result: { copied: ++copied } } });
     }
   }
@@ -361,8 +383,15 @@ export async function migrateObjects(profileId: string, jobId: string) {
     if (!old?.storageKey || (old.storageBackend === 'S3' && old.storageConfigId === profileId))
       continue;
     const bytes = await readBlob(old),
-      ref = await putBlob(old.storageKey, bytes, 'application/pdf', profileId);
-    await db.job.update({ where: { id: preview.id }, data: { result: json(ref) } });
+      ref = await putBlob(`migrated-${randomUUID()}`, bytes, 'application/pdf', profileId);
+    const updated = await db.job.updateMany({
+      where: { id: preview.id, state: 'SUCCESS', result: { equals: json(old) } },
+      data: { result: json(ref) },
+    });
+    if (!updated.count) {
+      await removeBlob(ref);
+      continue;
+    }
     await db.job.update({ where: { id: jobId }, data: { result: { copied: ++copied } } });
   }
   return { copied };

@@ -5,7 +5,7 @@ import { ArrowDown } from '@element-plus/icons-vue';
 import { defaultSite } from '@contest-center/contracts';
 import { api, auth } from './api';
 import { setClientCsrf } from './generated-client';
-import { mayLeaveEdits } from './composables/useEditSession';
+import { confirmLeaveEdits, discardEdits } from './composables/useEditSession';
 import { adminLevelLabels } from '@contest-center/contracts';
 import { adminCenters, centerTabs } from './admin-centers';
 const router = useRouter();
@@ -36,8 +36,9 @@ async function logout() {
   if (loggingOut.value) return;
   loggingOut.value = true;
   try {
-    if (!(await mayLeaveEdits())) return;
+    if (!(await confirmLeaveEdits())) return;
     await api('/auth/logout', 'POST');
+    discardEdits();
     auth.user = null;
     auth.csrf = '';
     setClientCsrf('');

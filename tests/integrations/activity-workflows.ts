@@ -467,7 +467,7 @@ try {
     true,
   );
   assert.equal((await alice.raw(`/api/v1/files/${privateFile.id}`)).status, 404);
-  assert.equal(await db.attachment.count({ where: { id: privateFile.id } }), 0);
+  assert.equal(await db.attachment.count({ where: { id: privateFile.id, deletedAt: null } }), 0);
   assert.equal(
     await db.remoteRevocation.count({ where: { registrationId: original.id, state: 'PENDING' } }),
     1,

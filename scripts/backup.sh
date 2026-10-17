@@ -7,6 +7,15 @@ destination="${1:-.runtime/backups}"
 mkdir -p "$destination"
 destination="$(cd "$destination" && pwd)"
 stage="$(mktemp -d "$destination/.backup-XXXXXX")"
+running_services=()
+restart(){
+  local status=$?
+  trap - EXIT
+  if [[ ${#running_services[@]} -gt 0 ]]; then compose start "${running_services[@]}" >/dev/null || status=1; fi
+  rm -rf "$stage" || status=1
+  exit "$status"
+}
+trap restart EXIT
 # The env file may already select the next release. Read the previous runtime
 # before stopping it so its database client matches the database being backed up.
 printf 'services:\n' > "$stage/runtime.yaml"
@@ -14,6 +23,7 @@ has_runtime=false
 for service in api worker; do
   container="$(compose ps -a -q "$service")"
   if [[ -n "$container" ]]; then
+    if [[ "$(docker inspect --format '{{.State.Running}}' "$container")" == true ]]; then running_services+=("$service"); fi
     image="$(docker inspect --format '{{.Image}}' "$container")"
     [[ "$image" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo 'Cannot identify the installed backup runtime.' >&2; exit 1; }
     printf '  %s:\n    image: %s\n    build: !reset null\n' "$service" "$image" >> "$stage/runtime.yaml"
@@ -21,8 +31,6 @@ for service in api worker; do
   fi
 done
 backup_compose(){ if [[ "$has_runtime" == true ]]; then compose -f "$stage/runtime.yaml" "$@"; else compose "$@"; fi; }
-restart(){ compose start api worker >/dev/null; rm -rf "$stage"; }
-trap restart EXIT
 compose stop api worker >/dev/null
 compose exec -T postgres pg_dump -U contest -d contest_center -Fc > "$stage/database.dump"
 has_s3_schema="$(compose exec -T postgres psql -U contest -d contest_center -Atqc "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Attachment' AND column_name='storageBackend')")"

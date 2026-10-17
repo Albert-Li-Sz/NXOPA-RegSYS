@@ -33,9 +33,11 @@ function environmentMail(): StoredMail {
           ? 'NONE'
           : process.env.SMTP_SECURE === 'true' || process.env.SMTP_SECURITY === 'TLS'
             ? 'TLS'
-            : port === 587
-              ? 'STARTTLS'
-              : 'NONE',
+            : port === 465
+              ? 'TLS'
+              : port === 587
+                ? 'STARTTLS'
+                : 'NONE',
     authEnabled: !!process.env.SMTP_USER,
     username: process.env.SMTP_USER ?? '',
     encryptedPassword: process.env.SMTP_PASSWORD ? encrypt(process.env.SMTP_PASSWORD) : '',
@@ -71,6 +73,8 @@ function view(s: Awaited<ReturnType<typeof settings>>): MailSettingsView {
   };
 }
 function transport(s: StoredServer) {
+  if (s.authEnabled && (!s.username || !s.encryptedPassword))
+    throw new BadRequestException('请填写邮件服务器用户名和密码或授权码');
   return nodemailer.createTransport({
     host: s.host,
     port: s.port,

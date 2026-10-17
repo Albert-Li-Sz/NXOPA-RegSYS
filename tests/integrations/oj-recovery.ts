@@ -91,6 +91,7 @@ try {
   r = await admin.api(`/registrations/${r.id}/review`, 'POST', {
     version: r.version,
     decision: 'APPROVED',
+    reason: '平台联调：确认个人参赛资格',
   });
   const previousBinding = (
     await admin.api(
@@ -194,6 +195,7 @@ try {
     version: r.version,
     decision: 'APPROVED',
     participationType: 'UNOFFICIAL',
+    reason: '平台联调：由正式调整为非正式参赛',
   });
   binding = await admin.api('/integrations/bindings', 'POST', {
     ...binding,

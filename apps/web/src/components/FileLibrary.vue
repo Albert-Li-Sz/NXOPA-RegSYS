@@ -159,8 +159,10 @@ async function send() {
 const publicUrl = (row: Data) =>
   new URL(link(row), publicBase.value || window.location.origin).href;
 onMounted(async () => {
-  publicBase.value = (await api('/site')).publicUrl;
-  await refresh();
+  await Promise.allSettled([
+    api('/site').then((site) => (publicBase.value = site.publicUrl)),
+    refresh(),
+  ]);
 });
 watch(
   () => [props.contestId, props.registrationId],

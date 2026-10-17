@@ -113,6 +113,14 @@ describe('mail template rendering and validation', () => {
     expect(output.html).toBe('<p>{{code}} &lt;b&gt;资料&lt;/b&gt;</p>');
     expect(renderMailTemplate(template, { ...context, status: '' }).text).not.toContain('状态：');
   });
+  it('preserves custom literal verification-code labels in business templates', () => {
+    const result = renderMailTemplate(
+      { subject: '{{subject}}', text: '资料\n验证码：\n请联系管理员', html: '' },
+      { ...context, code: '' },
+      'GENERIC',
+    );
+    expect(result.text).toContain('验证码：');
+  });
   it('handles long malformed tokens and unclosed legacy HTML in bounded time', () => {
     const start = performance.now();
     for (const source of [

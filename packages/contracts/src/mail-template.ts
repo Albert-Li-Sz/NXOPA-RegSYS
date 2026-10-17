@@ -299,7 +299,9 @@ export function renderMailTemplate(
     return output.join('');
   };
   // Older saved defaults did not have conditional blocks.
-  let text = render(template.text).replace(/\n验证码：\s*\n/, '\n');
+  let text = render(template.text);
+  if (template.text === legacyMailTemplate.text && !context.code)
+    text = text.replace(/\n验证码：\s*\n/, '\n');
   let html = render(stripLegacyParagraphs(template.html, context), true);
   if (authenticationMailCategories.includes(category) && context.code) {
     if (!hasVariable(template.text, 'code')) text += `\n验证码：${context.code}`;

@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, auth } from '../api';
+import { discardEdits } from '../composables/useEditSession';
 const props = defineProps<{
   contest: {
     id: string;
@@ -25,6 +26,7 @@ async function remove() {
       { type: 'warning', confirmButtonText: '永久删除', cancelButtonText: '取消' },
     );
     await api(`/contests/${props.contest.id}`, 'DELETE', { version: props.contest.version });
+    if (props.beforeRemove) discardEdits();
     ElMessage.success('活动及竞赛已删除');
     emit('deleted');
   } catch {

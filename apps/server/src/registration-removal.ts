@@ -116,7 +116,10 @@ export async function removeRegistration(
     ) {
       await tx.attachment.update({ where: { id: file.id }, data: { registrationId: null } });
     } else {
-      await tx.attachment.delete({ where: { id: file.id } });
+      await tx.attachment.update({
+        where: { id: file.id },
+        data: { registrationId: null, contestId: null, deletedAt: new Date(), name: 'deleted' },
+      });
       await enqueue(tx, 'OBJECT_DELETE', file.id, `removed-file:${file.id}`, {
         storageRef: objectRef(file),
       });

@@ -29,28 +29,40 @@ const value = (v: unknown) =>
           ? '是'
           : '否'
         : String(v);
+let sequence = 0;
+let controller: AbortController | undefined;
 function close() {
+  sequence++;
+  controller?.abort();
+  loading.value = false;
   if (preview.value) URL.revokeObjectURL(preview.value);
   preview.value = '';
   text.value = '';
 }
 async function viewFile(id: string) {
   close();
+  const current = sequence;
+  controller = new AbortController();
   open.value = true;
   loading.value = true;
   try {
-    const response = await fetch(`/api/v1/files/${id}`);
+    const response = await fetch(`/api/v1/files/${id}`, {
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]),
+    });
     if (!response.ok) throw new Error('附件无法访问');
     const blob = await response.blob();
+    const content =
+      blob.type === 'text/plain' && blob.size <= 1024 * 1024 ? await blob.text() : undefined;
+    if (current !== sequence) return;
     mime.value = blob.type;
     if (blob.type === 'application/pdf' || blob.type.startsWith('image/'))
       preview.value = URL.createObjectURL(blob);
-    else if (blob.type === 'text/plain' && blob.size <= 1024 * 1024) text.value = await blob.text();
+    else if (content !== undefined) text.value = content;
     else text.value = '此文件格式或大小暂不支持预览，请从附件列表下载查看。';
   } catch (e) {
-    text.value = (e as Error).message;
+    if (current === sequence) text.value = (e as Error).message;
   } finally {
-    loading.value = false;
+    if (current === sequence) loading.value = false;
   }
 }
 onBeforeUnmount(close);

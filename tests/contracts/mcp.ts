@@ -18,7 +18,7 @@ const transport = new StdioClientTransport({
   env: {
     ...(process.env as Record<string, string>),
     CONTEST_CENTER_TOKEN: token.token,
-    CONTEST_CENTER_URL: base,
+    CONTEST_CENTER_URL: `${base}/`,
   },
   stderr: 'pipe',
 });

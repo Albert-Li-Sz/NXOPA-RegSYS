@@ -205,6 +205,7 @@ export class PeopleService {
     });
   }
   async close(u: Principal, body: unknown, confirmCode: () => Promise<void>) {
+    await (await import('./auth.js')).rateLimit(`account-close:${u.id}`, 5);
     const b = z
       .object({
         confirmation: z.literal('注销账号'),
@@ -346,7 +347,11 @@ export class PeopleService {
     const registrations = contests
       ? await db.registration.findMany({
           where: { contestId: { in: contests } },
-          include: { people: true, coaches: true },
+          select: {
+            ownerId: true,
+            people: { select: { userId: true } },
+            coaches: { select: { userId: true } },
+          },
         })
       : undefined;
     let scoped = registrations

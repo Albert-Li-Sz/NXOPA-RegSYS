@@ -219,7 +219,8 @@ export class SupportService {
         where: { id },
         data: {
           version: { increment: 1 },
-          status: b.status ?? (manager ? 'WAITING_USER' : 'OPEN'),
+          status:
+            b.status ?? (t.status === 'CLOSED' ? 'CLOSED' : manager ? 'WAITING_USER' : 'OPEN'),
         },
       });
       await audit(tx, u.id, 'TICKET_REPLY', id);

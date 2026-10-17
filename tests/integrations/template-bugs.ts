@@ -4,6 +4,7 @@ import { Client } from './client.js';
 import { redis } from '../../apps/server/src/auth.js';
 import { db } from '../../apps/server/src/db.js';
 const admin = await new Client().login('admin');
+const savedTemplates = await db.mailTemplate.findMany();
 const browser = await chromium.launch({
   headless: true,
   ...(process.platform === 'darwin'
@@ -41,6 +42,10 @@ try {
   await expect(text).toHaveValue('保留未保存草稿 {{message}}');
   console.log('PASS 模板保存正常且不会丢失其他类型的编辑草稿');
 } finally {
+  await db.$transaction(async (tx) => {
+    await tx.mailTemplate.deleteMany();
+    if (savedTemplates.length) await tx.mailTemplate.createMany({ data: savedTemplates });
+  });
   await browser.close();
   await redis.quit();
   await db.$disconnect();

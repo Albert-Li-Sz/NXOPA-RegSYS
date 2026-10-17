@@ -13,20 +13,29 @@ try {
   const admin = await new Client().login('admin');
   let r = await admin.api(`/registrations/${context.registrationId}`);
   if (mode === 'DOMJUDGE') {
-    r = await admin.api(`/registrations/${r.id}`, 'PUT', {
+    const applicant = await new Client().login('alice');
+    assert.equal(r.ownerId, applicant.user.id);
+    r = await applicant.api(`/registrations/${r.id}`, 'PUT', {
       ...r,
       answers: {
         ...r.answers,
         registration: { ...r.answers.registration, team_label: `E-${run}` },
       },
     });
-    r = await admin.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version });
+    assert.equal(
+      (await admin.raw(`/api/v1/registrations/${r.id}/submit`, 'POST', { version: r.version }))
+        .status,
+      403,
+      'An administrator cannot submit a registration on the applicant behalf',
+    );
+    r = await applicant.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version });
   }
   if (r.participationType !== 'UNOFFICIAL' || r.review !== 'APPROVED')
     r = await admin.api(`/registrations/${r.id}/review`, 'POST', {
       version: r.version,
       decision: 'APPROVED',
       participationType: 'UNOFFICIAL',
+      reason: '平台联调：确认非正式参赛资格',
     });
   const baseUrl = mode === 'HYDRO' ? 'http://localhost:58888' : 'http://localhost:58901';
   let remoteContestId = '',
@@ -259,10 +268,22 @@ try {
   assert.equal(job.result.remoteUserId, verified.remoteUserId);
   report.checks.push('远端提交后失败恢复不重复创建账号与队伍');
   r = await admin.api(`/registrations/${r.id}`);
+  assert.equal(
+    (
+      await admin.raw(`/api/v1/registrations/${r.id}/review`, 'POST', {
+        version: r.version,
+        decision: 'APPROVED',
+        participationType: 'OFFICIAL',
+      })
+    ).status,
+    400,
+    'Amending an approved registration requires a review reason',
+  );
   r = await admin.api(`/registrations/${r.id}/review`, 'POST', {
     version: r.version,
     decision: 'APPROVED',
     participationType: 'OFFICIAL',
+    reason: '平台联调：由非正式调整为正式参赛',
   });
   assert.ok(r.eligible);
   const adjusted = await admin.api(`/integrations/registrations/${r.id}/sync`, 'POST', {

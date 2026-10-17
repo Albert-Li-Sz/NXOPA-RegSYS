@@ -11,14 +11,14 @@ export async function synchronizePlatform(job: { id: string; payload: unknown })
   const payload = job.payload as Record<string, any>;
   const mappingId = String(payload.mappingId);
   const initial = await db.$transaction(async (tx) => {
+    const found = await tx.accountMapping.findUniqueOrThrow({ where: { id: mappingId } });
+    await lock(tx, found.registrationId);
     await lock(tx, `sync:${mappingId}`);
     const mapping = await tx.accountMapping.findUniqueOrThrow({ where: { id: mappingId } });
-    await lock(tx, mapping.registrationId);
     const registration = await tx.registration.findUniqueOrThrow({
       where: { id: mapping.registrationId },
       include: registrationInclude,
     });
-    await lock(tx, registration.contestId);
     if (
       mapping.syncJobId &&
       mapping.syncJobId !== job.id &&
@@ -82,9 +82,8 @@ export async function synchronizePlatform(job: { id: string; payload: unknown })
   }
   async function checkpoint(output?: ProvisioningResultV1) {
     const valid = await db.$transaction(async (tx) => {
-      await lock(tx, `sync:${mappingId}`);
       await lock(tx, registration.id);
-      await lock(tx, registration.contestId);
+      await lock(tx, `sync:${mappingId}`);
       if (!(await current(tx))) {
         if (output)
           await recordRemoteRevocation(

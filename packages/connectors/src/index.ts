@@ -11,16 +11,24 @@ const headers = (c: ConnectorConfiguration) => ({
     ? `Bearer ${c.credentials.token}`
     : `Basic ${Buffer.from(`${c.credentials.username}:${c.credentials.password}`).toString('base64')}`,
 });
+export class PlatformHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    path: string,
+  ) {
+    super(`Platform HTTP ${status} at ${path}`);
+  }
+}
 async function request(c: ConnectorConfiguration, path: string, init: RequestInit = {}) {
   const remaining = c.requestDeadline ? c.requestDeadline - Date.now() : 20000;
   if (remaining <= 0) throw new Error('Platform request deadline exceeded');
-  const r = await fetch(`${c.baseUrl.replace(/\/$/, '')}${path}`, {
+  const r = await (c.request ?? fetch)(`${c.baseUrl.replace(/\/+$/, '')}${path}`, {
     ...init,
     headers: { ...headers(c), ...init.headers },
     redirect: 'error',
     signal: AbortSignal.timeout(Math.min(20000, remaining)),
   });
-  if (!r.ok) throw new Error(`Platform HTTP ${r.status} at ${path}`);
+  if (!r.ok) throw new PlatformHttpError(r.status, path);
   return r.json();
 }
 export class HydroConnector implements ContestPlatformConnector {
@@ -151,6 +159,7 @@ export class DOMjudgeConnector implements ContestPlatformConnector {
     return input.remoteTeamId ?? `cc-${input.envelope.registrationId.replaceAll('-', '')}`;
   }
   private desired(c: ConnectorConfiguration, input: ProvisioningInput) {
+    if (!input.envelope.people.length) throw new Error('报名成员不能为空');
     const fields = input.envelope.form?.answers.registration as Record<string, unknown> | undefined;
     const unofficial =
       c.importMode === 'FORCE_UNOFFICIAL' || input.envelope.participationType === 'UNOFFICIAL';
@@ -198,7 +207,7 @@ export class DOMjudgeConnector implements ContestPlatformConnector {
     try {
       team = await request(c, teamPath);
     } catch (e) {
-      if (!String(e).includes('HTTP 404')) throw e;
+      if (!(e instanceof PlatformHttpError) || e.status !== 404) throw e;
     }
     // DOMjudge 9.0.1 imports teams by external ID, so repeated POST updates the same team.
     if (!team || input.allowSharedTeamUpdate !== false)

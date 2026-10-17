@@ -7,7 +7,6 @@ import {
   timingSafeEqual,
   hkdfSync,
 } from 'node:crypto';
-import dns from 'node:dns/promises';
 import {
   BadRequestException,
   ConflictException,
@@ -143,21 +142,6 @@ export function same(a: string, b: string) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 export async function safeUrl(raw: string) {
-  const u = new URL(raw);
-  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password)
-    throw new BadRequestException('仅支持 HTTP(S) 地址');
-  if (config.production && u.protocol !== 'https:')
-    throw new BadRequestException('生产环境外部连接需要 HTTPS');
-  if (!config.allowPrivate) {
-    const records = await dns.lookup(u.hostname, { all: true });
-    if (
-      records.some((x) =>
-        /^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.|::1$|f[cd]|fe80)/i.test(
-          x.address,
-        ),
-      )
-    )
-      throw new BadRequestException('此地址不在允许的公网范围');
-  }
-  return u;
+  const { integrationTarget } = await import('./integration-http.js');
+  return (await integrationTarget(raw)).url;
 }

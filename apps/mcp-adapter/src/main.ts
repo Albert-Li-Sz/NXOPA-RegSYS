@@ -1,7 +1,18 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-const base = process.env.CONTEST_CENTER_URL ?? 'http://localhost:3000';
+const base = (process.env.CONTEST_CENTER_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
+const baseUrl = new URL(base);
+if (
+  !['http:', 'https:'].includes(baseUrl.protocol) ||
+  baseUrl.username ||
+  baseUrl.password ||
+  baseUrl.search ||
+  baseUrl.hash
+)
+  throw new Error(
+    'CONTEST_CENTER_URL must be an HTTP(S) base URL without credentials, query or fragment',
+  );
 const token = process.env.CONTEST_CENTER_TOKEN;
 if (!token) throw new Error('CONTEST_CENTER_TOKEN is required');
 const server = new McpServer({ name: 'contest-center', version: '1.0.0' });
@@ -9,10 +20,24 @@ async function query(path: string) {
   const response = await fetch(`${base}/api/automation/v1${path}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(15000),
+    redirect: 'error',
   });
-  const result = await response.json();
+  const content = await response.text();
+  let result: unknown;
+  try {
+    result = content ? JSON.parse(content) : null;
+  } catch {
+    result = `HTTP ${response.status}: upstream returned a non-JSON response`;
+  }
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+    content: [
+      {
+        type: 'text' as const,
+        text: response.ok
+          ? JSON.stringify(result)
+          : `HTTP ${response.status}: ${JSON.stringify(result)}`,
+      },
+    ],
     isError: !response.ok,
   };
 }

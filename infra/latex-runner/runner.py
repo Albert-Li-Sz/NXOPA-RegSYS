@@ -67,8 +67,8 @@ while True:
     for request in ROOT.glob('*/request.json'):
         job=request.parent
         if (job/'result.json').exists() or (job/'running').exists(): continue
-        owner=job.stat().st_uid
         try:
+            owner=job.stat().st_uid
             (job/'running').touch()
             run(job)
             result={'ok':True}
@@ -76,13 +76,19 @@ while True:
             result={'ok':False,'error':str(error)[-2500:]}
         finally:
             shutil.rmtree(job/'input',ignore_errors=True)
-            for p in job.iterdir():
-                os.chown(p,owner,owner)
-            os.chown(job,owner,owner)
-            os.chmod(job,0o700)
-        temp=job/'result.tmp'
-        temp.write_text(json.dumps(result))
-        os.chown(temp,owner,owner)
-        os.chmod(temp,0o600)
-        temp.rename(job/'result.json')
+            try:
+                for p in job.iterdir():
+                    os.chown(p,owner,owner)
+                os.chown(job,owner,owner)
+                os.chmod(job,0o700)
+            except FileNotFoundError:
+                pass
+        try:
+            temp=job/'result.tmp'
+            temp.write_text(json.dumps(result))
+            os.chown(temp,owner,owner)
+            os.chmod(temp,0o600)
+            temp.rename(job/'result.json')
+        except FileNotFoundError:
+            pass  # A cancelled or expired execution may have removed its spool.
     time.sleep(0.5)

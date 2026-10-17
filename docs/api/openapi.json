@@ -173,7 +173,63 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "LOCAL",
+                      "S3"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "region": {
+                    "type": "string"
+                  },
+                  "bucket": {
+                    "type": "string"
+                  },
+                  "prefix": {
+                    "type": "string"
+                  },
+                  "accessKey": {
+                    "type": "string"
+                  },
+                  "secretKey": {
+                    "type": "string"
+                  },
+                  "forcePathStyle": {
+                    "type": "boolean"
+                  },
+                  "createBucket": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "version",
+                  "mode"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/notifications/mail": {
@@ -325,6 +381,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -770,7 +835,66 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "level": {
+                    "type": "string",
+                    "enum": [
+                      "SYSTEM",
+                      "SENIOR",
+                      "CONTEST"
+                    ]
+                  },
+                  "contestId": {
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "VIEW",
+                        "CONTEST",
+                        "REGISTRATIONS",
+                        "FINANCE",
+                        "ADMISSIONS",
+                        "FILES",
+                        "SUPPORT",
+                        "STUDENTS",
+                        "INTEGRATIONS"
+                      ]
+                    }
+                  },
+                  "expiresAt": {
+                    "nullable": true,
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  }
+                },
+                "required": [
+                  "userId",
+                  "level"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/admin/grants/{id}": {
@@ -794,6 +918,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -1041,7 +1174,17 @@
     "/api/v1/admin/students/{id}": {
       "get": {
         "operationId": "ApiController_studentDetail",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1287,7 +1430,17 @@
     "/api/v1/admin/teachers/{id}": {
       "get": {
         "operationId": "ApiController_teacherDetail",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1366,7 +1519,17 @@
     "/api/v1/admin/users/{id}": {
       "get": {
         "operationId": "ApiController_userDetail",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1461,6 +1624,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -1604,6 +1776,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -1730,6 +1911,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -1935,6 +2125,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -2009,7 +2208,33 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "APPROVED",
+                      "REJECTED"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "decision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/auth/identity": {
@@ -2184,7 +2409,47 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "STUDENT",
+                      "TEACHER"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/components/schemas/Value23___schema0"
+                    }
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name",
+                  "profile",
+                  "version"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/auth/grants/{id}": {
@@ -2208,6 +2473,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -2367,7 +2641,26 @@
     "/api/v1/auth/verify-code": {
       "post": {
         "operationId": "ApiController_verifyCode",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -2436,7 +2729,31 @@
         "tags": [
           "auth"
         ],
-        "security": []
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^\\d{6}$"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/auth/reset-code": {
@@ -2511,7 +2828,39 @@
         "tags": [
           "auth"
         ],
-        "security": []
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^\\d{6}$"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "code",
+                  "email",
+                  "password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/auth/closure-code": {
@@ -2707,7 +3056,35 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "confirmation": {
+                    "type": "string",
+                    "enum": [
+                      "注销账号"
+                    ]
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "confirmation"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/admin/mail/templates": {
@@ -2810,6 +3187,14 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2911,7 +3296,17 @@
     "/api/v1/admin/mail/templates/tests/{id}": {
       "get": {
         "operationId": "ApiController_templateTestStatus",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -3008,6 +3403,14 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3082,13 +3485,60 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "html": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "version",
+                  "enabled",
+                  "subject",
+                  "text",
+                  "html"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/contests/{id}/public-teams": {
       "get": {
         "operationId": "ApiController_publicTeams",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -3157,17 +3607,23 @@
         "tags": [
           "contests"
         ],
-        "security": [
-          {
-            "cookie": []
-          }
-        ]
+        "security": []
       }
     },
     "/api/v1/contests/{id}/public-teams/export": {
       "get": {
         "operationId": "ApiController_publicTeamsExport",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -3236,11 +3692,7 @@
         "tags": [
           "contests"
         ],
-        "security": [
-          {
-            "cookie": []
-          }
-        ]
+        "security": []
       }
     },
     "/api/v1/registrations/{id}/public-rank": {
@@ -3264,6 +3716,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -3338,7 +3799,36 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rank": {
+                    "nullable": true,
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991
+                  },
+                  "expectedRank": {
+                    "nullable": true,
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "rank"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/files": {
@@ -3622,6 +4112,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -3700,7 +4199,17 @@
       },
       "get": {
         "operationId": "ApiController_file",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -3797,6 +4306,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -3871,13 +4389,55 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "attachmentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "registrationIds": {
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  }
+                },
+                "required": [
+                  "attachmentId",
+                  "registrationIds"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/files/public/{id}": {
       "get": {
         "operationId": "ApiController_publicFile",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -3946,11 +4506,7 @@
         "tags": [
           "files"
         ],
-        "security": [
-          {
-            "cookie": []
-          }
-        ]
+        "security": []
       }
     },
     "/api/v1/auth/providers": {
@@ -4025,11 +4581,7 @@
         "tags": [
           "auth"
         ],
-        "security": [
-          {
-            "cookie": []
-          }
-        ]
+        "security": []
       }
     },
     "/api/v1/overview": {
@@ -4714,11 +5266,7 @@
         "tags": [
           "auth"
         ],
-        "security": [
-          {
-            "cookie": []
-          }
-        ]
+        "security": []
       },
       "delete": {
         "operationId": "ApiController_githubUnlink",
@@ -4889,11 +5437,7 @@
         "tags": [
           "auth"
         ],
-        "security": [
-          {
-            "cookie": []
-          }
-        ]
+        "security": []
       }
     },
     "/api/v1/admin/github": {
@@ -5068,7 +5612,42 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "clientId": {
+                    "type": "string"
+                  },
+                  "clientSecret": {
+                    "type": "string"
+                  },
+                  "callbackUrl": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "version",
+                  "enabled",
+                  "clientId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/admin/user-tags": {
@@ -5171,6 +5750,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -5245,13 +5833,46 @@
           {
             "cookie": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "tags": {}
+                },
+                "required": [
+                  "version",
+                  "tags"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/contests/{id}/statistics": {
       "get": {
         "operationId": "ApiController_statistics",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -6155,6 +6776,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -7020,7 +7650,17 @@
     "/api/v1/contests/{id}": {
       "get": {
         "operationId": "ApiController_contest",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -7111,6 +7751,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -7217,6 +7866,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -7345,7 +8003,17 @@
     "/api/v1/contests/{id}/rooms": {
       "get": {
         "operationId": "ApiController_rooms",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -7440,6 +8108,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -7588,6 +8265,24 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -7734,6 +8429,24 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -7853,6 +8566,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -8040,6 +8762,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -8227,6 +8958,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -8441,6 +9181,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -8601,7 +9350,17 @@
     "/api/v1/finance/accounts/{id}": {
       "get": {
         "operationId": "ApiController_financeAccount",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -8699,6 +9458,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -8813,7 +9581,17 @@
       },
       "get": {
         "operationId": "ApiController_detail",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -8908,6 +9686,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -9613,6 +10400,23 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "collection",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -9727,6 +10531,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -9846,6 +10659,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -9984,6 +10806,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -10118,6 +10949,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -10237,6 +11077,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -10465,7 +11314,16 @@
     "/api/v1/invitations/{token}": {
       "get": {
         "operationId": "ApiController_invitation",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -10563,6 +11421,14 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -10680,6 +11546,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -10778,6 +11653,23 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "coachId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -10895,6 +11787,23 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "coachId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11019,6 +11928,24 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "personId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -11147,6 +12074,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -11290,6 +12226,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -11424,6 +12369,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -11541,6 +12495,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -11665,6 +12628,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -11795,6 +12767,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -11988,6 +12969,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -12408,7 +13398,17 @@
     "/api/v1/support/{id}": {
       "get": {
         "operationId": "ApiController_ticketDetail",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -12505,6 +13505,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -13149,6 +14158,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -13437,7 +14455,17 @@
     "/api/v1/admissions/{id}/download": {
       "get": {
         "operationId": "ApiController_admissionFile",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -13516,7 +14544,17 @@
     "/api/v1/jobs/{id}": {
       "get": {
         "operationId": "ApiController_job",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Persistent job state",
@@ -13602,7 +14640,17 @@
     "/api/v1/jobs/{id}/download": {
       "get": {
         "operationId": "ApiController_jobDownload",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -13939,6 +14987,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -14349,6 +15406,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -14447,6 +15513,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -14548,7 +15623,17 @@
     "/api/v1/integrations/registrations/{id}/credentials": {
       "get": {
         "operationId": "ApiController_credentials",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -14812,6 +15897,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -15133,6 +16227,15 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -16524,7 +17627,17 @@
     "/api/v1/admin/mail/tests/{id}": {
       "get": {
         "operationId": "ApiController_mailTestStatus",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -17113,7 +18226,17 @@
     "/api/v1/integrations/bindings/{id}/metadata": {
       "get": {
         "operationId": "ApiController_remoteMetadata",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -17263,6 +18386,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -17377,6 +18509,23 @@
               "maxLength": 200
             },
             "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "schoolId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -17665,7 +18814,17 @@
     "/api/automation/v1/registrations/{id}": {
       "get": {
         "operationId": "ExternalController_registration",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -17823,7 +18982,17 @@
     "/api/automation/v1/support/{id}": {
       "get": {
         "operationId": "ExternalController_ticket",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -18070,7 +19239,17 @@
     "/api/integration/v1/registrations/{id}/provision": {
       "post": {
         "operationId": "ExternalController_provision",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -18170,7 +19349,17 @@
     "/api/integration/v1/registrations/{id}/result": {
       "post": {
         "operationId": "ExternalController_callback",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -18303,7 +19492,7 @@
                       "verification": {
                         "type": "object",
                         "additionalProperties": {
-                          "$ref": "#/components/schemas/Value77___schema0"
+                          "$ref": "#/components/schemas/Value89___schema0"
                         }
                       }
                     },
@@ -18330,7 +19519,17 @@
     "/api/integration/v1/jobs/{id}": {
       "get": {
         "operationId": "ExternalController_result",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Persistent job state",
@@ -20510,7 +21709,7 @@
         ],
         "additionalProperties": false
       },
-      "Value77___schema0": {
+      "Value23___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -20531,13 +21730,45 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value77___schema0"
+              "$ref": "#/components/schemas/Value23___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value77___schema0"
+              "$ref": "#/components/schemas/Value23___schema0"
+            }
+          }
+        ]
+      },
+      "Value89___schema0": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              null
+            ]
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Value89___schema0"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Value89___schema0"
             }
           }
         ]

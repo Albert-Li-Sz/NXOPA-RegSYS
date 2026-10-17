@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
-NXOPA_INSTALLER_VERSION=v0.6.2
+NXOPA_INSTALLER_VERSION=v0.6.3
 
 usage() {
   cat <<'EOF'
@@ -65,26 +65,56 @@ fetch_bundle() {
     case "$entry" in "nxopa-regsys-$tag/"*) ;; *) echo '安装包路径无效。' >&2; return 1 ;; esac
     case "/$entry/" in */../*|*/./*) echo '安装包路径无效。' >&2; return 1 ;; esac
   done < <(tar -tzf "$output/$name")
-  tar -xzf "$output/$name" -C "$output"
+  tar --no-same-owner --no-same-permissions -xzf "$output/$name" -C "$output"
   [[ -f "$output/nxopa-regsys-$tag/install.sh" && -f "$output/nxopa-regsys-$tag/deploy/lib.sh" ]] || { echo '发布包不支持新版一键入口。' >&2; return 1; }
   use_versioned_images "$output/nxopa-regsys-$tag"
 }
 
 copy_bundle() {
-  local source="$1" destination="$2" file relative
+  local source="$1" destination="$2" file relative directory component parent
+  local components=()
   mkdir -p "$destination"
+  [[ ! -L "$destination" ]] || { echo '安装目录不能为符号链接。' >&2; return 1; }
+  if [[ "$(id -u)" == 0 ]]; then chown 0:0 "$destination"; chmod go-w "$destination"; fi
   # Release archives contain a whitelist and no real .env. Existing credentials remain intact.
   while IFS= read -r file; do
     relative="${file#"$source/"}"
     case "$relative" in deploy/.env|*/backups/*|*/.env) echo '拒绝覆盖实例配置。' >&2; return 1 ;; esac
-    mkdir -p "$(dirname "$destination/$relative")"
+    directory="$destination"
+    parent="$(dirname "$relative")"
+    IFS=/ read -r -a components <<< "$parent"
+    for component in "${components[@]}"; do
+      [[ "$component" != . ]] || continue
+      directory="$directory/$component"
+      [[ ! -L "$directory" ]] || { echo '安装材料目录不能为符号链接。' >&2; return 1; }
+      mkdir -p "$directory"
+      if [[ "$(id -u)" == 0 ]]; then chown 0:0 "$directory"; chmod go-w "$directory"; fi
+    done
+    [[ ! -L "$destination/$relative" ]] || { echo '安装材料不能为符号链接。' >&2; return 1; }
     cp -p "$file" "$destination/$relative"
+    if [[ "$(id -u)" == 0 ]]; then chown 0:0 "$destination/$relative"; fi
   done < <(find "$source" -type f)
   if [[ ! -f "$destination/deploy/.env" && -f "$destination/install/.env" ]]; then
     cp "$destination/install/.env" "$destination/deploy/.env"
     chmod 600 "$destination/deploy/.env"
     printf '已保留旧实例的项目名与密钥，配置迁移到 deploy/.env。\n'
   fi
+}
+installer_env_value() {
+  local key="$1" file="$2"
+  awk -v key="$key" '
+    /^[[:space:]]*#/ { next }
+    {
+      line=$0; sub(/^[[:space:]]*(export[[:space:]]+)?/, "", line)
+      if (line !~ "^" key "[[:space:]]*=") next
+      sub(/^[^=]*=[[:space:]]*/, "", line); sub(/[[:space:]]+$/, "", line)
+      if (line ~ /^"/) { sub(/^"/, "", line); sub(/"[[:space:]]*(#.*)?$/, "", line) }
+      else if (line ~ /^\047/) { sub(/^\047/, "", line); sub(/\047[[:space:]]*(#.*)?$/, "", line) }
+      else sub(/[[:space:]]+#.*$/, "", line)
+      value=line
+    }
+    END { print value }
+  ' "$file"
 }
 
 latest_tag() {
@@ -323,7 +353,7 @@ main() {
   case "$action" in help|-h|--help) usage; exit 0 ;; esac
   target_root="${NXOPA_ROOT:-$script_root}"
   if [[ -z "${NXOPA_GITHUB_PREFIX+x}" && -f "$target_root/deploy/.env" ]]; then
-    NXOPA_GITHUB_PREFIX="$(awk -F= '$1=="NXOPA_GITHUB_PREFIX" {sub(/^[^=]*=/, ""); print; exit}' "$target_root/deploy/.env")"; export NXOPA_GITHUB_PREFIX
+    NXOPA_GITHUB_PREFIX="$(installer_env_value NXOPA_GITHUB_PREFIX "$target_root/deploy/.env")"; export NXOPA_GITHUB_PREFIX
   fi
   use_versioned_images "$target_root"
   material_tag="$(awk -F= '$1=="IMAGE_TAG" {print $2; exit}' "$target_root/deploy/.env.example" 2>/dev/null || true)"

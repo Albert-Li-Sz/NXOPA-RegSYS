@@ -196,6 +196,23 @@ watch(tab, (value) => router.replace({ path: route.path, query: { ...route.query
 const managedContests = () =>
   contests.value.filter((c) => auth.user?.isAdmin || auth.user?.contestIds.includes(c.id));
 onMounted(refresh);
+onMounted(() => {
+  if (route.query.tab !== undefined && route.query.tab !== tab.value)
+    void router.replace({ path: route.path, query: { ...route.query, tab: tab.value } });
+});
+async function revokeToken(id: string) {
+  try {
+    await ElMessageBox.confirm(
+      '撤销后，使用此 Token 的集成将无法访问系统。确认继续？',
+      '撤销 API Token',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
+  await api(`/admin/tokens/${id}`, 'DELETE');
+  await refresh();
+}
 function editInstance(i?: Data) {
   instance.value = i
     ? { ...i, credentials: {} }
@@ -826,11 +843,7 @@ async function webhook() {
           ><template #default="{ row }">{{ date(row.expiresAt) }}</template></el-table-column
         ><el-table-column label="操作" width="100"
           ><template #default="{ row }"
-            ><el-button
-              v-if="!row.revoked"
-              text
-              type="danger"
-              @click="api(`/admin/tokens/${row.id}`, 'DELETE').then(refresh)"
+            ><el-button v-if="!row.revoked" text type="danger" @click="revokeToken(row.id)"
               >撤销</el-button
             ><span v-else>已撤销</span></template
           ></el-table-column

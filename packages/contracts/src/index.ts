@@ -475,6 +475,8 @@ export interface ProvisioningResultV1 {
   verification?: Record<string, unknown>;
 }
 export interface ConnectorConfiguration {
+  /** Server-owned transport; validates and pins DNS for every outgoing request. */
+  request?: (url: string, init: RequestInit) => Promise<Response>;
   /** Internal absolute deadline for one provisioning attempt. */
   requestDeadline?: number;
   baseUrl: string;

@@ -28,10 +28,11 @@ async function load() {
     api('/contests?all=true'),
   ]);
 }
+let searchSequence = 0;
 async function searchUsers(query: string) {
-  users.value = (
-    await api(`/admin/users?page=1&pageSize=100&search=${encodeURIComponent(query)}`)
-  ).items;
+  const sequence = ++searchSequence;
+  const result = await api(`/admin/users?page=1&pageSize=100&search=${encodeURIComponent(query)}`);
+  if (sequence === searchSequence) users.value = result.items;
 }
 async function create() {
   form.value = {
@@ -125,7 +126,7 @@ onMounted(load);
       ><el-table-column label="操作" width="100"
         ><template #default="{ row }"
           ><el-button
-            v-if="!row.revokedAt && (row.level === 'CONTEST' || isSystemAdmin())"
+            v-if="state(row) === '有效' && (row.level === 'CONTEST' || isSystemAdmin())"
             text
             type="danger"
             @click="revoke(row)"

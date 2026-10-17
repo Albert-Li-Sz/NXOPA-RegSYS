@@ -1,4 +1,4 @@
-import { secureCookies } from './site-settings.js';
+import { secureCookies, publicUrl } from './site-settings.js';
 import { BadRequestException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -46,8 +46,8 @@ async function settings(database: Tx = db) {
     version: row?.version ?? 0,
   };
 }
-function callbackUrl(req: AuthRequest, value: string) {
-  const url = new URL(value || `${req.protocol}://${req.get('host')}/api/v1/auth/github/callback`);
+async function callbackUrl(req: AuthRequest, value: string) {
+  const url = new URL(value || '/api/v1/auth/github/callback', await publicUrl());
   if (
     !['http:', 'https:'].includes(url.protocol) ||
     url.username ||
@@ -84,7 +84,7 @@ export class GithubService {
       enabled: s.value.enabled,
       clientId: s.value.clientId,
       callbackUrl: s.value.callbackUrl,
-      effectiveCallbackUrl: callbackUrl(req, s.value.callbackUrl),
+      effectiveCallbackUrl: await callbackUrl(req, s.value.callbackUrl),
       secretConfigured: !!s.value.encryptedSecret,
       version: s.version,
     };
@@ -100,7 +100,7 @@ export class GithubService {
         callbackUrl: z.string().trim().max(2048).default(''),
       })
       .parse(body);
-    if (b.callbackUrl) callbackUrl(req, b.callbackUrl);
+    if (b.callbackUrl) await callbackUrl(req, b.callbackUrl);
     await db.$transaction(async (tx) => {
       await lock(tx, `setting:${settingKey}`);
       const previous = await settings(tx);
@@ -150,7 +150,7 @@ export class GithubService {
     const state = opaqueToken(),
       verifier = opaqueToken();
     const record = {
-      redirectUri: callbackUrl(req, s.value.callbackUrl),
+      redirectUri: await callbackUrl(req, s.value.callbackUrl),
       verifier,
       fingerprint: fingerprint(s.value),
       next: githubReturnPath(req.query.next),

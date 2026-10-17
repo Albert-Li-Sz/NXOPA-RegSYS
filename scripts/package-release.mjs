@@ -1,20 +1,39 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, writeFile, chmod } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateReleaseImages } from './release-images.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
-assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.6.2');
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.6.3');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 const output = join(root, 'dist/release');
 const stage = join(root, '.runtime/release-package');
 const folder = `nxopa-regsys-${tag}`;
+const ownerArguments = /bsdtar/i.test(execFileSync('tar', ['--version'], { encoding: 'utf8' }))
+  ? ['--uid', '0', '--gid', '0', '--uname', 'root', '--gname', 'root']
+  : ['--owner=0', '--group=0', '--numeric-owner'];
+async function normalizeModes(directory) {
+  await chmod(directory, 0o755);
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const file = join(directory, entry.name);
+    if (entry.isDirectory()) await normalizeModes(file);
+    else await chmod(file, entry.name.endsWith('.sh') ? 0o755 : 0o644);
+  }
+}
+async function archiveBundle() {
+  await normalizeModes(join(stage, folder));
+  execFileSync(
+    'tar',
+    [...ownerArguments, '-czf', join(output, `${folder}-install.tar.gz`), '-C', stage, folder],
+    { env: { ...process.env, COPYFILE_DISABLE: '1' } },
+  );
+}
 await rm(output, { recursive: true, force: true });
 await rm(stage, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
@@ -67,9 +86,7 @@ try {
     join(stage, folder, 'RELEASE.json'),
     JSON.stringify({ tag, commit, mode: 'images' }, null, 2),
   );
-  execFileSync('tar', ['-czf', join(output, `${folder}-install.tar.gz`), '-C', stage, folder], {
-    env: { ...process.env, COPYFILE_DISABLE: '1' },
-  });
+  await archiveBundle();
   for (const name of ['configuration-guide.pdf', 'configuration-guide-source.zip']) {
     await cp(join(root, 'output/pdf', name), join(output, name));
   }
@@ -101,7 +118,7 @@ try {
       ),
     );
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+    if (error.code !== 'ENOENT' || process.env.CI) throw error;
   }
   if (records) {
     validateReleaseImages({ records, tag, commit, prefix });
@@ -114,9 +131,7 @@ try {
       ),
     );
     await writeFile(join(stage, folder, 'images.json'), JSON.stringify(records, null, 2));
-    execFileSync('tar', ['-czf', join(output, `${folder}-install.tar.gz`), '-C', stage, folder], {
-      env: { ...process.env, COPYFILE_DISABLE: '1' },
-    });
+    await archiveBundle();
   }
   for (const arch of ['amd64', 'arm64']) {
     const name = join(root, 'dist/installation-reports', `installation-${arch}`, 'install.json');
@@ -222,6 +237,7 @@ try {
       'test:workflow-upgrade',
       'test:bugs',
       'test:security',
+      'test:audit-fixes',
       'test:permissions',
       'test:file-race',
       'test:load',

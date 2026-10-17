@@ -6,10 +6,16 @@ import { api, date } from '../api';
 import type { Data } from '../types';
 const props = defineProps<{ contestId?: string }>();
 const rows = ref<Data[]>([]);
+const error = ref('');
 async function load() {
-  rows.value = await api(
-    `/integrations/revocations${props.contestId ? `?contestId=${props.contestId}` : ''}`,
-  );
+  try {
+    error.value = '';
+    rows.value = await api(
+      `/integrations/revocations${props.contestId ? `?contestId=${props.contestId}` : ''}`,
+    );
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '撤权待办加载失败';
+  }
 }
 async function complete(row: Data) {
   await ElMessageBox.confirm(
@@ -23,6 +29,9 @@ onMounted(load);
 defineExpose({ refresh: load });
 </script>
 <template>
+  <el-alert v-if="error" :title="error" type="error" :closable="false"
+    ><el-button @click="load">重试</el-button></el-alert
+  >
   <div class="card">
     <div class="page-heading">
       <h3>外接平台撤权待办</h3>
