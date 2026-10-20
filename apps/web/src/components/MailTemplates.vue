@@ -153,7 +153,7 @@ onMounted(async () => {
       <el-form-item label="启用该类邮件"
         ><el-switch
           v-model="current.enabled"
-          :disabled="authenticationMailCategories.includes(key)"
+          :disabled="busy || !edit.editing.value || authenticationMailCategories.includes(key)"
         /><span v-if="authenticationMailCategories.includes(key)" class="form-help"
           >验证类邮件必须启用，并保留验证码变量。</span
         ></el-form-item

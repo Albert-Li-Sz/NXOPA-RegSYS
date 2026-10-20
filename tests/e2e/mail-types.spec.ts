@@ -27,12 +27,14 @@ test('new ticket templates use ticket content and never include verification cod
     frame = page.frameLocator('iframe[title="邮件模板预览"]');
   await select.click();
   await page.getByRole('option', { name: '新工单', exact: true }).click();
+  await expect(page.getByRole('switch', { name: '启用该类邮件', exact: true })).toBeDisabled();
   await page.locator('iframe[title="邮件模板预览"]').scrollIntoViewIfNeeded();
   await expect(text).not.toHaveValue(/code|验证码/);
   await expect(html).not.toHaveValue(/code|验证码/);
   await expect(frame.locator('body')).toContainText('报名资料咨询');
   await expect(frame.locator('body')).not.toContainText('123456');
-  await expect(frame.getByRole('link', { name: '查看工单', exact: true })).toHaveAttribute(
+  // CSS queries also work in opaque sandboxed frames where Chromium blocks ARIA engine injection.
+  await expect(frame.locator('a').filter({ hasText: /^查看工单$/ })).toHaveAttribute(
     'href',
     /\/support$/,
   );
