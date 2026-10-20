@@ -45,6 +45,7 @@ async function expectStatus(
   assert.equal(response.status, expected, `${path}: ${await response.text()}`);
 }
 const token = (invitation: { url: string }) => new URL(invitation.url).pathname.split('/').at(-1)!;
+await redis.del('rate:login:::ffff:127.0.0.1', 'rate:login:127.0.0.1');
 const admin = await new Client().login('admin');
 const passwordHash = (await db.user.findUniqueOrThrow({ where: { username: 'alice' } }))
   .passwordHash;
@@ -661,6 +662,7 @@ try {
     '.runtime/reports/whole-project-audit.json',
     JSON.stringify({ success: failures.length === 0, checks, failures }, null, 2),
   );
+  await redis.del('rate:login:::ffff:127.0.0.1', 'rate:login:127.0.0.1');
   await redis.quit();
   await db.$disconnect();
 }
