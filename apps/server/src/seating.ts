@@ -9,9 +9,13 @@ import {
 import { db, audit, json, lock, type Tx } from './db.js';
 import { requireManager, checkVersion } from './security.js';
 import { modulesFor } from './workflow.js';
+import { examSiteOrder } from './exam-sites.js';
 async function contest(tx: Tx, u: Principal, id: string) {
   requireManager(u, id, 'ADMISSIONS');
-  const c = await tx.contest.findUniqueOrThrow({ where: { id } });
+  const c = await tx.contest.findUniqueOrThrow({
+    where: { id },
+    include: { examSites: { orderBy: [...examSiteOrder] } },
+  });
   if (!modulesFor(c).rooms) throw new BadRequestException('此活动未启用考场与座位');
   return c;
 }
@@ -28,6 +32,7 @@ export class SeatingService {
     const [rooms, seats] = await Promise.all([
       db.examRoom.findMany({
         where: { contestId: id },
+        include: { examSite: true },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
       }),
       db.seatAssignment.findMany({
@@ -39,6 +44,7 @@ export class SeatingService {
               eligible: true,
               number: true,
               teamName: true,
+              examSite: true,
               people: { select: { id: true, name: true } },
             },
           },
@@ -46,26 +52,39 @@ export class SeatingService {
         orderBy: [{ roomId: 'asc' }, { seat: 'asc' }],
       }),
     ]);
-    return { rooms, seats, seatingVersion: c.seatingVersion, seatingMode: c.seatingMode };
+    return {
+      rooms,
+      seats,
+      examSites: c.examSites,
+      seatingVersion: c.seatingVersion,
+      seatingMode: c.seatingMode,
+    };
   }
   async save(u: Principal, id: string, roomId: string | undefined, body: unknown) {
     const b = roomInput.parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, `seating:${id}`);
-      await contest(tx, u, id);
-      if (roomId) {
-        const old = await tx.examRoom.findUniqueOrThrow({ where: { id: roomId } });
+      const c = await contest(tx, u, id);
+      const old = roomId ? await tx.examRoom.findUniqueOrThrow({ where: { id: roomId } }) : null;
+      const examSiteId = b.examSiteId === undefined ? (old?.examSiteId ?? null) : b.examSiteId;
+      if (examSiteId && !c.examSites.some((s) => s.id === examSiteId))
+        throw new BadRequestException('考点不属于此活动');
+      if (c.examSites.length && !examSiteId) throw new BadRequestException('请为考场选择所属考点');
+      if (old) {
         if (old.contestId !== id) throw new BadRequestException('考场不属于此活动');
         checkVersion(old.version, b.version);
         if (
           old.name === b.name &&
           old.location === b.location &&
+          old.examSiteId === examSiteId &&
           old.capacity === b.capacity &&
           old.sortOrder === b.sortOrder &&
           old.enabled === b.enabled
         )
           return old;
         const seats = await tx.seatAssignment.findMany({ where: { roomId } });
+        if (old.examSiteId !== examSiteId && seats.length)
+          throw new BadRequestException('请先清空该考场的座位，再更改所属考点');
         if (seats.some((a) => a.seat > b.capacity) || (!b.enabled && seats.length))
           throw new BadRequestException('请先调整已有座位，再缩小容量或停用考场');
         await stale(
@@ -73,7 +92,8 @@ export class SeatingService {
           seats.map((a) => a.registrationId),
         );
       }
-      const { version, ...data } = b;
+      const { version, ...input } = b;
+      const data = { ...input, examSiteId };
       const r = roomId
         ? await tx.examRoom.update({
             where: { id: roomId },
@@ -185,11 +205,25 @@ export class SeatingService {
         if (b.assignments?.some((a) => !ids.includes(a.registrationId)))
           throw new BadRequestException('座位表包含未选择的报名');
         for (const r of registrations) {
+          if (c.examSites.length && !r.examSiteId) {
+            errors.push(`报名 #${r.number} 尚未选择考点，请先补充报名资料`);
+            continue;
+          }
           const units =
             c.seatingMode === 'PERSON'
               ? r.people.map((p) => ({ key: p.id, personId: p.id }))
               : [{ key: 'REGISTRATION', personId: null }];
           const existing = b.replace ? [] : old.filter((a) => a.registrationId === r.id);
+          if (
+            existing.some(
+              (a) =>
+                r.examSiteId &&
+                rooms.find((room) => room.id === a.roomId)?.examSiteId !== r.examSiteId,
+            )
+          ) {
+            errors.push(`报名 #${r.number} 的现有座位不在所选考点，请重新分配`);
+            continue;
+          }
           if (existing.some((a) => !units.some((unit) => unit.key === a.unitKey))) {
             errors.push(`报名 #${r.number} 的成员已变化，请选择重新分配`);
             continue;
@@ -209,10 +243,11 @@ export class SeatingService {
                 matches.length !== 1 ||
                 !a ||
                 !room ||
+                (r.examSiteId && room.examSiteId !== r.examSiteId) ||
                 a.seat > room.capacity ||
                 occupied.has(`${a.roomId}:${a.seat}`)
               ) {
-                errors.push(`报名 #${r.number} 存在考场、成员、座号或占座冲突`);
+                errors.push(`报名 #${r.number} 存在考点、考场、成员、座号或占座冲突`);
                 continue;
               }
               occupied.add(`${a.roomId}:${a.seat}`);
@@ -222,12 +257,13 @@ export class SeatingService {
             const room = rooms.find(
               (room) =>
                 room.enabled &&
+                (!r.examSiteId || room.examSiteId === r.examSiteId) &&
                 (!existing.length || existing.every((a) => a.roomId === room.id)) &&
                 freeSeats.get(room.id)!.seats.length - freeSeats.get(room.id)!.cursor >=
                   missing.length,
             );
             if (!room) {
-              errors.push(`报名 #${r.number} 没有足够的同场座位`);
+              errors.push(`报名 #${r.number} 在所选考点没有足够的同场座位`);
               continue;
             }
             const free = freeSeats.get(room.id)!,

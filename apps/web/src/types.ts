@@ -11,6 +11,12 @@ export interface Principal extends Omit<SharedPrincipal, 'profile'> {
   profile: Data;
 }
 export type Data = Record<string, any>;
+export interface ExamSiteView {
+  id: string;
+  name: string;
+  address: string;
+  enabled: boolean;
+}
 export interface ContestView {
   kind: 'ACTIVITY' | 'COMPETITION';
   modules: { admissions: boolean; rooms: boolean; integrations: boolean };
@@ -22,6 +28,7 @@ export interface ContestView {
   descriptionFormat: 'TEXT' | 'MARKDOWN';
   announcement: string;
   location: string;
+  examSites: ExamSiteView[];
   startsAt: string;
   opensAt: string;
   closesAt: string;
@@ -71,6 +78,8 @@ export interface RegistrationView {
   id: string;
   contestId: string;
   contest: ContestView;
+  examSiteId: string | null;
+  examSite: ExamSiteView | null;
   ownerId: string;
   publicRank: number | null;
   teamName: string;

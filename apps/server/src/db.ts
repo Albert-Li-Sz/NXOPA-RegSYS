@@ -74,8 +74,9 @@ export async function enqueue(
   return job;
 }
 export const registrationInclude = {
-  contest: true,
+  contest: { include: { examSites: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } } },
+  examSite: true,
   people: true,
   coaches: { include: { user: { select: { id: true, name: true, email: true } } } },
-} as const;
+} satisfies Prisma.RegistrationInclude;
 export type Registration = Prisma.RegistrationGetPayload<{ include: typeof registrationInclude }>;

@@ -97,6 +97,15 @@ async function create() {
                 <h3>公告</h3>
                 <div class="pre-line">{{ c.announcement || '暂无公告' }}</div>
               </div>
+              <div v-if="c.examSites.length" class="card">
+                <h3>可选考点</h3>
+                <p class="form-help">提交报名时选择一个考点，团队成员共用同一考点。</p>
+                <div v-for="site in c.examSites.filter((s) => s.enabled)" :key="site.id">
+                  <h4>{{ site.name }}</h4>
+                  <p>{{ site.address || '详细地址待公布' }}</p>
+                </div>
+                <p v-if="!c.examSites.some((s) => s.enabled)" class="muted">考点暂未开放选择</p>
+              </div>
               <div class="card">
                 <h3>活动介绍</h3>
                 <MarkdownContent :content="c.description" :format="c.descriptionFormat" />

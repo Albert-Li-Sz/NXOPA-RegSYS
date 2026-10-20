@@ -157,6 +157,11 @@ try {
     await migrateCancelledRegistrations();
     assert.equal(await db.registration.count(), 1);
     assert.equal(
+      (await db.registration.findUniqueOrThrow({ where: { id: active } })).examSiteId,
+      null,
+    );
+    assert.equal(await db.examSite.count(), 0);
+    assert.equal(
       (await db.registration.findUniqueOrThrow({ where: { id: active } })).status,
       'DRAFT',
     );

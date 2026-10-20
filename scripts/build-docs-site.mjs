@@ -25,6 +25,7 @@ const ids = [
   'domjudge',
   'binding',
   'contest',
+  'exam-sites',
   'fields',
   'invoices',
   'display',

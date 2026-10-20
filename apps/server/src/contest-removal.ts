@@ -79,6 +79,7 @@ export async function removeContest(u: Principal, id: string, body: unknown) {
       },
       data: { state: 'CANCELLED', error: '活动已删除', payload: {}, result: {} },
     });
+    await tx.examRoom.deleteMany({ where: { contestId: id } });
     await tx.contest.delete({ where: { id } });
     await audit(tx, u.id, 'CONTEST_DELETE', id, {
       title: c.title,

@@ -21,6 +21,7 @@ import DynamicFields from '../components/DynamicFields.vue';
 const route = useRoute(),
   r = shallowRef<RegistrationView>(),
   form = ref<{
+    examSiteId: string | null;
     teamName: string;
     teamEnglishName: string;
     participationType: string;
@@ -29,6 +30,7 @@ const route = useRoute(),
     people: PersonView[];
     coaches: Data[];
   }>({
+    examSiteId: null,
     teamName: '',
     teamEnglishName: '',
     participationType: 'OFFICIAL',
@@ -152,6 +154,7 @@ async function refresh() {
     if (!rankEdit.editing.value) rank.value = { rank: x.publicRank };
     form.value = JSON.parse(
       JSON.stringify({
+        examSiteId: x.examSiteId,
         teamName: x.teamName,
         teamEnglishName: x.teamEnglishName,
         participationType: x.participationType,
@@ -208,6 +211,12 @@ async function save() {
   }
 }
 async function submit() {
+  const selectedSite = edit.editing.value ? form.value.examSiteId : r.value!.examSiteId;
+  if (r.value!.contest.examSites.length && !selectedSite) {
+    if (!edit.editing.value) edit.begin();
+    ElMessage.warning('请选择参赛考点');
+    return;
+  }
   if (edit.editing.value) await save();
   await action(`/registrations/${r.value!.id}/submit`, { version: r.value!.version });
   ElMessage.success('报名已提交');
@@ -476,7 +485,42 @@ async function memberSave(id: string, index: number) {
       />
       <RegistrationReadout v-if="!edit.editing.value" :registration="r" />
       <el-form v-else label-position="top" :disabled="busy"
-        ><el-alert
+        ><div v-if="r.contest.examSites.length" class="card">
+          <h3>参赛考点</h3>
+          <el-form-item label="选择考点" for="registration-exam-site" required>
+            <el-select
+              id="registration-exam-site"
+              v-model="form.examSiteId"
+              :disabled="!canSave"
+              placeholder="请选择参赛考点"
+              filterable
+            >
+              <el-option
+                v-for="site in r.contest.examSites.filter(
+                  (s) => s.enabled || s.id === r!.examSiteId,
+                )"
+                :key="site.id"
+                :value="site.id"
+                :label="site.name + (site.enabled ? '' : '（已停用，保留原选择）')"
+                :disabled="!site.enabled && form.examSiteId !== site.id"
+              />
+            </el-select>
+          </el-form-item>
+          <p v-if="form.examSiteId" class="form-help">
+            {{
+              r.contest.examSites.find((s) => s.id === form.examSiteId)?.address ||
+              '该考点暂未填写详细地址'
+            }}
+          </p>
+          <p class="form-help">团队成员共用所选考点。更换考点后需重新提交审核并安排座位。</p>
+          <el-alert
+            v-if="!r.contest.examSites.some((s) => s.enabled) && !r.examSiteId"
+            title="暂无开放选择的考点，请联系主办方"
+            type="warning"
+            :closable="false"
+          />
+        </div>
+        <el-alert
           v-if="platformProfiles.length && !r.organization"
           title="评测平台基础信息待补充"
           description="请补充代表学校／单位与联系人邮箱。历史报名保留原表单；修改资料后需要重新提交审核。"

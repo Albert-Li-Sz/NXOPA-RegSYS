@@ -33,7 +33,7 @@ try {
   const info = await (await page.request.get(new URL('build-info.json', base).href)).json();
   await expect(page.locator('.chapter')).toHaveCount(info.chapters.length);
   await expect(page.locator('figure img')).toHaveCount(info.screenshots);
-  assert.equal(info.chapters.length, 15);
+  assert.equal(info.chapters.length, 16);
   assert.equal(info.screenshots, 27);
   await expect(page.locator('#mail')).toContainText('后台保存后优先使用数据库配置');
   await expect(page.locator('#operations pre').first()).toContainText('{{#each team.members}}');

@@ -102,6 +102,8 @@ export async function registrationCsv(
     { name: '队名', value: (r) => r.teamName },
     { name: '队伍英文名', value: (r) => r.teamEnglishName },
     { name: '参加性质', value: (r) => (r.participationType === 'UNOFFICIAL' ? '非正式' : '正式') },
+    { name: '考点', value: (r) => r.examSite?.name },
+    { name: '考点地址', value: (r) => r.examSite?.address },
     { name: '代表学校／单位', value: (r) => r.organization?.name },
     { name: '姓名', value: (_, p) => p.name },
     { name: '邮箱', value: (_, p) => p.email },

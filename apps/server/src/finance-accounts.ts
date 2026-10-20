@@ -1,6 +1,6 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { policySchema, type Principal } from '@contest-center/contracts';
-import { db, json, event, type Tx, type Registration } from './db.js';
+import { db, json, event, registrationInclude, type Tx, type Registration } from './db.js';
 import { canRead, canActForApplicant, owns, manages } from './security.js';
 
 export async function ensureFinance(tx: Tx, r: Registration) {
@@ -21,11 +21,7 @@ export async function ensureFinance(tx: Tx, r: Registration) {
 export async function financeLoaded(tx: Tx, id: string) {
   const registration = await tx.registration.findUnique({
     where: { id },
-    include: {
-      contest: true,
-      people: true,
-      coaches: { include: { user: { select: { id: true, name: true, email: true } } } },
-    },
+    include: registrationInclude,
   });
   if (registration && !(await tx.financeAccount.count({ where: { id } })))
     await ensureFinance(tx, registration);

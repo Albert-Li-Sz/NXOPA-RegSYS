@@ -287,6 +287,22 @@ export const activityModulesSchema = z.object({
   integrations: z.boolean().default(true),
 });
 export const contestDeletionSchema = z.object({ version: z.number().int().positive() });
+export const examSiteSchema = z.object({
+  id: uuid.optional(),
+  name: z.string().trim().min(1).max(100),
+  address: z.string().trim().max(300).default(''),
+  enabled: z.boolean().default(true),
+});
+export const examSitesSchema = z
+  .array(examSiteSchema)
+  .max(100)
+  .superRefine((sites, ctx) => {
+    if (new Set(sites.map((s) => s.name)).size !== sites.length)
+      ctx.addIssue({ code: 'custom', message: '考点名称不能重复' });
+    const ids = sites.flatMap((s) => (s.id ? [s.id] : []));
+    if (new Set(ids).size !== ids.length)
+      ctx.addIssue({ code: 'custom', message: '考点编号不能重复' });
+  });
 export const contestSchema = z
   .object({
     version: z.number().int().optional(),
@@ -304,6 +320,7 @@ export const contestSchema = z
     descriptionFormat: z.enum(['TEXT', 'MARKDOWN']).default('TEXT'),
     announcement: z.string().max(10000).default(''),
     location: z.string().max(300).default(''),
+    examSites: examSitesSchema.optional(),
     startsAt: z.iso.datetime({ offset: true }),
     opensAt: z.iso.datetime({ offset: true }),
     closesAt: z.iso.datetime({ offset: true }),
@@ -333,6 +350,7 @@ export const personSchema = z.object({
 });
 export const registrationSchema = z.object({
   version: z.number().int().positive(),
+  examSiteId: uuid.nullable().optional(),
   teamName: z.string().trim().max(100).default(''),
   teamEnglishName: z.string().max(100).default(''),
   participationType: participationSchema.optional(),

@@ -90,7 +90,7 @@ MinIO 镜像从[固定官方源码版本](https://github.com/minio/minio/release
 
 ## 验收命令
 
-报名流程回归使用 `pnpm test:activity-workflows`，升级和恢复使用 `pnpm test:workflow-upgrade`。`pnpm test:full` 在独立 PostgreSQL、Redis、Mailpit 和 LaTeX 环境中运行十九组回归；其中浏览器覆盖查看／编辑、审核弹窗和排考预览。原始结果位于 `.runtime/reports/`，测试数据与正式数据分开。
+报名流程回归使用 `pnpm test:activity-workflows`，考点选择与分配使用 `pnpm test:exam-sites`，升级和恢复使用 `pnpm test:workflow-upgrade`。`pnpm test:full` 在独立 PostgreSQL、Redis、Mailpit 和 LaTeX 环境中运行二十二组回归；其中浏览器覆盖查看／编辑、审核弹窗、考点选择和排考预览。原始结果位于 `.runtime/reports/`，测试数据与正式数据分开。
 
 `pnpm test:platform-features` 在独立 PostgreSQL / Redis / MinIO / Mailpit / LaTeX 环境中运行真实接口、邮件、PDF 和浏览器验收；报告写入 `.runtime/reports/platform-features.json`。`pnpm test:release-features` 保留既有 GitHub OAuth、资料、编号和 UI 回归；`pnpm test:install` 验证实际 Compose 安装、数据卷、PDF 和加密备份恢复。测试使用虚构身份，不复制参考图中的个人资料。
 
@@ -123,6 +123,10 @@ MinIO 镜像从[固定官方源码版本](https://github.com/minio/minio/release
 审核保存或重新加载失败后，须成功重新加载报名才能继续提交，已填写的意见和结论保留。连续审核若下一条加载失败，会明确提示本条已保存，可从列表重新加载后继续。更改报名筛选条件即停用旧列表的批量操作；加载成功后根据新范围和有效报名数量恢复按钮，失败时不允许对旧结果继续操作。
 
 ## 通用活动与多考场排考
+
+在“活动设置 → 考点选择”点击编辑后，可添加考点名称和详细地址，再保存活动配置。配置考点后，选手报名时必须选择一个开放的考点；个人或整支队伍共用该选择。未配置考点的活动继续按原流程报名。报名管理新增考点列和筛选，统计与名单导出沿用所选考点范围。
+
+考点可停用以停止新选择，已提交的原选择继续保留；草稿在提交前需改选开放考点。已有报名或考场使用的考点不能直接删除。选手更换考点后须重新提交，原座位清空、旧准考证失效。配置多个考点时，考场须关联所属考点，自动、手动或 CSV 排座均在选手所选考点内进行。
 
 创建时可选择“通用活动”或“竞赛”预设，报名形式仍单独选择个人或团队。通用活动默认个人、免费、人工审核、不关联老师，关闭考场、准考证及评测平台；可按需要开启。旧活动保持竞赛预设和原配置。切换已有活动的预设不覆盖原有字段和费用；关闭已启用功能需要明确确认，相关准考证或本地账号交付会失效，原始配置及排考记录继续保留。
 

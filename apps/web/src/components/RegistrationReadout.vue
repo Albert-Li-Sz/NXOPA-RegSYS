@@ -80,6 +80,12 @@ onBeforeUnmount(close);
     ><el-descriptions-item label="参加资格">{{
       registration.eligible ? '已确认' : '待完成'
     }}</el-descriptions-item
+    ><el-descriptions-item v-if="registration.contest.examSites.length" label="参赛考点">{{
+      registration.examSite?.name || '未选择'
+    }}</el-descriptions-item
+    ><el-descriptions-item v-if="registration.examSite?.address" label="考点地址">{{
+      registration.examSite.address
+    }}</el-descriptions-item
     ><el-descriptions-item label="应收">{{ money(registration.feeCents) }}</el-descriptions-item
     ><el-descriptions-item label="净到账">{{
       money(registration.netPaidCents)

@@ -32,6 +32,7 @@ export function registrationReviewPhase(r: { status: string; review: string }) {
 }
 export const roomSchema = z.object({
   version: z.number().int().optional(),
+  examSiteId: z.string().uuid().nullable().optional(),
   name: z.string().trim().min(1).max(100),
   location: z.string().trim().max(300).default(''),
   capacity: z.number().int().min(1).max(10000),

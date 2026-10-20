@@ -7,6 +7,7 @@ import { readBlob, type StorageRef } from './storage.js';
 import path from 'node:path';
 import type { Principal } from '@contest-center/contracts';
 import { fieldsSchema } from '@contest-center/contracts';
+import { examSiteLocation } from './exam-sites.js';
 import {
   db,
   inRequestTransaction,
@@ -59,7 +60,7 @@ export function admissionContext(
         hour12: false,
       }),
     },
-    registration: { id: r.id, answers: snapshot.answers ?? r.answers },
+    registration: { id: r.id, answers: snapshot.answers ?? r.answers, examSite: r.examSite },
     participant: people[0],
     team: {
       name: snapshot.teamName ?? r.teamName,
@@ -310,6 +311,10 @@ export class AdmissionService {
     }
     for (const [index, id] of b.registrationIds.entries()) {
       const r = registrations.get(id)!;
+      if (r.contest.examSites.length && !r.examSiteId) {
+        results.push({ registrationId: id, error: '请先补充参赛考点' });
+        continue;
+      }
       if (!r.eligible) {
         results.push({ registrationId: id, error: '尚未取得参赛资格' });
         continue;
@@ -319,7 +324,9 @@ export class AdmissionService {
       let seat =
         assignment?.seat ??
         (b.incrementSeats && /^\d+$/.test(b.seat) ? String(Number(b.seat) + index) : b.seat);
-      let location = assignment?.location ?? (b.location || r.contest.location);
+      let location = r.examSite
+        ? examSiteLocation(r.examSite)
+        : (assignment?.location ?? (b.location || r.contest.location));
       try {
         const a = await db.$transaction(async (tx) => {
           await lock(tx, id);
@@ -342,14 +349,21 @@ export class AdmissionService {
               seats.some(
                 (a) =>
                   !a.room.enabled ||
+                  (r.examSiteId && a.room.examSiteId !== r.examSiteId) ||
                   (a.personId && !r.people.some((p) => p.id === a.personId && p.active)),
               )
             )
               throw new BadRequestException('请先完成此报名的有效排考');
             room = [...new Set(seats.map((a) => a.room.name))].join('、');
-            location = [...new Set(seats.map((a) => a.room.location || r.contest.location))].join(
-              '、',
-            );
+            location = [
+              ...new Set(
+                seats.map(
+                  (a) =>
+                    [examSiteLocation(r.examSite), a.room.location].filter(Boolean).join(' · ') ||
+                    r.contest.location,
+                ),
+              ),
+            ].join('、');
             seat = seats
               .map((a) =>
                 a.personId

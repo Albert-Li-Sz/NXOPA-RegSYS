@@ -67,6 +67,7 @@ import { config } from './config.js';
 import { publicLink } from './site-settings.js';
 import { paginated, dateFilter, pageOptions, type ListQuery } from './pagination.js';
 import { contestDeletionAccess } from './contest-removal.js';
+import { examSiteOrder, saveExamSites, validateExamSite } from './exam-sites.js';
 
 function registrationAccess(u: Principal, contestId?: string) {
   return {
@@ -141,6 +142,7 @@ function registrationFilters(query: ListQuery) {
       ? { participationType: participationSchema.parse(query.participationType) }
       : {}),
     ...(query.eligible ? { eligible: query.eligible === 'true' } : {}),
+    ...(query.examSiteId ? { examSiteId: z.string().uuid().parse(query.examSiteId) } : {}),
     createdAt: dateFilter(query),
   };
 }
@@ -236,6 +238,7 @@ export class RegistrationService {
         ...options,
         orderBy: [{ opensAt: 'desc' }, { id: 'desc' }],
         include: {
+          examSites: { orderBy: [...examSiteOrder] },
           forms: { orderBy: { version: 'desc' }, take: 1 },
           _count: { select: { registrations: true, financeAccounts: true } },
         },
@@ -287,6 +290,7 @@ export class RegistrationService {
     const c = await db.contest.findUnique({
       where: { id },
       include: {
+        examSites: { orderBy: [...examSiteOrder] },
         forms: { orderBy: { version: 'desc' }, take: 1 },
         _count: { select: { registrations: true, financeAccounts: true } },
       },
@@ -368,7 +372,14 @@ export class RegistrationService {
         b.fields,
         b.modules.integrations ? b.policy.platformProfiles : [],
       );
-      const { fields: _, version: __, confirmModuleChanges: ___, policy: p, ...data } = b;
+      const {
+        fields: _,
+        version: __,
+        confirmModuleChanges: ___,
+        examSites,
+        policy: p,
+        ...data
+      } = b;
       const dates = {
         startsAt: new Date(b.startsAt),
         opensAt: new Date(b.opensAt),
@@ -388,6 +399,7 @@ export class RegistrationService {
             },
           })
         : await tx.contest.create({ data: { ...data, ...dates, policy: json(p) } });
+      if (examSites !== undefined) await saveExamSites(tx, c.id, examSites);
       await tx.formVersion.create({
         data: {
           contestId: c.id,
@@ -404,7 +416,13 @@ export class RegistrationService {
         },
       });
       await audit(tx, u.id, id ? 'CONTEST_UPDATE' : 'CONTEST_CREATE', c.id);
-      return c;
+      return {
+        ...c,
+        examSites: await tx.examSite.findMany({
+          where: { contestId: c.id },
+          orderBy: [...examSiteOrder],
+        }),
+      };
     });
   }
   async list(u: Principal, contestId?: string, cursor?: string, take = 500, query: ListQuery = {}) {
@@ -603,10 +621,14 @@ export class RegistrationService {
     const b = registrationSchema.parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, id);
-      const r = await loaded(tx, id);
+      let r = await loaded(tx, id);
       if (!canEdit(u, r)) throw new ForbiddenException();
+      await lock(tx, `seating:${r.contestId}`);
+      r = await loaded(tx, id);
       checkVersion(r.version, b.version);
       windowOpen(r);
+      const examSiteId = b.examSiteId === undefined ? r.examSiteId : b.examSiteId;
+      validateExamSite(r, examSiteId);
       const p = policy(r);
       const participationType = b.participationType ?? r.participationType;
       if (participationType === 'UNOFFICIAL' && !p.allowUnofficial)
@@ -640,6 +662,7 @@ export class RegistrationService {
           throw new BadRequestException('此竞赛要求成员接受邀请');
       }
       const same =
+        r.examSiteId === examSiteId &&
         r.teamName === b.teamName &&
         r.teamEnglishName === b.teamEnglishName &&
         r.participationType === participationType &&
@@ -659,6 +682,13 @@ export class RegistrationService {
           );
         });
       if (same) return r;
+      if (r.examSiteId !== examSiteId) {
+        await tx.seatAssignment.deleteMany({ where: { registrationId: id } });
+        await tx.contest.update({
+          where: { id: r.contestId },
+          data: { seatingVersion: { increment: 1 } },
+        });
+      }
       const ids = b.people.flatMap((x) => (x.id ? [x.id] : []));
       await tx.registrationPerson.deleteMany({ where: { registrationId: id, id: { notIn: ids } } });
       for (const x of b.people) {
@@ -679,6 +709,7 @@ export class RegistrationService {
       await tx.registration.update({
         where: { id },
         data: {
+          examSiteId,
           teamName: b.teamName,
           teamEnglishName: b.teamEnglishName,
           participationType,
@@ -732,7 +763,9 @@ export class RegistrationService {
       if (participants.some((p) => !profileComplete(p)))
         throw new BadRequestException('请参赛成员先完善学号、姓名、班级、学院和性别');
       await lock(tx, r.contestId);
+      await lock(tx, `seating:${r.contestId}`);
       r = await loaded(tx, id);
+      validateExamSite(r, r.examSiteId, true);
       const p = policy(r);
       const currentPolicy = policySchema.parse(r.contest.policy);
       if (
@@ -802,6 +835,8 @@ export class RegistrationService {
         ).nextRegistrationNumber - 1;
       const submittedAt = r.submittedAt ?? new Date();
       const snapshot = {
+        examSiteId: r.examSiteId,
+        examSite: r.examSite,
         teamName: r.teamName,
         teamEnglishName: r.teamEnglishName,
         participationType: r.participationType,

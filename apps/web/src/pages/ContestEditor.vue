@@ -20,6 +20,7 @@ import EditActions from '../components/EditActions.vue';
 import RegistrationReview from '../components/RegistrationReview.vue';
 import RemoteRevocations from '../components/RemoteRevocations.vue';
 import SeatingManager from '../components/SeatingManager.vue';
+import ExamSiteConfig from '../components/ExamSiteConfig.vue';
 import FinanceList from '../components/FinanceList.vue';
 import { useEditSession, mayLeaveEdits, confirmLeaveEdits } from '../composables/useEditSession';
 import MarkdownEditor from '../components/MarkdownEditor.vue';
@@ -54,6 +55,7 @@ const form = ref<Data>({
   descriptionFormat: 'MARKDOWN',
   announcement: '',
   location: '',
+  examSites: [],
   startsAt: new Date(Date.now() + 7 * 86400000).toISOString(),
   opensAt: new Date().toISOString(),
   closesAt: new Date(Date.now() + 6 * 86400000).toISOString(),
@@ -665,6 +667,7 @@ function insertVariable(v: string) {
             ><el-input v-model="form.announcement" type="textarea" :rows="3" /></el-form-item
           ><el-switch v-model="form.archived" active-text="归档竞赛" />
         </div>
+        <ExamSiteConfig v-model="form.examSites" :editing="edit.editing.value" />
         <div class="card">
           <h3>报名规则</h3>
           <div class="form-grid">
@@ -908,6 +911,19 @@ function insertVariable(v: string) {
             :value="s"
             :label="label(s)" /></el-select
         ><el-select
+          v-if="form.examSites.length"
+          v-model="roster.filters.value.examSiteId"
+          :disabled="batchBusy"
+          clearable
+          placeholder="筛选考点"
+          aria-label="筛选考点"
+          filterable
+          ><el-option
+            v-for="site in form.examSites"
+            :key="site.id"
+            :value="site.id"
+            :label="site.name" /></el-select
+        ><el-select
           v-model="roster.filters.value.participationType"
           :disabled="batchBusy"
           clearable
@@ -960,6 +976,10 @@ function insertVariable(v: string) {
                 row.teamName || row.people[0]?.name
               }}</router-link></template
             ></el-table-column
+          ><el-table-column v-if="form.examSites.length" label="考点" min-width="160"
+            ><template #default="{ row }">{{
+              row.examSite?.name || '未选择'
+            }}</template></el-table-column
           ><el-table-column label="参赛性质" width="120"
             ><template #default="{ row }">{{
               row.participationType === 'UNOFFICIAL' ? '非正式' : '正式'

@@ -224,7 +224,7 @@ try {
   await wait(`${env.FEISHU_API_BASE_URL}/fixture`);
   const suites = (
     process.env.FULL_REGRESSION_SUITES ??
-    'test:integration,test:auth,test:accounts,test:feishu,test:invitations,test:mail,test:mail-failover,test:template-bugs,test:overview,test:enhancements,test:admissions,test:activity-workflows,test:workflow-upgrade,test:bugs,test:security,test:audit-fixes,test:permissions,test:file-race,test:load,test:mcp,test:e2e'
+    'test:integration,test:auth,test:accounts,test:feishu,test:invitations,test:mail,test:mail-failover,test:template-bugs,test:overview,test:enhancements,test:admissions,test:activity-workflows,test:exam-sites,test:workflow-upgrade,test:bugs,test:security,test:audit-fixes,test:permissions,test:file-race,test:load,test:mcp,test:e2e'
   )
     .split(',')
     .filter(Boolean);

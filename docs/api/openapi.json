@@ -2430,7 +2430,7 @@
                   "profile": {
                     "type": "object",
                     "additionalProperties": {
-                      "$ref": "#/components/schemas/Value23___schema0"
+                      "$ref": "#/components/schemas/Value24___schema0"
                     }
                   },
                   "version": {
@@ -5864,6 +5864,16 @@
         "operationId": "ApiController_statistics",
         "parameters": [
           {
+            "name": "examSiteId",
+            "in": "query",
+            "required": false,
+            "description": "筛选参赛考点，与列表、统计、审核队列及导出共用权限范围。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
             "name": "id",
             "in": "path",
             "required": true,
@@ -8423,6 +8433,12 @@
                     "minimum": -9007199254740991,
                     "maximum": 9007199254740991
                   },
+                  "examSiteId": {
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
                   "name": {
                     "type": "string",
                     "minLength": 1,
@@ -8588,6 +8604,12 @@
                     "type": "integer",
                     "minimum": -9007199254740991,
                     "maximum": 9007199254740991
+                  },
+                  "examSiteId": {
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   },
                   "name": {
                     "type": "string",
@@ -8876,7 +8898,7 @@
             "cookie": []
           }
         ],
-        "description": "ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation.",
+        "description": "ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. Rooms must belong to the registration selected exam site. Registrations without a site must be updated before allocation when exam sites are configured.",
         "requestBody": {
           "required": true,
           "content": {
@@ -9072,7 +9094,7 @@
             "cookie": []
           }
         ],
-        "description": "ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation.",
+        "description": "ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. Rooms must belong to the registration selected exam site. Registrations without a site must be updated before allocation when exam sites are configured.",
         "requestBody": {
           "required": true,
           "content": {
@@ -10075,6 +10097,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "examSiteId",
+            "in": "query",
+            "required": false,
+            "description": "筛选参赛考点，与列表、统计、审核队列及导出共用权限范围。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -10288,7 +10320,18 @@
     "/api/v1/registrations/review-queue": {
       "get": {
         "operationId": "ApiController_reviewQueue",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "examSiteId",
+            "in": "query",
+            "required": false,
+            "description": "筛选参赛考点，与列表、统计、审核队列及导出共用权限范围。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Review queue",
@@ -10389,7 +10432,18 @@
     "/api/v1/registrations/summary": {
       "get": {
         "operationId": "ApiController_summary",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "examSiteId",
+            "in": "query",
+            "required": false,
+            "description": "筛选参赛考点，与列表、统计、审核队列及导出共用权限范围。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -10468,7 +10522,18 @@
     "/api/v1/registrations/export": {
       "get": {
         "operationId": "ApiController_export",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "examSiteId",
+            "in": "query",
+            "required": false,
+            "description": "筛选参赛考点，与列表、统计、审核队列及导出共用权限范围。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -19684,7 +19749,7 @@
                       "verification": {
                         "type": "object",
                         "additionalProperties": {
-                          "$ref": "#/components/schemas/Value89___schema0"
+                          "$ref": "#/components/schemas/Value90___schema0"
                         }
                       }
                     },
@@ -19992,6 +20057,40 @@
             "default": "",
             "type": "string",
             "maxLength": 300
+          },
+          "examSites": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "address": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "address",
+                "enabled"
+              ],
+              "additionalProperties": false
+            }
           },
           "startsAt": {
             "type": "string",
@@ -20353,6 +20452,36 @@
         ],
         "additionalProperties": false
       },
+      "ExamSite": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "address": {
+            "default": "",
+            "type": "string",
+            "maxLength": 300
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "enabled"
+        ],
+        "additionalProperties": false
+      },
       "RoomInput": {
         "type": "object",
         "properties": {
@@ -20360,6 +20489,12 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "examSiteId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "name": {
             "type": "string",
@@ -20639,7 +20774,7 @@
         ],
         "additionalProperties": false
       },
-      "Value7___schema0": {
+      "Value8___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -20660,13 +20795,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value7___schema0"
+              "$ref": "#/components/schemas/Value8___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value7___schema0"
+              "$ref": "#/components/schemas/Value8___schema0"
             }
           }
         ]
@@ -20679,6 +20814,12 @@
             "minimum": 0,
             "exclusiveMinimum": true,
             "maximum": 9007199254740991
+          },
+          "examSiteId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "teamName": {
             "default": "",
@@ -20733,7 +20874,7 @@
             "default": {},
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value7___schema0"
+              "$ref": "#/components/schemas/Value8___schema0"
             }
           },
           "people": {
@@ -20783,7 +20924,7 @@
                   "default": {},
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/Value7___schema0"
+                    "$ref": "#/components/schemas/Value8___schema0"
                   }
                 }
               },
@@ -20810,7 +20951,7 @@
                 "answers": {
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/Value7___schema0"
+                    "$ref": "#/components/schemas/Value8___schema0"
                   }
                 }
               },
@@ -20831,7 +20972,7 @@
         ],
         "additionalProperties": false
       },
-      "Value8___schema0": {
+      "Value9___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -20852,13 +20993,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value8___schema0"
+              "$ref": "#/components/schemas/Value9___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value8___schema0"
+              "$ref": "#/components/schemas/Value9___schema0"
             }
           }
         ]
@@ -20948,7 +21089,7 @@
               "equals": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/Value8___schema0"
+                    "$ref": "#/components/schemas/Value9___schema0"
                   }
                 ]
               },
@@ -20976,7 +21117,7 @@
         ],
         "additionalProperties": false
       },
-      "Value9___schema0": {
+      "Value10___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -20997,18 +21138,18 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value9___schema0"
+              "$ref": "#/components/schemas/Value10___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value9___schema0"
+              "$ref": "#/components/schemas/Value10___schema0"
             }
           }
         ]
       },
-      "Value9___schema1": {
+      "Value10___schema1": {
         "anyOf": [
           {
             "type": "string"
@@ -21029,13 +21170,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value9___schema1"
+              "$ref": "#/components/schemas/Value10___schema1"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value9___schema1"
+              "$ref": "#/components/schemas/Value10___schema1"
             }
           }
         ]
@@ -21156,7 +21297,7 @@
                 "answers": {
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/Value9___schema0"
+                    "$ref": "#/components/schemas/Value10___schema0"
                   }
                 }
               },
@@ -21262,7 +21403,7 @@
                         "equals": {
                           "allOf": [
                             {
-                              "$ref": "#/components/schemas/Value9___schema1"
+                              "$ref": "#/components/schemas/Value10___schema1"
                             }
                           ]
                         },
@@ -21294,7 +21435,7 @@
               "answers": {
                 "type": "object",
                 "additionalProperties": {
-                  "$ref": "#/components/schemas/Value9___schema0"
+                  "$ref": "#/components/schemas/Value10___schema0"
                 }
               }
             },
@@ -21324,7 +21465,7 @@
                 "answers": {
                   "type": "object",
                   "additionalProperties": {
-                    "$ref": "#/components/schemas/Value9___schema0"
+                    "$ref": "#/components/schemas/Value10___schema0"
                   }
                 }
               },
@@ -21373,7 +21514,7 @@
         ],
         "additionalProperties": false
       },
-      "Value10___schema0": {
+      "Value11___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -21394,13 +21535,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value10___schema0"
+              "$ref": "#/components/schemas/Value11___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value10___schema0"
+              "$ref": "#/components/schemas/Value11___schema0"
             }
           }
         ]
@@ -21447,7 +21588,7 @@
           "verification": {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value10___schema0"
+              "$ref": "#/components/schemas/Value11___schema0"
             }
           }
         },
@@ -21901,7 +22042,7 @@
         ],
         "additionalProperties": false
       },
-      "Value23___schema0": {
+      "Value24___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -21922,18 +22063,18 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value23___schema0"
+              "$ref": "#/components/schemas/Value24___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value23___schema0"
+              "$ref": "#/components/schemas/Value24___schema0"
             }
           }
         ]
       },
-      "Value89___schema0": {
+      "Value90___schema0": {
         "anyOf": [
           {
             "type": "string"
@@ -21954,13 +22095,13 @@
           {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Value89___schema0"
+              "$ref": "#/components/schemas/Value90___schema0"
             }
           },
           {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Value89___schema0"
+              "$ref": "#/components/schemas/Value90___schema0"
             }
           }
         ]

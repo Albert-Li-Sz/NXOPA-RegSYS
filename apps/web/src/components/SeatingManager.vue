@@ -8,7 +8,7 @@ import type { Data } from '../types';
 import { useEditSession } from '../composables/useEditSession';
 import EditActions from './EditActions.vue';
 const props = defineProps<{ contestId: string }>();
-const data = ref<Data>({ rooms: [], seats: [], seatingVersion: 1 }),
+const data = ref<Data>({ rooms: [], seats: [], examSites: [], seatingVersion: 1 }),
   loading = ref(false),
   busy = ref(false),
   error = ref(''),
@@ -41,7 +41,7 @@ onMounted(load);
 function editRoom(row?: Data) {
   room.value = row
     ? JSON.parse(JSON.stringify(row))
-    : { name: '', location: '', capacity: 30, sortOrder: 0, enabled: true };
+    : { name: '', location: '', examSiteId: null, capacity: 30, sortOrder: 0, enabled: true };
   dialog.value = true;
   if (row) roomEdit.finish();
   else roomEdit.begin();
@@ -257,7 +257,13 @@ function setupManual() {
         registrationId: r.id,
         personId: p.id || null,
         name: p.name,
-        roomId: old?.roomId || data.value.rooms.find((room: Data) => room.enabled)?.id || '',
+        examSiteId: r.examSiteId,
+        roomId:
+          old?.roomId ||
+          data.value.rooms.find(
+            (room: Data) => room.enabled && (!r.examSiteId || room.examSiteId === r.examSiteId),
+          )?.id ||
+          '',
         seat: old?.seat || 1,
       });
     }
@@ -312,11 +318,16 @@ async function closeRoom(done: () => void) {
     </div>
     <PaginatedTable page-key="seatingmanager-data-rooms" :data="data.rooms"
       ><el-table-column prop="name" label="考场" /><el-table-column
-        prop="location"
-        label="地点"
-      /><el-table-column prop="capacity" label="容量" width="90" /><el-table-column
-        label="已安排"
+        v-if="data.examSites.length"
+        label="所属考点"
+        ><template #default="{ row }">{{
+          row.examSite?.name || '未关联'
+        }}</template></el-table-column
+      ><el-table-column prop="location" label="地点" /><el-table-column
+        prop="capacity"
+        label="容量"
         width="90"
+      /><el-table-column label="已安排" width="90"
         ><template #default="{ row }">{{
           data.seats.filter((a: Data) => a.roomId === row.id).length
         }}</template></el-table-column
@@ -379,6 +390,20 @@ async function closeRoom(done: () => void) {
       :class="{ 'read-mode': !roomEdit.editing.value }"
       @submit.prevent="saveRoom"
       ><el-form-item label="考场名称"><el-input v-model="room.name" /></el-form-item
+      ><el-form-item v-if="data.examSites.length" label="所属考点" required for="room-exam-site">
+        <el-select
+          id="room-exam-site"
+          v-model="room.examSiteId"
+          filterable
+          placeholder="选择所属考点"
+        >
+          <el-option
+            v-for="site in data.examSites"
+            :key="site.id"
+            :value="site.id"
+            :label="site.name + (site.enabled ? '' : '（已停用选择）')"
+          />
+        </el-select> </el-form-item
       ><el-form-item label="地点"><el-input v-model="room.location" /></el-form-item
       ><el-form-item label="容量"
         ><el-input-number v-model="room.capacity" :min="1" :max="10000" /></el-form-item
@@ -419,6 +444,10 @@ async function closeRoom(done: () => void) {
           ><template #default="{ row }"
             >#{{ row.number }} {{ row.teamName || row.people[0]?.name }}</template
           ></el-table-column
+        ><el-table-column v-if="data.examSites.length" label="考点"
+          ><template #default="{ row }">{{
+            row.examSite?.name || '未选择'
+          }}</template></el-table-column
         ></PaginatedTable
       >
       <div class="toolbar">
@@ -483,7 +512,9 @@ async function closeRoom(done: () => void) {
         ><template #default="{ row }"
           ><el-select v-model="row.roomId" filterable :disabled="busy"
             ><el-option
-              v-for="item in data.rooms.filter((r: Data) => r.enabled)"
+              v-for="item in data.rooms.filter(
+                (r: Data) => r.enabled && (!row.examSiteId || r.examSiteId === row.examSiteId),
+              )"
               :key="item.id"
               :label="`${item.name} · ${item.location}`"
               :value="item.id" /></el-select></template></el-table-column

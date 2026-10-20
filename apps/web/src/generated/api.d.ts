@@ -1044,7 +1044,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. */
+        /** @description ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. Rooms must belong to the registration selected exam site. Registrations without a site must be updated before allocation when exam sites are configured. */
         post: operations["ApiController_previewSeating"];
         delete?: never;
         options?: never;
@@ -1061,7 +1061,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. */
+        /** @description ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. Rooms must belong to the registration selected exam site. Registrations without a site must be updated before allocation when exam sites are configured. */
         post: operations["ApiController_commitSeating"];
         delete?: never;
         options?: never;
@@ -2361,6 +2361,15 @@ export interface components {
             announcement: string;
             /** @default  */
             location: string;
+            examSites?: {
+                /** Format: uuid */
+                id?: string;
+                name: string;
+                /** @default  */
+                address: string;
+                /** @default true */
+                enabled: boolean;
+            }[];
             /** Format: date-time */
             startsAt: string;
             /** Format: date-time */
@@ -2471,8 +2480,19 @@ export interface components {
                 };
             }[];
         };
+        ExamSite: {
+            /** Format: uuid */
+            id?: string;
+            name: string;
+            /** @default  */
+            address: string;
+            /** @default true */
+            enabled: boolean;
+        };
         RoomInput: {
             version?: number;
+            /** Format: uuid */
+            examSiteId?: string | null;
             name: string;
             /** @default  */
             location: string;
@@ -2542,11 +2562,13 @@ export interface components {
             credentials: boolean;
             editReason: string;
         };
-        Value7___schema0: string | number | boolean | (null) | components["schemas"]["Value7___schema0"][] | {
-            [key: string]: components["schemas"]["Value7___schema0"];
+        Value8___schema0: string | number | boolean | (null) | components["schemas"]["Value8___schema0"][] | {
+            [key: string]: components["schemas"]["Value8___schema0"];
         };
         RegistrationInput: {
             version: number;
+            /** Format: uuid */
+            examSiteId?: string | null;
             /** @default  */
             teamName: string;
             /** @default  */
@@ -2562,7 +2584,7 @@ export interface components {
             } | null;
             /** @default {} */
             answers: {
-                [key: string]: components["schemas"]["Value7___schema0"];
+                [key: string]: components["schemas"]["Value8___schema0"];
             };
             people: {
                 /** Format: uuid */
@@ -2576,19 +2598,19 @@ export interface components {
                 captain: boolean;
                 /** @default {} */
                 answers: {
-                    [key: string]: components["schemas"]["Value7___schema0"];
+                    [key: string]: components["schemas"]["Value8___schema0"];
                 };
             }[];
             coaches?: {
                 /** Format: uuid */
                 id: string;
                 answers: {
-                    [key: string]: components["schemas"]["Value7___schema0"];
+                    [key: string]: components["schemas"]["Value8___schema0"];
                 };
             }[];
         };
-        Value8___schema0: string | number | boolean | (null) | components["schemas"]["Value8___schema0"][] | {
-            [key: string]: components["schemas"]["Value8___schema0"];
+        Value9___schema0: string | number | boolean | (null) | components["schemas"]["Value9___schema0"][] | {
+            [key: string]: components["schemas"]["Value9___schema0"];
         };
         FieldDefinition: {
             key: string;
@@ -2614,15 +2636,15 @@ export interface components {
             max?: number;
             condition?: {
                 key: string;
-                equals?: components["schemas"]["Value8___schema0"];
+                equals?: components["schemas"]["Value9___schema0"];
                 includes?: string;
             };
         };
-        Value9___schema0: string | number | boolean | (null) | components["schemas"]["Value9___schema0"][] | {
-            [key: string]: components["schemas"]["Value9___schema0"];
+        Value10___schema0: string | number | boolean | (null) | components["schemas"]["Value10___schema0"][] | {
+            [key: string]: components["schemas"]["Value10___schema0"];
         };
-        Value9___schema1: string | number | boolean | (null) | components["schemas"]["Value9___schema1"][] | {
-            [key: string]: components["schemas"]["Value9___schema1"];
+        Value10___schema1: string | number | boolean | (null) | components["schemas"]["Value10___schema1"][] | {
+            [key: string]: components["schemas"]["Value10___schema1"];
         };
         RegistrationEnvelopeV1: {
             /** @enum {number} */
@@ -2657,7 +2679,7 @@ export interface components {
                 captain: boolean;
                 email?: string;
                 answers?: {
-                    [key: string]: components["schemas"]["Value9___schema0"];
+                    [key: string]: components["schemas"]["Value10___schema0"];
                 };
             }[];
             form?: {
@@ -2686,12 +2708,12 @@ export interface components {
                     max?: number;
                     condition?: {
                         key: string;
-                        equals?: components["schemas"]["Value9___schema1"];
+                        equals?: components["schemas"]["Value10___schema1"];
                         includes?: string;
                     };
                 }[];
                 answers: {
-                    [key: string]: components["schemas"]["Value9___schema0"];
+                    [key: string]: components["schemas"]["Value10___schema0"];
                 };
             };
             coaches?: {
@@ -2700,7 +2722,7 @@ export interface components {
                 name?: string;
                 email?: string;
                 answers: {
-                    [key: string]: components["schemas"]["Value9___schema0"];
+                    [key: string]: components["schemas"]["Value10___schema0"];
                 };
             }[];
             qualification?: {
@@ -2710,8 +2732,8 @@ export interface components {
                 netPaidCents?: number;
             };
         };
-        Value10___schema0: string | number | boolean | (null) | components["schemas"]["Value10___schema0"][] | {
-            [key: string]: components["schemas"]["Value10___schema0"];
+        Value11___schema0: string | number | boolean | (null) | components["schemas"]["Value11___schema0"][] | {
+            [key: string]: components["schemas"]["Value11___schema0"];
         };
         ProvisioningResultV1: {
             /** @enum {number} */
@@ -2725,7 +2747,7 @@ export interface components {
             username?: string;
             error?: string;
             verification?: {
-                [key: string]: components["schemas"]["Value10___schema0"];
+                [key: string]: components["schemas"]["Value11___schema0"];
             };
         };
         AccountInvitationInput: {
@@ -2829,11 +2851,11 @@ export interface components {
             message: string;
             statusCode?: number;
         };
-        Value23___schema0: string | number | boolean | (null) | components["schemas"]["Value23___schema0"][] | {
-            [key: string]: components["schemas"]["Value23___schema0"];
+        Value24___schema0: string | number | boolean | (null) | components["schemas"]["Value24___schema0"][] | {
+            [key: string]: components["schemas"]["Value24___schema0"];
         };
-        Value89___schema0: string | number | boolean | (null) | components["schemas"]["Value89___schema0"][] | {
-            [key: string]: components["schemas"]["Value89___schema0"];
+        Value90___schema0: string | number | boolean | (null) | components["schemas"]["Value90___schema0"][] | {
+            [key: string]: components["schemas"]["Value90___schema0"];
         };
     };
     responses: never;
@@ -4440,7 +4462,7 @@ export interface operations {
                     kind: "STUDENT" | "TEACHER";
                     name: string;
                     profile: {
-                        [key: string]: components["schemas"]["Value23___schema0"];
+                        [key: string]: components["schemas"]["Value24___schema0"];
                     };
                     version: number;
                 };
@@ -7107,7 +7129,10 @@ export interface operations {
     };
     ApiController_statistics: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 筛选参赛考点，与列表、统计、审核队列及导出共用权限范围。 */
+                examSiteId?: string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -8927,6 +8952,8 @@ export interface operations {
             content: {
                 "application/json": {
                     version?: number;
+                    /** Format: uuid */
+                    examSiteId?: string | null;
                     name: string;
                     /** @default  */
                     location: string;
@@ -9019,6 +9046,8 @@ export interface operations {
             content: {
                 "application/json": {
                     version?: number;
+                    /** Format: uuid */
+                    examSiteId?: string | null;
                     name: string;
                     /** @default  */
                     location: string;
@@ -10010,6 +10039,8 @@ export interface operations {
                 participationType?: string;
                 from?: string;
                 to?: string;
+                /** @description 筛选参赛考点，与列表、统计、审核队列及导出共用权限范围。 */
+                examSiteId?: string;
             };
             header?: never;
             path?: never;
@@ -10166,7 +10197,10 @@ export interface operations {
     };
     ApiController_reviewQueue: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 筛选参赛考点，与列表、统计、审核队列及导出共用权限范围。 */
+                examSiteId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -10242,7 +10276,10 @@ export interface operations {
     };
     ApiController_summary: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 筛选参赛考点，与列表、统计、审核队列及导出共用权限范围。 */
+                examSiteId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -10313,7 +10350,10 @@ export interface operations {
     };
     ApiController_export: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 筛选参赛考点，与列表、统计、审核队列及导出共用权限范围。 */
+                examSiteId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -16404,7 +16444,7 @@ export interface operations {
                         username?: string;
                         error?: string;
                         verification?: {
-                            [key: string]: components["schemas"]["Value89___schema0"];
+                            [key: string]: components["schemas"]["Value90___schema0"];
                         };
                     };
                 };

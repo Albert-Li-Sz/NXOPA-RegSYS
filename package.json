@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -63,6 +63,7 @@
     "test:oj-recovery": "tsx tests/integrations/oj-recovery.ts",
     "test:bugs": "tsx tests/integrations/bug-regressions.ts",
     "test:activity-workflows": "tsx tests/integrations/activity-workflows.ts",
+    "test:exam-sites": "tsx tests/integrations/exam-sites.ts",
     "test:workflow-upgrade": "tsx tests/integrations/workflow-upgrade.ts",
     "test:security": "tsx tests/integrations/security-audit.ts",
     "test:audit-fixes": "tsx tests/integrations/audit-fixes.ts",

@@ -28,7 +28,7 @@
 \fancyhf{}
 \fancyhead[L]{\small\color{muted}南晓开放原子社在线报名系统}
 \fancyhead[R]{\small\color{muted}配置教程}
-\fancyfoot[L]{\small\color{muted}v0.6.5 · 中文 · Asia/Shanghai}
+\fancyfoot[L]{\small\color{muted}v0.6.6 · 中文 · Asia/Shanghai}
 \fancyfoot[R]{\small\color{muted}\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
@@ -38,7 +38,7 @@
 \AfterEndEnvironment{Code}{\end{minipage}\par}
 \begin{document}
 \thispagestyle{empty}
-{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 16 日}
+{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 20 日}
 \vspace{9mm}
 
 {\huge\bfseries\color{ink}南晓开放原子社\\[3mm]在线报名系统}
@@ -305,6 +305,18 @@ curl --user reg_bridge https://domjudge.example.org/api/contests/training-2026/g
 \shot[0.28\textheight]{11-contest-finance}{线下财务示例：按报名单计费，先审核再缴费。}
 
 可设置免费、按报名单或按人数计费；费用输入单位为元，支持两位小数，例如 150.00 元。填写线下收款说明，选择审核与缴费顺序，并设置退款与开票。非正式报名同样需要审核。核账只能确认凭证申报金额，金额不符须退回；应记录交易参考号，申请人和上传者不能核账自己的凭证。部分到账不视为足额缴费，超应收退款须由不同管理员批准和完成。
+
+\newpage
+\section{配置考点与考场}
+在竞赛配置页点击“编辑”，在“考点选择”中新增考点，填写名称和地址，设置是否开放选择后保存。每个竞赛最多 100 个考点，名称不可重复。未配置考点时，报名沿用原流程。
+
+配置考点后，选手提交报名须选择一个开放考点，团队成员共用同一考点。草稿可以暂不选择，但提交前必须补充；停用考点不再接受新选择，已提交报名保留原选择。选手更换考点后须重新提交审核，旧座位会清除，旧准考证会失效。
+
+已被报名或考场使用的考点不能直接删除，可先停用，或调整关联数据后再删除。已有报名的竞赛后期新增考点时，须先补充报名考点，再排考或生成准考证。
+
+启用“考场与座位”后，为每个考场选择所属考点。自动、手动及 CSV 排座均限制在报名所选考点内；团队按现有排考模式安排同考点座位。考场已有座位时，先清空座位才能更换所属考点。准考证地点合并考点名称、地址和考场地址；修改考点名称或地址后，应重新生成并发放准考证。
+
+管理员在报名管理中可查看和筛选考点，导出的名单包含考点名称与地址。报名详情也显示所选考点及地址，便于选手核对。
 
 \newpage
 \section{配置报名字段}

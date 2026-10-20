@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   contestSchema,
+  examSiteSchema,
   contestDeletionSchema,
   roomSchema,
   seatingRequestSchema,
@@ -67,6 +68,7 @@ export function describeApi(document: OpenAPIObject) {
       pageSize: z.union([z.literal(20), z.literal(50), z.literal(100)]),
     }),
     ContestInput: contestSchema,
+    ExamSite: examSiteSchema,
     RoomInput: roomSchema,
     SeatingRequest: seatingRequestSchema,
     SeatingPreview: seatingPreviewSchema,
@@ -530,13 +532,34 @@ export function describeApi(document: OpenAPIObject) {
       }
       if (url.endsWith('/seating/preview') || url.endsWith('/seating/commit')) {
         op.description =
-          'ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation.';
+          'ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. Rooms must belong to the registration selected exam site. Registrations without a site must be updated before allocation when exam sites are configured.';
         op.responses['201'] = {
           description: 'Allocation preview/result',
           content: {
             'application/json': { schema: { $ref: '#/components/schemas/SeatingPreview' } },
           },
         };
+      }
+      if (
+        method === 'get' &&
+        [
+          '/api/v1/registrations',
+          '/api/v1/registrations/summary',
+          '/api/v1/registrations/export',
+          '/api/v1/registrations/review-queue',
+          '/api/v1/contests/{id}/statistics',
+        ].includes(url)
+      ) {
+        op.parameters = [
+          ...(op.parameters ?? []),
+          {
+            name: 'examSiteId',
+            in: 'query',
+            required: false,
+            description: '筛选参赛考点，与列表、统计、审核队列及导出共用权限范围。',
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ];
       }
       if (url.startsWith('/api/v1/finance/accounts'))
         op.description =

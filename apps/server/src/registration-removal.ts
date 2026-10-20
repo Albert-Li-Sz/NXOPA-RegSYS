@@ -1,4 +1,14 @@
-import { db, audit, enqueue, event, json, lock, type Registration, type Tx } from './db.js';
+import {
+  db,
+  audit,
+  enqueue,
+  event,
+  json,
+  lock,
+  registrationInclude,
+  type Registration,
+  type Tx,
+} from './db.js';
 import { ensureFinance } from './finance-accounts.js';
 import { decrypt, encrypt } from './security.js';
 import type { StorageRef } from './storage.js';
@@ -260,11 +270,7 @@ export async function migrateCancelledRegistrations() {
         await lock(tx, id);
         const r = await tx.registration.findUnique({
           where: { id },
-          include: {
-            contest: true,
-            people: true,
-            coaches: { include: { user: { select: { id: true, name: true, email: true } } } },
-          },
+          include: registrationInclude,
         });
         if (r && ['CANCELLED', 'CANCEL_REQUESTED'].includes(r.status))
           await removeRegistration(tx, r, 'migration', '历史取消报名迁移');

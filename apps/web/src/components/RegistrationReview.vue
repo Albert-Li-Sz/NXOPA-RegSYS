@@ -82,6 +82,12 @@ const changes = computed(() => {
   const a = newer.snapshot,
     b = older.snapshot;
   const rows: string[] = [];
+  if (
+    a.examSiteId !== b.examSiteId ||
+    a.examSite?.name !== b.examSite?.name ||
+    a.examSite?.address !== b.examSite?.address
+  )
+    rows.push('参赛考点');
   if (a.teamName !== b.teamName) rows.push('队伍名称');
   if (a.participationType !== b.participationType) rows.push('正式／非正式性质');
   if (JSON.stringify(a.organization) !== JSON.stringify(b.organization)) rows.push('代表单位');

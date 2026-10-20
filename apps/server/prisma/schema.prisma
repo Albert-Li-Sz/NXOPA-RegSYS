@@ -176,6 +176,7 @@ model Contest {
   registrations Registration[]
   bindings PlatformBinding[]
   rooms ExamRoom[]
+  examSites ExamSite[]
   financeAccounts FinanceAccount[]
   @@index([published,archived,opensAt,closesAt])
 }
@@ -206,6 +207,8 @@ model Registration {
   teamEnglishName String @default("")
   participationType String @default("OFFICIAL")
   organization Json?
+  examSiteId String? @db.Uuid
+  examSite ExamSite? @relation(fields:[examSiteId],references:[id],onDelete:Restrict)
   answers Json @default("{}")
   status String @default("DRAFT")
   review String @default("PENDING")
@@ -229,6 +232,7 @@ model Registration {
   mappings AccountMapping[]
   @@index([contestId,status,review,eligible])
   @@index([ownerId])
+  @@index([examSiteId])
   @@index([contestId,createdAt,id])
   @@unique([contestId,number])
 }
@@ -628,18 +632,33 @@ model FinanceAccount {
   @@index([ownerId,cancelledAt])
   @@index([contestId,createdAt,id])
 }
+model ExamSite {
+  id String @id @default(uuid()) @db.Uuid
+  contestId String @db.Uuid
+  contest Contest @relation(fields:[contestId],references:[id],onDelete:Cascade)
+  name String
+  address String @default("")
+  enabled Boolean @default(true)
+  sortOrder Int @default(0)
+  registrations Registration[]
+  rooms ExamRoom[]
+  @@index([contestId,sortOrder])
+}
 model ExamRoom {
   id String @id @default(uuid()) @db.Uuid
   contestId String @db.Uuid
   contest Contest @relation(fields:[contestId],references:[id],onDelete:Cascade)
   name String
   location String @default("")
+  examSiteId String? @db.Uuid
+  examSite ExamSite? @relation(fields:[examSiteId],references:[id],onDelete:Restrict)
   capacity Int
   sortOrder Int @default(0)
   enabled Boolean @default(true)
   version Int @default(1)
   seats SeatAssignment[]
   @@unique([contestId,name])
+  @@index([examSiteId])
 }
 model SeatAssignment {
   id String @id @default(uuid()) @db.Uuid
