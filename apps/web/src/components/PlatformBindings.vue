@@ -13,6 +13,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ saved: [contest: Data] }>();
 const schoolBinding = ref('');
+const syncingBinding = ref('');
 const contestId = ref(props.initialContestId ?? ''),
   bindings = ref<Data[]>([]),
   busy = ref(false),
@@ -93,6 +94,19 @@ async function probe(id: string) {
     `连接正常，平台版本 ${result.version}${result.pluginVersion ? `，插件版本 ${result.pluginVersion}` : ''}`,
   );
 }
+async function syncExisting(id: string) {
+  syncingBinding.value = id;
+  try {
+    const result = await api<{ requested: number }>(`/integrations/bindings/${id}/sync`, 'POST');
+    ElMessage.success(
+      result.requested
+        ? `已为 ${result.requested} 条符合条件的报名提交同步任务`
+        : '暂无已取得参赛资格的报名可同步',
+    );
+  } finally {
+    syncingBinding.value = '';
+  }
+}
 onMounted(() => {
   if (contestId.value) loadBindings();
 });
@@ -100,7 +114,9 @@ onMounted(() => {
 <template>
   <div class="card platform-bindings">
     <h3>比赛绑定与报名同步</h3>
-    <p class="subtitle">选择本站竞赛，将报名关联至 Hydro 或 DOMjudge 的目标比赛。</p>
+    <p class="subtitle">
+      可先开放报名，后期再绑定 Hydro 或 DOMjudge。启用自动同步后会补同步已有合格报名，也可手动同步。
+    </p>
     <el-form v-if="!initialContestId" label-position="top" class="binding-selector">
       <el-form-item label="本站竞赛" for="binding-contest"
         ><el-select
@@ -132,8 +148,15 @@ onMounted(() => {
             row.enabled ? '启用' : '停用'
           }}</template></el-table-column
         >
-        <el-table-column label="操作" min-width="175"
+        <el-table-column label="操作" min-width="300"
           ><template #default="{ row }"
+            ><el-button
+              text
+              type="primary"
+              :loading="syncingBinding === row.id"
+              :disabled="!!syncingBinding || !row.enabled || !row.instance.enabled"
+              @click="syncExisting(row.id)"
+              >同步已有报名</el-button
             ><el-button text type="primary" @click="probe(row.id)">探测连接</el-button
             ><el-button
               v-if="row.instance.type === 'DOMJUDGE'"
@@ -221,7 +244,7 @@ onMounted(() => {
             active-text="启用比赛绑定"
         /></el-form-item>
         <p class="form-help">
-          报名资料、审核与缴费符合竞赛要求后同步。关闭自动同步时，可在报名管理页手动同步及重试。
+          报名资料、审核与缴费符合竞赛要求后同步。保存启用的自动绑定时，会同时补同步已有合格报名；关闭自动同步时，使用“同步已有报名”批量同步，或在报名管理页逐条同步及重试。已有报名和缴费资料继续保留。
         </p>
         <el-button
           type="primary"

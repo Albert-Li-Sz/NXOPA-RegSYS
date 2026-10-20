@@ -28,7 +28,7 @@
 \fancyhf{}
 \fancyhead[L]{\small\color{muted}南晓开放原子社在线报名系统}
 \fancyhead[R]{\small\color{muted}配置教程}
-\fancyfoot[L]{\small\color{muted}v0.6.3 · 中文 · Asia/Shanghai}
+\fancyfoot[L]{\small\color{muted}v0.6.4 · 中文 · Asia/Shanghai}
 \fancyfoot[R]{\small\color{muted}\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
@@ -86,7 +86,7 @@ ALLOW_PRIVATE_INTEGRATIONS=true
 \end{Code}
 外层代理将整个站点转发到 \code{http://127.0.0.1:8080}，保留路径、Host 和原始协议；内部 Caddy 分流前端与 API。默认不占用公网 80 / 443、不申请证书。旧配置升级保留原代理模式。安装入口使用 \code{PUBLIC_URL}；旧根目录 Compose 使用 \code{DEPLOY_PUBLIC_URL}。内网联动默认开启，显式设置 false 可禁止私有地址；正式环境外部评测接口要求 HTTPS。
 
-\textbf{需要留在部署环境的配置：}数据库、缓存、私有文件目录、可信管理入口和 \code{ENCRYPTION_KEY}。这些属于运行基础设施。保留同一个加密密钥，否则无法解密已有邮件密码、评测凭据与备份。
+\textbf{需要留在部署环境的配置：}数据库、缓存、私有文件目录和 \code{ENCRYPTION_KEY}。这些属于运行基础设施。额外信任来源可在后台维护，环境变量也可保留恢复入口。保留同一个加密密钥，否则无法解密已有邮件密码、评测凭据与备份。
 
 \textbf{可在管理中心调整的配置：}站点名称、主色、页脚、公网地址、邮件服务、用户授权、评测平台、接口令牌、全局字段和准考证模板。首次登录后优先完成邮件配置，以便用户验证邮箱和找回密码。
 
@@ -98,14 +98,14 @@ ALLOW_PRIVATE_INTEGRATIONS=true
 系统管理员登录后打开“管理中心 → 全局设置”，调整站点名称、主色与页脚，并点击“保存”。竞赛管理员没有全局设置权限。默认主色为 \texttt{\#2080F0}。
 \shot[0.24\textheight]{04-site}{全局设置中的站点配置。}
 
-\textbf{公网地址。}填写根路径 HTTP 或 HTTPS 地址，例如 \code{https://reg.example.org}。地址用于生成邮件和邀请链接，同时允许来自该地址的浏览器写入。同源请求也自动允许，额外管理来源用 \texttt{TRUSTED\_\allowbreak MANAGEMENT\_\allowbreak ORIGINS} 配置。TLS、域名及访问控制由反向代理负责。地址不接受账号密码、额外路径、查询参数或片段；保存检查版本并记录审计。API 和 Worker 动态读取数据库地址。
+\textbf{公网地址与信任来源。}公网地址用于生成邮件和邀请链接。同源请求与当前公网地址自动允许。系统管理员点击“编辑”，在“信任的请求来源”每行填写一个内外网根地址，也可用逗号分隔，保存后立即生效。例如 \code{https://reg.example.org} 与 \code{http://192.168.1.10:8080}。地址须包含协议及端口（如有），不接受通配符、账号密码、额外路径、查询参数或片段。环境变量 \texttt{TRUSTED\_\allowbreak MANAGEMENT\_\allowbreak ORIGINS} 继续可用，并在后台单独展示。保存检查版本并记录审计；TLS、域名及访问控制由反向代理负责。
 
 \newpage
 \begin{enumerate}
 \item 域名解析：给注册域名添加指向服务器的 A 记录；启用 IPv6 时再配置正确的 AAAA 记录。
 \item 反向代理：默认由自有代理监听 HTTPS，配置证书。整个站点转发到内部 Caddy 的 \code{127.0.0.1:8080} HTTP 入口，保留 Host、Origin 和请求协议。
 \item 更换域名：先解析新域名、配置代理与证书，并实际检查新站可登录，再保存新的公网地址。旧的、已经发出的邀请 URL 不会被重写，迁移期保留旧域名反向代理或引导用户重新获取链接。
-\item 请求与会话：登录前亦检查写请求来源，登录后另检查 CSRF 令牌。反向代理正确传递 \texttt{X-\allowbreak Forwarded-\allowbreak Proto}；公网地址为 HTTPS 时强制使用 Secure 会话 Cookie，浏览器也须通过 HTTPS 访问。HTTP 内网部署继续支持 HTTP 地址。
+\item 请求与会话：登录前亦检查写请求来源，登录后另检查 CSRF 令牌。反向代理正确传递 \texttt{X-\allowbreak Forwarded-\allowbreak Proto}。HTTPS 入口使用 Secure 会话 Cookie；公网 HTTPS 与内网 HTTP 并用时，将内网 HTTP 根地址显式加入信任来源，该入口才可使用适合 HTTP 的会话 Cookie。
 \end{enumerate}
 \begin{Code}
 # 原生部署：在项目目录使用原数据库与加密密钥
@@ -286,12 +286,12 @@ curl --user reg_bridge https://domjudge.example.org/api/contests/training-2026/g
 
 \newpage
 \section{比赛绑定与报名同步}
-在“管理中心 → 评测平台”的“比赛绑定与报名同步”区域选择本站竞赛，再选择已获授权且启用的评测实例，填写目标比赛编号。Hydro 还需填写域编号；DOMjudge 配置正式和非正式分组，并确认学校映射。
-\shot[0.56\textheight]{09-contest-binding}{绑定示例：本站竞赛关联目标比赛，并设置自动同步。}
+可先开放报名并完成审核、缴费，后期再启用活动的“评测平台联动”。在“外接平台中心”的“比赛绑定与报名同步”区域选择本站竞赛，再选择已获授权且启用的评测实例，填写目标比赛编号。Hydro 还需填写域编号；DOMjudge 配置正式和非正式分组，并确认学校映射。
+\shot[0.48\textheight]{09-contest-binding}{绑定示例：本站竞赛关联目标比赛，并设置自动同步。}
 
 \begin{itemize}
-\item 自动同步：报名资料、人员与老师关联、审核和确认净收款满足要求，参赛资格生效后才派发任务。
-\item 手动同步：进入具体报名的“比赛账号”页，使用“同步比赛账号”按钮。
+\item 自动同步：报名资料、人员与老师关联、审核和确认净收款满足要求后派发任务。新建或保存启用的自动同步绑定时，补同步已有合格报名；后续取得资格的报名继续自动同步。
+\item 手动同步：在绑定列表点击“同步已有报名”批量同步或重试；也可在具体报名的“比赛账号”页逐条使用“同步比赛账号”。停用的绑定或实例不能发起批量同步。
 \item 失败重试：查看任务原因，修正配置后重试；重复执行不会重复建立本站已映射的比赛账号。
 \end{itemize}
 本站账号和 OJ 比赛账号独立管理。资料或净收款变化导致本站资格失效时，停止向用户交付原比赛账号；当前适配器不支持自动停用远端账号，管理员需在评测系统内处理已有账号。

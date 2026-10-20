@@ -11,7 +11,12 @@ import {
 } from '@contest-center/contracts';
 import { db, audit, event, json, lock, type Tx } from './db.js';
 import { config } from './config.js';
-import { publicLink, publicUrl, secureCookies } from './site-settings.js';
+import {
+  publicLink,
+  siteSettings,
+  environmentTrustedOrigins,
+  secureCookies,
+} from './site-settings.js';
 import { opaqueToken, sha, hmac, same, encrypt, secretKey, otpHash, checkOtp } from './security.js';
 import { effectiveAuthorization } from './authorization.js';
 import { feishuSignup, attachFeishuSignup, clearFeishuSignup } from './feishu.js';
@@ -82,13 +87,14 @@ export async function checkCsrf(req: AuthRequest) {
   const origins = new Set([
     new URL(config.publicUrl).origin,
     `${req.protocol}://${req.get('host')}`,
-    ...String(process.env.TRUSTED_MANAGEMENT_ORIGINS ?? '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean),
+    ...environmentTrustedOrigins(),
     ...(!config.production ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : []),
   ]);
-  if (origin && !origins.has(origin)) origins.add(new URL(await publicUrl()).origin);
+  if (origin && !origins.has(origin)) {
+    const site = await siteSettings();
+    origins.add(new URL(site.publicUrl).origin);
+    for (const value of site.trustedOrigins) origins.add(value);
+  }
   if (
     (origin !== undefined && !origins.has(origin)) ||
     (!origin && req.headers['sec-fetch-site'] === 'cross-site')

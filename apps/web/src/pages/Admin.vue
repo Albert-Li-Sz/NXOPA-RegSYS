@@ -98,6 +98,7 @@ const operationNames: Record<string, string> = {
   TICKET_REPLY: '回复工单',
   CREDENTIAL_VIEW: '查看比赛账号',
   PLATFORM_BINDING_SAVE: '保存平台绑定',
+  PLATFORM_BINDING_SYNC: '同步已有报名',
   ORGANIZATION_MAP_CONFIRM: '确认学校映射',
   AUTHORIZATION_INVITE_CREATE: '生成授权链接',
   AUTHORIZATION_INVITE_ACCEPT: '确认授权',
@@ -176,7 +177,7 @@ async function refresh() {
     if (tab.value === 'tokens') tokens.value = await api('/admin/tokens');
     if (tab.value === 'site') {
       [site.value, templates.value, fields.value] = await Promise.all([
-        api('/site'),
+        api('/admin/site'),
         api('/admissions/templates'),
         api('/admin/fields'),
       ]);
@@ -338,6 +339,15 @@ async function closeField(done: () => void) {
   if (await fieldEdit.mayLeave()) done();
 }
 const siteEdit = useEditSession(site);
+const trustedOriginsText = computed({
+  get: () => (site.value.trustedOrigins ?? []).join('\n'),
+  set: (value: string) => {
+    site.value.trustedOrigins = value
+      .split(/[\n,，]+/)
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+  },
+});
 const globalTemplateModel = computed({
   get: () => ({
     name: templateName.value,
@@ -869,9 +879,25 @@ async function webhook() {
             v-model="site.publicUrl"
             placeholder="https://reg.example.org"
         /></el-form-item>
+        <el-form-item label="信任的请求来源" for="site-trusted-origins">
+          <el-input
+            id="site-trusted-origins"
+            v-model="trustedOriginsText"
+            type="textarea"
+            :rows="4"
+            placeholder="https://reg.example.org&#10;http://192.168.1.10:8080"
+          />
+          <p class="form-help">
+            可填写多个内网或外网入口，每行一个，也可用逗号分隔。须包含 HTTP／HTTPS
+            和端口（如有），仅填写根地址。保存后立即生效。
+          </p>
+        </el-form-item>
         <div class="notice">
           <strong>当前生效地址：{{ effectivePublicUrl }}</strong>
-          <p>验证邮箱、找回密码与邀请链接使用此地址。环境配置的可信管理入口继续可用。</p>
+          <p>验证邮箱、找回密码与邀请链接使用公网地址。同源入口及环境配置的信任来源自动允许。</p>
+          <p v-if="site.environmentTrustedOrigins?.length" class="break-anywhere">
+            环境配置的信任来源：{{ site.environmentTrustedOrigins.join('、') }}
+          </p>
           <p class="break-anywhere">链接预览：{{ site.publicUrl }}/invite/示例邀请</p>
         </div>
         <el-button v-if="siteEdit.editing.value" type="primary" @click="saveSite"

@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v0.6.3
+        description: 已存在的版本标签，例如 v0.6.4
         required: true
-        default: v0.6.3
+        default: v0.6.4
         type: string
 
 permissions:

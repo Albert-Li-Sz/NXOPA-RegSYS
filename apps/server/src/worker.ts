@@ -394,7 +394,7 @@ async function dispatch() {
             include: { instance: true },
           });
           if (registration?.eligible && binding?.enabled && binding.instance.enabled)
-            await scheduleSync(tx, registration.id, binding.id);
+            await scheduleSync(tx, registration.id, binding.id, p.restart === true);
         } else if (e.type === 'MAIL')
           await tx.job.upsert({
             where: { dedupeKey: `event:${e.id}` },

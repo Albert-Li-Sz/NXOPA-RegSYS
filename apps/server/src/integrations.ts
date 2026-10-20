@@ -245,6 +245,26 @@ export async function scheduleSync(
   );
   return { mappingId: m.id, jobId: job.id, state: job.state };
 }
+
+async function requestExistingSync(
+  tx: Tx,
+  binding: { id: string; contestId: string },
+  restart = false,
+) {
+  const rows = await tx.registration.findMany({
+    where: { contestId: binding.contestId, eligible: true },
+    select: { id: true },
+  });
+  if (rows.length)
+    await tx.outboxEvent.createMany({
+      data: rows.map((row) => ({
+        type: 'SYNC_REQUEST',
+        resourceId: row.id,
+        payload: { bindingId: binding.id, restart },
+      })),
+    });
+  return rows.length;
+}
 export async function verifyCallback(id: string, body: unknown) {
   const b = z
     .object({
@@ -420,7 +440,7 @@ export class IntegrationService {
     requireManager(u, contestId, 'INTEGRATIONS');
     return db.platformBinding.findMany({
       where: { contestId },
-      include: { instance: { select: { id: true, name: true, type: true } } },
+      include: { instance: { select: { id: true, name: true, type: true, enabled: true } } },
     });
   }
   async bind(u: Principal, body: unknown) {
@@ -442,16 +462,14 @@ export class IntegrationService {
       })
       .parse(body);
     requireManager(u, b.contestId, 'INTEGRATIONS');
-    if (
-      b.enabled &&
-      !modulesFor(await db.contest.findUniqueOrThrow({ where: { id: b.contestId } })).integrations
-    )
-      throw new BadRequestException('此活动未启用平台联动');
     const instance = await db.platformInstance.findUniqueOrThrow({ where: { id: b.instanceId } });
     if (!u.isAdmin && !(instance.allowedContestIds as string[]).includes(b.contestId))
       throw new ForbiddenException('该竞赛未获授权使用此平台实例');
     return db.$transaction(async (tx) => {
       await lock(tx, b.contestId);
+      const contest = await tx.contest.findUniqueOrThrow({ where: { id: b.contestId } });
+      if (b.enabled && !modulesFor(contest).integrations)
+        throw new BadRequestException('此活动未启用平台联动');
       const key = {
         contestId: b.contestId,
         instanceId: b.instanceId,
@@ -474,7 +492,6 @@ export class IntegrationService {
           version: { increment: 1 },
         },
       });
-      const contest = await tx.contest.findUniqueOrThrow({ where: { id: b.contestId } });
       const policy = policySchema.parse(contest.policy);
       const profile = instance.type === 'HYDRO' ? 'HYDRO_5_0_7' : 'DOMJUDGE_9_0_1';
       if (!policy.platformProfiles.includes(profile)) {
@@ -504,26 +521,35 @@ export class IntegrationService {
           where: { bindingId: saved.id },
           data: { state: 'STALE', details: { message: '平台配置已更新，请重新同步' } },
         });
-        if (saved.automatic && saved.enabled) {
-          const rows = await tx.registration.findMany({
-            where: { contestId: saved.contestId, eligible: true },
-            select: { id: true },
-          });
-          if (rows.length)
-            await tx.outboxEvent.createMany({
-              data: rows.map((row) => ({
-                type: 'SYNC_REQUEST',
-                resourceId: row.id,
-                payload: { bindingId: saved.id },
-              })),
-            });
-        }
       }
+      if (saved.automatic && saved.enabled && instance.enabled)
+        await requestExistingSync(tx, saved);
       await audit(tx, u.id, 'PLATFORM_BINDING_SAVE', saved.contestId, {
         bindingId: saved.id,
         version: saved.version,
       });
       return saved;
+    });
+  }
+  async syncExisting(u: Principal, id: string) {
+    const initial = await db.platformBinding.findUniqueOrThrow({ where: { id } });
+    requireManager(u, initial.contestId, 'INTEGRATIONS');
+    return db.$transaction(async (tx) => {
+      await lock(tx, initial.contestId);
+      const binding = await tx.platformBinding.findUniqueOrThrow({
+        where: { id },
+        include: { contest: true, instance: true },
+      });
+      if (!modulesFor(binding.contest).integrations)
+        throw new BadRequestException('此活动未启用平台联动');
+      if (!binding.enabled || !binding.instance.enabled)
+        throw new BadRequestException('平台绑定或实例已停用');
+      const requested = await requestExistingSync(tx, binding, true);
+      await audit(tx, u.id, 'PLATFORM_BINDING_SYNC', binding.contestId, {
+        bindingId: id,
+        requested,
+      });
+      return { requested };
     });
   }
   async remoteMetadata(u: Principal, id: string) {

@@ -19,7 +19,7 @@ bash install.sh --dir /opt/my-registration
 
 菜单提供安装、更新、卸载与状态；也可执行 `bash install.sh install`。向导选择项目名、镜像版本、Caddy 的本机端口与邮件链接的站点地址，生成随机数据库密码和 32 字节加密密钥，保存为权限 `600` 的 `deploy/.env`，启动后交互创建管理员。密码输入不显示，正式实例不创建演示账号。
 
-从 Release 下载的 `nxopa-regsys-v0.6.3-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
+从 Release 下载的 `nxopa-regsys-v0.6.4-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
 
 ## 更新与卸载
 
@@ -38,7 +38,7 @@ bash /opt/nxopa-regsys/install.sh uninstall
 
 默认官方 Caddy 提供 `127.0.0.1:8080` HTTP 单一入口，`/api/` 在内部转发到 API，其余请求转发到前端。不占用公网 80/443，不申请证书，PostgreSQL 5432 与 Redis 不映射宿主机端口。
 
-`PUBLIC_URL` 用于邮件和邀请链接，支持 HTTP/HTTPS。浏览器写操作校验来源，自动允许实际同源、环境初始地址和后台当前公网地址；额外管理域名在 `.env` 的 `TRUSTED_MANAGEMENT_ORIGINS` 中用逗号列出。登录后仍需会话 CSRF 令牌。公网地址为 HTTPS 时会话强制使用 Secure Cookie，浏览器也须通过 HTTPS 访问；HTTP 内网部署可继续使用 HTTP 地址。
+`PUBLIC_URL` 用于邮件和邀请链接，支持 HTTP/HTTPS。浏览器写操作校验来源，自动允许实际同源、环境初始地址和后台当前公网地址；系统管理员可在“站点设置 → 信任的请求来源”填写多个内外网根地址（每行一个或逗号分隔），保存后立即生效。`.env` 的 `TRUSTED_MANAGEMENT_ORIGINS` 仍可用逗号配置额外来源，并在后台单独展示。每个地址须包含协议和端口（如有），不含路径、查询参数、账号密码或通配符。登录后仍需会话 CSRF 令牌。HTTPS 入口使用 Secure Cookie；公网地址为 HTTPS 时，仅显式配置为信任来源的 HTTP 入口允许使用非 Secure Cookie，以便内网 HTTP 与外网 HTTPS 并存。
 
 ```dotenv
 PUBLIC_URL=https://reg.example.org
@@ -79,7 +79,7 @@ bash install.sh compose ps
 
 多个实例用 `INSTALL_ENV_FILE=/absolute/path/.env` 选择配置。`init` 保留已有文件，`up` 按配置构建或拉取，`update --yes` 按已保存版本先备份再更新。不要公开 `.env` 或完整 `compose config`，其中包含密钥。
 
-业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v0.6.3`，支持 amd64/arm64。所有安装服务使用固定版本标签：PostgreSQL 为 `postgres:17.6-alpine`，Redis 为 `redis:7.4.5-alpine`，Caddy 为 `caddy:2.10.2-alpine`；按 Docker 服务端选择平台，不附加 `@sha256`。`IMAGE_TAG` 必须为完整版本号，不能填写 `latest` 或浮动小版本。
+业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v0.6.4`，支持 amd64/arm64。所有安装服务使用固定版本标签：PostgreSQL 为 `postgres:17.6-alpine`，Redis 为 `redis:7.4.5-alpine`，Caddy 为 `caddy:2.10.2-alpine`；按 Docker 服务端选择平台，不附加 `@sha256`。`IMAGE_TAG` 必须为完整版本号，不能填写 `latest` 或浮动小版本。
 
 从 `main` 获取的新 `install.sh` 会在校验下载包后转换旧包的哈希覆盖，也会处理已有安装目录中的旧材料。新版安装、更新、备份和恢复不再自动加载遗留的 `compose.digest.yaml`；发布记录 `images.json` 仍保留摘要供核验，安装包 SHA-256 校验继续执行。保持原数据库版本和卷名；`content descriptor ... not found` 时检查具体镜像及镜像代理，不能把拉取失败当成安装完成。
 

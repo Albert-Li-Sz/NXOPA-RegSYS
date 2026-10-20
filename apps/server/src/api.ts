@@ -313,6 +313,9 @@ export class ApiController {
   @Get('site') site() {
     return this.admin.site();
   }
+  @Get('admin/site') siteConfiguration(@Req() r: AuthRequest) {
+    return this.admin.siteConfiguration(user(r));
+  }
   @Get('auth/me') me(@Req() r: AuthRequest) {
     return {
       user: r.principal ?? null,
@@ -818,6 +821,12 @@ export class ApiController {
   }
   @Post('integrations/bindings/:id/probe') probe(@Req() r: AuthRequest, @Param('id') id: string) {
     return this.integrations.probe(user(r), id);
+  }
+  @Post('integrations/bindings/:id/sync') syncExisting(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return this.integrations.syncExisting(user(r), id);
   }
   @Post('integrations/registrations/:id/sync') sync(
     @Req() r: AuthRequest,

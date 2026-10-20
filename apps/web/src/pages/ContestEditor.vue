@@ -596,6 +596,9 @@ function insertVariable(v: string) {
               ><el-checkbox v-model="form.modules.rooms">启用考场与座位</el-checkbox
               ><el-checkbox v-model="form.modules.integrations">启用评测平台联动</el-checkbox>
             </div>
+            <p class="form-help">
+              可先开放报名，后续再启用评测平台联动、绑定目标比赛并同步已有合格报名。
+            </p>
             <el-form-item v-if="form.modules.rooms" label="排考单位"
               ><el-select v-model="form.seatingMode" filterable
                 ><el-option

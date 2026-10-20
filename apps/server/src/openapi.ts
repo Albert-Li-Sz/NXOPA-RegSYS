@@ -370,6 +370,7 @@ export function describeApi(document: OpenAPIObject) {
       primaryColor: text,
       footer: text.optional(),
       publicUrl: z.url().optional(),
+      trustedOrigins: z.array(z.url()).max(50).optional(),
     }),
     'put /api/v1/admin/mail': 'MailSettingsInput',
     'post /api/v1/admin/mail/probe': object({ version, providerId: text.optional() }),

@@ -4,7 +4,12 @@ import type { Principal } from '@contest-center/contracts';
 import { defaultSite, fieldSchema, fieldsSchema, userTagsSchema } from '@contest-center/contracts';
 import { db, json, audit } from './db.js';
 import { lock } from './db.js';
-import { siteSettings, validatePublicUrl } from './site-settings.js';
+import {
+  siteSettings,
+  validatePublicUrl,
+  validateTrustedOrigins,
+  environmentTrustedOrigins,
+} from './site-settings.js';
 import { paginated, dateFilter, type ListQuery } from './pagination.js';
 import { activeGrantWhere } from './authorization.js';
 import { requireAdmin, requireSystemAdmin, requireManager, checkVersion } from './security.js';
@@ -85,7 +90,12 @@ export class AdminService {
     });
   }
   async site() {
-    return siteSettings();
+    const { trustedOrigins, ...site } = await siteSettings();
+    return site;
+  }
+  async siteConfiguration(u: Principal) {
+    requireSystemAdmin(u);
+    return { ...(await siteSettings()), environmentTrustedOrigins: environmentTrustedOrigins() };
   }
   async saveSite(u: Principal, body: unknown) {
     requireSystemAdmin(u);
@@ -96,6 +106,7 @@ export class AdminService {
         footer: z.string().max(300).default(''),
         version: z.number().int(),
         publicUrl: z.string().max(2048).optional(),
+        trustedOrigins: z.array(z.string().max(2048)).max(50).optional(),
       })
       .parse(body);
     return db.$transaction(async (tx) => {
@@ -107,6 +118,10 @@ export class AdminService {
       const value = {
         ...data,
         publicUrl: b.publicUrl === undefined ? previous.publicUrl : validatePublicUrl(b.publicUrl),
+        trustedOrigins:
+          b.trustedOrigins === undefined
+            ? previous.trustedOrigins
+            : validateTrustedOrigins(b.trustedOrigins),
       };
       const result = await tx.setting.upsert({
         where: { key: 'site', ...(row ? { version: b.version } : {}) },
@@ -117,6 +132,8 @@ export class AdminService {
         version: result.version,
         publicUrl: value.publicUrl,
         previousPublicUrl: previous.publicUrl,
+        trustedOrigins: value.trustedOrigins,
+        previousTrustedOrigins: previous.trustedOrigins,
       });
       return { ...value, version: result.version };
     });
