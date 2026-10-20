@@ -142,7 +142,7 @@ export async function platformConfig(
     where: { id: bindingId },
     include: { instance: true },
   });
-  if (!b.enabled || !b.instance.enabled) throw new Error('Platform binding disabled');
+  if (!b.enabled || !b.instance.enabled) throw new BadRequestException('平台绑定或实例已停用');
   await safeUrl(b.instance.baseUrl);
   return {
     type: b.instance.type,

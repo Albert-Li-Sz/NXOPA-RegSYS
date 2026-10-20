@@ -548,6 +548,13 @@ try {
         );
         assert.deepEqual(await owner.api(`/integrations/registrations/${r.id}/credentials`), []);
         await expectStatus(
+          admin,
+          `/integrations/bindings/${bindings[0].id}/probe`,
+          'POST',
+          {},
+          400,
+        );
+        await expectStatus(
           viewer,
           '/integrations/bindings',
           'POST',
