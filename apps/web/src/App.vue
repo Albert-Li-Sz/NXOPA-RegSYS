@@ -58,6 +58,7 @@ async function leaveExpiredSession() {
   if (!(await confirmLeaveEdits())) return;
   discardEdits();
   auth.expiredUser = null;
+  auth.loaded = false;
   recoveryPassword.value = '';
   await router.replace({ path: '/login', query: { next: route.fullPath } });
 }

@@ -261,6 +261,40 @@ test('a denied finance refresh removes stale records and actionable controls', a
   await expect(page.getByRole('button', { name: /申请退款|申请发票|确认到账/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '刷新', exact: true })).toBeEnabled();
 });
+test('switching accounts after expiry requires discarding the original draft', async ({ page }) => {
+  await login(page, 'alice');
+  await page.goto('/me/profile');
+  await expect(page.locator('#profile-name')).toBeDisabled();
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await page.locator('#profile-nickname').fill('不得带入其他账号的草稿');
+  await page.route(
+    '**/api/v1/auth/profile',
+    (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: '登录已失效' }),
+      }),
+    { times: 1 },
+  );
+  await page.getByRole('button', { name: '保存资料', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '登录已失效', exact: true });
+  await expect(dialog).toBeVisible();
+  const current = await (await page.request.get('/api/v1/auth/me')).json();
+  const otherLogin = await page.request.post('/api/v1/auth/login', {
+    data: { account: 'admin', password: 'DemoContest2026!' },
+    headers: { 'X-CSRF-Token': current.csrf },
+  });
+  expect(otherLogin.ok()).toBe(true);
+  await dialog.getByRole('button', { name: '已登录，恢复编辑', exact: true }).click();
+  await expect(dialog).toContainText('更换账号需先放弃当前草稿');
+  await dialog.getByRole('button', { name: '放弃草稿并前往登录', exact: true }).click();
+  await page.getByRole('button', { name: '放弃并离开', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/login\?next=/);
+  await expect(page.getByRole('heading', { name: '系统管理员', exact: true })).toBeVisible();
+  await expect(page.locator('#profile-nickname')).not.toHaveValue('不得带入其他账号的草稿');
+});
 test('a contest viewer cannot open the finance tab through a URL query', async ({ page }) => {
   const c = await contest(),
     r = await alice.api('/registrations', 'POST', { contestId: c.id });
