@@ -86,7 +86,16 @@ export async function admissionMaterial(
       const id = answers[f.key];
       if (!id) continue;
       const file = await db.attachment.findUnique({ where: { id: String(id) } });
-      if (!file || file.registrationId !== r.id || !['image/png', 'image/jpeg'].includes(file.mime))
+      if (
+        !file ||
+        file.deletedAt ||
+        file.public ||
+        file.ticketId ||
+        (file.registrationId && file.registrationId !== r.id) ||
+        (!file.registrationId &&
+          !(await db.teamFile.count({ where: { attachmentId: file.id, registrationId: r.id } }))) ||
+        !['image/png', 'image/jpeg'].includes(file.mime)
+      )
         throw new Error('Invalid admission photo');
       const name = `photo-${file.id}.${file.mime === 'image/png' ? 'png' : 'jpg'}`;
       if (!assets[name]) {

@@ -96,12 +96,17 @@ export function requireManager(
   if (!manages(u, contestId, permission)) throw new ForbiddenException('没有此竞赛的相应管理权限');
 }
 export function canRead(u: Principal, r: Registration) {
+  return manages(u, r.contestId) || participates(u, r);
+}
+export function participates(u: Principal, r: Registration) {
   return (
-    manages(u, r.contestId) ||
     owns(u, r.ownerId) ||
     r.people.some((p) => !!p.userId && owns(u, p.userId) && p.active) ||
     r.coaches.some((c) => owns(u, c.userId))
   );
+}
+export function canReadFinanceRecords(u: Principal, r: Registration) {
+  return manages(u, r.contestId, 'FINANCE') || participates(u, r);
 }
 export function canEdit(u: Principal, r: Registration) {
   return manages(u, r.contestId, 'REGISTRATIONS') || canActForApplicant(u, r);

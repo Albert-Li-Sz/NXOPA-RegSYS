@@ -10,7 +10,7 @@
 
 [![Release](https://img.shields.io/github/v/release/Albert-Li-Sz/NXOPA-RegSYS?style=flat-square&color=2080f0)](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/latest) [![发布检查](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/workflows/release.yml/badge.svg)](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/workflows/release.yml) [![平台](https://img.shields.io/badge/platform-linux%2Famd64%20%C2%B7%20arm64-475569?style=flat-square)](deploy/README.md) [![MIT License](https://img.shields.io/badge/license-MIT-e7b416?style=flat-square)](LICENSE)
 
-**[在线教程](https://albert-li-sz.github.io/NXOPA-RegSYS/) · [下载 v0.6.6](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.6.6) · [部署文档](deploy/README.md)**
+**[在线教程](https://albert-li-sz.github.io/NXOPA-RegSYS/) · [下载 v0.6.7](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.6.7) · [部署文档](deploy/README.md)**
 
 [快速开始](#快速开始) · [报名流程](#报名流程) · [功能概览](#功能概览)<br />[界面预览](#界面预览) · [文档导航](#文档导航) · [常见问题](#常见问题)
 
@@ -61,7 +61,7 @@ curl --fail http://127.0.0.1:8080/api/v1/health
 
 默认内部 Caddy 只绑定 `127.0.0.1:8080`。公网部署参照 [Nginx 示例](deploy/nginx.conf.example) 配置 HTTPS，并传递 `Host` 与 `X-Forwarded-Proto`。配置邮件服务、完成验证邮件测试后，再开放邮箱注册。首次管理员使用向导填写的邮箱或用户名登录。
 
-也可下载 [v0.6.6 安装包](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/download/v0.6.6/nxopa-regsys-v0.6.6-install.tar.gz)，比对同一 Release 的 `SHA256SUMS` 后解压，在解压目录运行 `bash install.sh`。完整配置见 [安装说明](deploy/README.md)。
+也可下载 [v0.6.7 安装包](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/download/v0.6.7/nxopa-regsys-v0.6.7-install.tar.gz)，比对同一 Release 的 `SHA256SUMS` 后解压，在解压目录运行 `bash install.sh`。完整配置见 [安装说明](deploy/README.md)。
 
 ### 3. 更新、备份与维护
 
@@ -76,22 +76,22 @@ bash install.sh restore /secure/backups/your-backup.ccbak
 bash install.sh logs api worker
 ```
 
-交互更新选择目标版本，先加密备份，再更新安装材料、迁移数据库并等待健康检查。`update --yes` 按已保存的版本执行；需要指定新版时使用 `NXOPA_UPDATE_TAG=v0.6.6 bash install.sh update --yes`。卸载入口为 `bash install.sh uninstall`，默认保留数据。
+交互更新选择目标版本，先加密备份，再更新安装材料、迁移数据库并等待健康检查。`update --yes` 按已保存的版本执行；需要指定新版时使用 `NXOPA_UPDATE_TAG=v0.6.7 bash install.sh update --yes`。卸载入口为 `bash install.sh uninstall`，默认保留数据。
 
 > [!WARNING]
 > 保留原 `ENCRYPTION_KEY`、项目名及升级前的加密备份。旧版本报名流程迁移会永久清理历史取消报名，财务记录独立保留；回退这类迁移需要恢复备份。切换旧根目录 Compose 与新安装入口时，也须保留原项目名、数据库密码和密钥。[升级与恢复说明](docs/DEPLOYMENT.md#加密备份与恢复)
 
 ### 镜像与服务
 
-安装使用完整固定版本标签，例如 `ghcr.io/albert-li-sz/nxopa-regsys-api:v0.6.6`，不使用 `latest` 或 `@sha256` 引用。新入口兼容旧包及遗留的自动哈希覆盖，下载包校验与发布镜像核验继续保留。
+安装使用完整固定版本标签，例如 `ghcr.io/albert-li-sz/nxopa-regsys-api:v0.6.7`，不使用 `latest` 或 `@sha256` 引用。新入口兼容旧包及遗留的自动哈希覆盖，下载包校验与发布镜像核验继续保留。
 
 | 服务        | 安装镜像 / 职责                                                          |
 | ----------- | ------------------------------------------------------------------------ |
-| API、初始化 | `nxopa-regsys-api:v0.6.6` · 账号、报名、权限及数据库迁移                 |
-| Worker      | `nxopa-regsys-worker:v0.6.6` · 邮件、通知、制证、同步及清理任务          |
-| Web         | `nxopa-regsys-web:v0.6.6` · 官网与管理界面                               |
-| LaTeX       | `nxopa-regsys-latex:v0.6.6` · 隔离编译准考证                             |
-| 对象存储    | `nxopa-regsys-minio:v0.6.6` · 内置 MinIO；也可选择第三方 S3 或本地存储   |
+| API、初始化 | `nxopa-regsys-api:v0.6.7` · 账号、报名、权限及数据库迁移                 |
+| Worker      | `nxopa-regsys-worker:v0.6.7` · 邮件、通知、制证、同步及清理任务          |
+| Web         | `nxopa-regsys-web:v0.6.7` · 官网与管理界面                               |
+| LaTeX       | `nxopa-regsys-latex:v0.6.7` · 隔离编译准考证                             |
+| 对象存储    | `nxopa-regsys-minio:v0.6.7` · 内置 MinIO；也可选择第三方 S3 或本地存储   |
 | 基础服务    | 官方 `postgres:17.6-alpine`、`redis:7.4.5-alpine`、`caddy:2.10.2-alpine` |
 
 五类业务镜像均位于 `ghcr.io/albert-li-sz/`，支持 `linux/amd64`、`linux/arm64`。PostgreSQL、Redis、Caddy 与应用独立运行，持久数据使用单独卷。
@@ -159,7 +159,7 @@ flowchart TD
 | 使用 API、Webhook 或 MCP   | [接口与接入说明](docs/API.md)                                                                                                                                                                                         |
 | 配置 LaTeX 和准考证        | [准考证与模板](docs/ADMISSIONS.md)                                                                                                                                                                                    |
 | 了解模块和业务规则         | [架构设计](docs/ARCHITECTURE.md) · [业务计划](PROJECT_PLAN.md)                                                                                                                                                        |
-| 查看版本、验证及安全范围   | [v0.6.6 更新说明](docs/releases/v0.6.6.md) · [历史验收记录](docs/ACCEPTANCE.md) · [历史增强验收](docs/ENHANCEMENT_ACCEPTANCE.md) · [安全说明](SECURITY.md)                                                            |
+| 查看版本、验证及安全范围   | [v0.6.7 更新说明](docs/releases/v0.6.7.md) · [历史验收记录](docs/ACCEPTANCE.md) · [历史增强验收](docs/ENHANCEMENT_ACCEPTANCE.md) · [安全说明](SECURITY.md)                                                            |
 
 ## 开发与验证
 
@@ -204,16 +204,17 @@ pnpm test
 pnpm test:full
 ```
 
-`test:full` 使用独立数据库和附件目录运行二十组回归，覆盖账号、活动报名、审核、财务、邮件、附件、安全、并发、API 与浏览器流程。浏览器测试在 macOS 优先使用本机 Chrome，其他环境先运行 `pnpm exec playwright install --with-deps chromium`。
+`test:full` 使用独立数据库和附件目录运行二十三组回归，覆盖账号、活动报名、审核、财务、邮件、附件、安全、并发、API 与浏览器流程。发布要求同一提交的干净源码完整运行，筛选用例、跳过及不稳定的浏览器结果不能用于发布。浏览器测试在 macOS 优先使用本机 Chrome，其他环境先运行 `pnpm exec playwright install --with-deps chromium`。
 
-| 专项检查                 | 命令                                                                                 |
-| ------------------------ | ------------------------------------------------------------------------------------ |
-| 安装、旧包兼容与镜像配置 | `pnpm test:install-cli` · `pnpm test:install-bootstrap` · `pnpm test:install-images` |
-| 真实镜像安装与备份恢复   | `INSTALL_TEST_MODE=images IMAGE_TAG=v0.6.6 pnpm test:install`                        |
-| 安全与恶意归档           | `pnpm test:security` · `pnpm test:backup-security` · `pnpm audit:runtime`            |
-| 活动流程与旧版迁移       | `pnpm test:activity-workflows` · `pnpm test:workflow-upgrade`                        |
-| 考点选择与排座           | `pnpm test:exam-sites` · `pnpm exec playwright test tests/e2e/exam-sites.spec.ts`    |
-| 教程网页与 PDF           | `pnpm docs:build` · `pnpm docs:test` · `bash scripts/build-configuration-guide.sh`   |
+| 专项检查                 | 命令                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| 安装、旧包兼容与镜像配置 | `pnpm test:install-cli` · `pnpm test:install-bootstrap` · `pnpm test:install-images`        |
+| 真实镜像安装与备份恢复   | `INSTALL_TEST_MODE=images IMAGE_TAG=v0.6.7 pnpm test:install`                               |
+| 全项目审计回归           | `pnpm test:whole-audit` · `pnpm exec playwright test tests/e2e/whole-project-audit.spec.ts` |
+| 安全与恶意归档           | `pnpm test:security` · `pnpm test:backup-security` · `pnpm audit:runtime`                   |
+| 活动流程与旧版迁移       | `pnpm test:activity-workflows` · `pnpm test:workflow-upgrade`                               |
+| 考点选择与排座           | `pnpm test:exam-sites` · `pnpm exec playwright test tests/e2e/exam-sites.spec.ts`           |
+| 教程网页与 PDF           | `pnpm docs:build` · `pnpm docs:test` · `bash scripts/build-configuration-guide.sh`          |
 
 发布流程还会在原生 amd64 / arm64 上构建五类业务镜像，并执行安装、升级、HTTPS 代理及备份恢复验收。各版本结果随 Release 附件提供；本地测试报告位于 `.runtime/reports`。验收真实 Hydro / DOMjudge 时，按 [集成文档](docs/INTEGRATIONS.md) 准备环境，再使用 `FULL_REGRESSION_OJ=1 pnpm test:full`。
 

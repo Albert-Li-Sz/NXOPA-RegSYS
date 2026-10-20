@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { pdfText } from './pdf-text.js';
 import { readFile, writeFile, mkdir, chmod, rm, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID, createHmac } from 'node:crypto';
@@ -166,7 +167,12 @@ try {
   assert.equal(outcome.state, 'SUCCESS', outcome.error);
   const isolationPdf = await admin.raw(`/api/v1/jobs/${preview.id}/download`);
   assert.equal(isolationPdf.status, 200);
-  await writeFile('.runtime/reports/isolation.pdf', Buffer.from(await isolationPdf.arrayBuffer()));
+  const isolationBytes = Buffer.from(await isolationPdf.arrayBuffer());
+  const isolationText = await pdfText(isolationBytes);
+  assert.match(isolationText, /ISOLATED/);
+  assert.match(isolationText, /SHELL-DISABLED/);
+  assert.doesNotMatch(isolationText, /SHOULD-NOT-BE-VISIBLE|SHELL-ENABLED/);
+  await writeFile('.runtime/reports/isolation.pdf', isolationBytes);
   const folder = path.join(config.spool, preview.id);
   const remainingFiles = await readdir(folder, { encoding: 'utf8' }).catch((): string[] => []);
   assert.ok(!remainingFiles.includes('shell-marker'));

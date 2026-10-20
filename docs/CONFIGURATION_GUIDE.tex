@@ -28,7 +28,7 @@
 \fancyhf{}
 \fancyhead[L]{\small\color{muted}南晓开放原子社在线报名系统}
 \fancyhead[R]{\small\color{muted}配置教程}
-\fancyfoot[L]{\small\color{muted}v0.6.6 · 中文 · Asia/Shanghai}
+\fancyfoot[L]{\small\color{muted}v0.6.7 · 中文 · Asia/Shanghai}
 \fancyfoot[R]{\small\color{muted}\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
@@ -38,7 +38,7 @@
 \AfterEndEnvironment{Code}{\end{minipage}\par}
 \begin{document}
 \thispagestyle{empty}
-{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 20 日}
+{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 21 日}
 \vspace{9mm}
 
 {\huge\bfseries\color{ink}南晓开放原子社\\[3mm]在线报名系统}
@@ -294,7 +294,7 @@ curl --user reg_bridge https://domjudge.example.org/api/contests/training-2026/g
 \item 手动同步：在绑定列表点击“同步已有报名”批量同步或重试；也可在具体报名的“比赛账号”页逐条使用“同步比赛账号”。停用的绑定或实例不能发起批量同步。
 \item 失败重试：查看任务原因，修正配置后重试；重复执行不会重复建立本站已映射的比赛账号。
 \end{itemize}
-本站账号和 OJ 比赛账号独立管理。资料或净收款变化导致本站资格失效时，停止向用户交付原比赛账号；当前适配器不支持自动停用远端账号，管理员需在评测系统内处理已有账号。
+本站账号和 OJ 比赛账号独立管理。资格失效、平台停用或实例授权撤回时，停止交付账号并登记人工撤权待办。管理员需到原评测平台撤销远端访问，再标记待办完成。相同目标与账号重新同步验证成功后，旧待办自动失效；更换目标后原平台的待办继续保留。共享学校映射涉及其他竞赛时，由系统管理员确认。
 
 \newpage
 \section{竞赛报名规则与线下财务}
@@ -342,10 +342,12 @@ curl --user reg_bridge https://domjudge.example.org/api/contests/training-2026/g
 \shot[0.45\textheight]{21-invoice-application}{完整开票申请表：票种、抬头、税号、金额、联系方式、银行资料和备注。}
 
 企业税号必填；个人和非企业单位的普通发票允许留空。专票必须为单位抬头并填写税号；地址、银行等是否必填由开票方配置。不要把所有票种都强制成传统纸质专票字段，参考\href{https://shanghai.chinatax.gov.cn/tax/zcfw/rdwd/202402/t470676.html}{税务机关购买方信息说明}。
-申请金额不能超过确认净收款减去已申请／已开票金额；退款前须处理关联发票。提交保存资料快照，管理员可以查看完整信息，拒绝时填写原因，开票时上传实际发票；附件沿用报名访问权限。历史申请缺少新字段时显示为历史记录，不补造资料。
+申请金额不能超过确认净收款减去已申请／已开票金额；退款前须处理关联发票。提交保存资料快照，财务管理员及报名参与者可以查看完整信息，普通查看或报名审核授权仅能查看费用摘要。拒绝时填写原因，实际开票或退款时绑定凭证；历史财务附件继续保留。历史申请缺少新字段时显示为历史记录，不补造资料。
 
 \newpage
 \section{分页、Markdown 与页面使用}
+附件上传期间先等待完成，再保存、取消或退出登录。会话过期时可使用原账号恢复登录，当前草稿会保留。
+
 管理中心的用户、授权邀请、审计与任务，报名名单、工单以及财务历史均支持 20／50／100 条每页。显示总数、页码与跳页；页大小刷新后保留，筛选变化回到第一页。搜索、状态与时间条件同时作用于列表和总数；统计和名单导出始终覆盖完整筛选结果。批量准考证操作使用明确选中的报名，未选时作用于当前页符合条件的报名。
 \shot[0.29\textheight]{22-pagination}{中文审计操作与分页：选择每页条数，查看关联对象和详情。}
 

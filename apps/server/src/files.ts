@@ -48,9 +48,9 @@ async function fileRegistrations(tx: import('./db.js').Tx, id: string) {
   return tx.$queryRaw<
     { id: string; used: boolean }[]
   >`SELECT "registrationId" AS id,false AS used FROM "Attachment" WHERE id=${id}::uuid AND "registrationId" IS NOT NULL
-    UNION SELECT id,true FROM "Registration" WHERE answers::text LIKE ${`%${id}%`}
-    UNION SELECT "registrationId",true FROM "RegistrationPerson" WHERE answers::text LIKE ${`%${id}%`}
-    UNION SELECT "registrationId",true FROM "RegistrationCoach" WHERE answers::text LIKE ${`%${id}%`}`;
+    UNION SELECT id,true FROM "Registration" WHERE answers::text ILIKE ${`%${id}%`}
+    UNION SELECT "registrationId",true FROM "RegistrationPerson" WHERE answers::text ILIKE ${`%${id}%`}
+    UNION SELECT "registrationId",true FROM "RegistrationCoach" WHERE answers::text ILIKE ${`%${id}%`}`;
 }
 export class FileService {
   async upload(
@@ -252,8 +252,18 @@ export class FileService {
           } catch {}
         }
         if (!allowed) throw new ForbiddenException();
-      } else if (!file.contestId && !owns(u, file.ownerId) && !u.isAdmin)
-        throw new ForbiddenException();
+      } else if (!file.contestId && !owns(u, file.ownerId) && !u.isAdmin) {
+        const assignments = await db.teamFile.findMany({ where: { attachmentId: file.id } });
+        let allowed = false;
+        for (const assignment of assignments) {
+          try {
+            await getRegistration(u, assignment.registrationId);
+            allowed = true;
+            break;
+          } catch {}
+        }
+        if (!allowed) throw new ForbiddenException();
+      }
     }
     return {
       ...file,

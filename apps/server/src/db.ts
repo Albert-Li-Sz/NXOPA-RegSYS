@@ -27,7 +27,12 @@ export function atomicRequest<T>(fn: () => Promise<T>) {
 export type Tx = Prisma.TransactionClient;
 export const json = (v: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v));
 export async function lock(tx: Tx, id: string) {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
+  // PostgreSQL UUID equality ignores letter case; aliases must share a lock,
+  // including resource keys such as file:<uuid> and seating:<uuid>.
+  const key = id.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, (uuid) =>
+    uuid.toLowerCase(),
+  );
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
 }
 export async function audit(
   tx: Tx,

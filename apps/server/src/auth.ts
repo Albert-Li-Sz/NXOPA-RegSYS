@@ -38,7 +38,7 @@ export async function rateLimit(key: string, max = 20) {
   if (n > max) throw new ForbiddenException('请求过于频繁，请稍后重试');
 }
 export const passwordSchema = z.string().min(10, '密码至少 10 位').max(128);
-const publicUser = async (id: string, database: Tx = db): Promise<Principal> => {
+export const publicUser = async (id: string, database: Tx = db): Promise<Principal> => {
   const u = await database.user.findUniqueOrThrow({ where: { id }, include: { roles: true } });
   return {
     id: u.id,

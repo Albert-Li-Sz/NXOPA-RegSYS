@@ -176,13 +176,18 @@ async function refresh() {
     if (tab.value === 'audit') await logsPage.load();
     if (tab.value === 'tokens') tokens.value = await api('/admin/tokens');
     if (tab.value === 'site') {
-      [site.value, templates.value, fields.value] = await Promise.all([
+      const [settings, nextTemplates, nextFields] = await Promise.all([
         api('/admin/site'),
         api('/admissions/templates'),
         api('/admin/fields'),
       ]);
-      effectivePublicUrl.value = site.value.publicUrl;
-      site.value.trustedOriginsInput = (site.value.trustedOrigins ?? []).join('\n');
+      templates.value = nextTemplates;
+      fields.value = nextFields;
+      effectivePublicUrl.value = settings.publicUrl;
+      if (!siteEdit.editing.value) {
+        site.value = settings;
+        site.value.trustedOriginsInput = (site.value.trustedOrigins ?? []).join('\n');
+      }
       const currentTemplate = templates.value.find((t) => t.active && !t.contestId);
       if (currentTemplate && !globalEdit.editing.value) {
         templateName.value = currentTemplate.name;
@@ -193,6 +198,9 @@ async function refresh() {
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '管理数据加载失败';
   }
+}
+async function reloadAll() {
+  if (await mayLeaveEdits()) await refresh();
 }
 watch(tab, (value) => router.replace({ path: route.path, query: { ...route.query, tab: value } }));
 const managedContests = () =>
@@ -437,7 +445,7 @@ async function webhook() {
     >
   </div>
   <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false"
-    ><el-button text @click="refresh">重新加载</el-button></el-alert
+    ><el-button text @click="reloadAll">重新加载</el-button></el-alert
   >
   <el-tabs v-model="tab" :before-leave="mayLeaveEdits">
     <el-tab-pane v-for="item in tabs" :key="item.name" :label="item.label" :name="item.name" />

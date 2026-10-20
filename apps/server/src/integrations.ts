@@ -43,6 +43,7 @@ import {
   checkVersion,
 } from './security.js';
 import { rateLimit } from './auth.js';
+import { recordRemoteRevocation, supersedeRemoteRevocations } from './registration-removal.js';
 import { paginated, dateFilter, type ListQuery } from './pagination.js';
 export function organizationKey(info: { name: string; country: string }) {
   return `${info.country}:${info.name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()}`;
@@ -365,6 +366,11 @@ export async function verifyCallback(id: string, body: unknown) {
       },
     });
     if (updated.count !== 1) throw new BadRequestException('平台配置在核验期间已变更');
+    await supersedeRemoteRevocations(tx, {
+      ...verified,
+      bindingId: mapping.bindingId,
+      registrationId: current.id,
+    });
     await audit(tx, 'integration', 'PROVISION_CALLBACK', id, { mappingId: mapping.id });
     return verified;
   });
@@ -405,36 +411,94 @@ export class IntegrationService {
       })
       .parse(body);
     await safeUrl(b.baseUrl);
-    const { credentials, ...rest } = b;
-    const current = id ? await db.platformInstance.findUniqueOrThrow({ where: { id } }) : null;
-    if (current) checkVersion(current.version, b.version);
-    const savedCredentials: Record<string, string> =
-      current?.type === b.type ? JSON.parse(decrypt(current.credentials)) : {};
-    for (const [key, value] of Object.entries(credentials)) {
-      if (value !== undefined && value !== '') savedCredentials[key] = value;
-    }
-    const nextCredentials =
-      b.type === 'HYDRO'
-        ? { token: savedCredentials.token }
-        : { username: savedCredentials.username, password: savedCredentials.password };
-    if (b.type === 'HYDRO' && (nextCredentials.token?.trim().length ?? 0) < 32)
-      throw new BadRequestException('Hydro 插件 Token 至少 32 位');
-    if (b.type === 'DOMJUDGE' && (!nextCredentials.username?.trim() || !nextCredentials.password))
-      throw new BadRequestException('请配置 DOMjudge API 用户名与密码');
-    const data = { ...rest, allowedContestIds: json(b.allowedContestIds) };
-    const saved = id
-      ? await db.platformInstance.update({
-          where: { id, version: b.version },
-          data: {
-            ...data,
-            version: { increment: 1 },
-            credentials: encrypt(JSON.stringify(nextCredentials)),
-          },
-        })
-      : await db.platformInstance.create({
-          data: { ...data, version: 1, credentials: encrypt(JSON.stringify(nextCredentials)) },
+    return db.$transaction(async (tx) => {
+      if (id) await lock(tx, `platform-instance:${id}`);
+      const { credentials, ...rest } = b;
+      const current = id ? await tx.platformInstance.findUniqueOrThrow({ where: { id } }) : null;
+      if (current) checkVersion(current.version, b.version);
+      const savedCredentials: Record<string, string> =
+        current?.type === b.type ? JSON.parse(decrypt(current.credentials)) : {};
+      for (const [key, value] of Object.entries(credentials)) {
+        if (value !== undefined && value !== '') savedCredentials[key] = value;
+      }
+      const nextCredentials =
+        b.type === 'HYDRO'
+          ? { token: savedCredentials.token }
+          : { username: savedCredentials.username, password: savedCredentials.password };
+      if (b.type === 'HYDRO' && (nextCredentials.token?.trim().length ?? 0) < 32)
+        throw new BadRequestException('Hydro 插件 Token 至少 32 位');
+      if (b.type === 'DOMJUDGE' && (!nextCredentials.username?.trim() || !nextCredentials.password))
+        throw new BadRequestException('请配置 DOMjudge API 用户名与密码');
+      const data = { ...rest, allowedContestIds: json(b.allowedContestIds) };
+      const bindings = current
+        ? await tx.platformBinding.findMany({ where: { instanceId: current.id } })
+        : [];
+      for (const binding of bindings) {
+        const withdrawn =
+          (current!.allowedContestIds as string[]).includes(binding.contestId) &&
+          !b.allowedContestIds.includes(binding.contestId);
+        const revoked = withdrawn || !b.enabled;
+        if (withdrawn)
+          await tx.platformBinding.update({
+            where: { id: binding.id },
+            data: { enabled: false, version: { increment: 1 } },
+          });
+        let mappings = await tx.accountMapping.findMany({
+          where: { bindingId: binding.id },
+          orderBy: { id: 'asc' },
         });
-    return { id: saved.id };
+        for (const mapping of mappings) await lock(tx, `sync:${mapping.id}`);
+        mappings = await tx.accountMapping.findMany({ where: { bindingId: binding.id } });
+        if (revoked || current!.baseUrl !== b.baseUrl || current!.type !== b.type) {
+          for (const mapping of mappings)
+            await recordRemoteRevocation(tx, mapping, binding.contestId, {
+              reason: withdrawn
+                ? 'INSTANCE_AUTHORIZATION_WITHDRAWN'
+                : !b.enabled
+                  ? 'INSTANCE_DISABLED'
+                  : 'INSTANCE_TARGET_CHANGED',
+            });
+        }
+        await tx.accountMapping.updateMany({
+          where: { bindingId: binding.id },
+          data: {
+            state: revoked ? 'REVOKED_LOCALLY' : 'STALE',
+            details: {
+              message: revoked ? '平台授权已撤销或实例已停用' : '平台实例已更新，等待重新同步',
+            },
+          },
+        });
+      }
+      const saved = id
+        ? await tx.platformInstance.update({
+            where: { id, version: b.version },
+            data: {
+              ...data,
+              version: { increment: 1 },
+              credentials: encrypt(JSON.stringify(nextCredentials)),
+            },
+          })
+        : await tx.platformInstance.create({
+            data: { ...data, version: 1, credentials: encrypt(JSON.stringify(nextCredentials)) },
+          });
+      for (const binding of bindings)
+        if (
+          b.enabled &&
+          binding.enabled &&
+          binding.automatic &&
+          !(
+            (current!.allowedContestIds as string[]).includes(binding.contestId) &&
+            !b.allowedContestIds.includes(binding.contestId)
+          )
+        )
+          await requestExistingSync(tx, binding, true);
+      await audit(tx, u.id, 'PLATFORM_INSTANCE_SAVE', saved.id, {
+        version: saved.version,
+        allowedContestIds: b.allowedContestIds,
+        enabled: b.enabled,
+      });
+      return { id: saved.id };
+    });
   }
   async bindings(u: Principal, contestId: string) {
     requireManager(u, contestId, 'INTEGRATIONS');
@@ -462,11 +526,12 @@ export class IntegrationService {
       })
       .parse(body);
     requireManager(u, b.contestId, 'INTEGRATIONS');
-    const instance = await db.platformInstance.findUniqueOrThrow({ where: { id: b.instanceId } });
-    if (!u.isAdmin && !(instance.allowedContestIds as string[]).includes(b.contestId))
-      throw new ForbiddenException('该竞赛未获授权使用此平台实例');
     return db.$transaction(async (tx) => {
+      await lock(tx, `platform-instance:${b.instanceId}`);
       await lock(tx, b.contestId);
+      const instance = await tx.platformInstance.findUniqueOrThrow({ where: { id: b.instanceId } });
+      if (!u.isAdmin && !(instance.allowedContestIds as string[]).includes(b.contestId))
+        throw new ForbiddenException('该竞赛未获授权使用此平台实例');
       const contest = await tx.contest.findUniqueOrThrow({ where: { id: b.contestId } });
       if (b.enabled && !modulesFor(contest).integrations)
         throw new BadRequestException('此活动未启用平台联动');
@@ -517,9 +582,24 @@ export class IntegrationService {
         });
       }
       if (current) {
+        let mappings = await tx.accountMapping.findMany({
+          where: { bindingId: saved.id },
+          orderBy: { id: 'asc' },
+        });
+        for (const mapping of mappings) await lock(tx, `sync:${mapping.id}`);
+        mappings = await tx.accountMapping.findMany({ where: { bindingId: saved.id } });
+        if (!saved.enabled) {
+          for (const mapping of mappings)
+            await recordRemoteRevocation(tx, mapping, saved.contestId, {
+              reason: 'BINDING_DISABLED',
+            });
+        }
         await tx.accountMapping.updateMany({
           where: { bindingId: saved.id },
-          data: { state: 'STALE', details: { message: '平台配置已更新，请重新同步' } },
+          data: {
+            state: saved.enabled ? 'STALE' : 'REVOKED_LOCALLY',
+            details: { message: '平台配置已更新，请重新同步' },
+          },
         });
       }
       if (saved.automatic && saved.enabled && instance.enabled)
@@ -594,7 +674,10 @@ export class IntegrationService {
     );
   }
   async confirmSchool(u: Principal, bindingId: string, id: string, body: unknown) {
-    const b = await db.platformBinding.findUniqueOrThrow({ where: { id: bindingId } });
+    const b = await db.platformBinding.findUniqueOrThrow({
+      where: { id: bindingId },
+      include: { instance: true },
+    });
     requireManager(u, b.contestId, 'INTEGRATIONS');
     const input = organizationSchema
       .extend({
@@ -615,6 +698,25 @@ export class IntegrationService {
         r.organization && organizationKey(organizationSchema.parse(r.organization)) === m.nameKey,
     );
     if (!registration) throw new ForbiddenException('学校不属于该竞赛');
+    const checkSharedScope = async (database: Tx) => {
+      if (u.isSystemAdmin ?? u.isAdmin) return;
+      const related = await database.registration.findMany({
+        where: {
+          contestId: { not: b.contestId },
+          contest: { bindings: { some: { instanceId: b.instanceId } } },
+        },
+        select: { organization: true },
+      });
+      if (
+        related.some(
+          (r) =>
+            r.organization &&
+            organizationKey(organizationSchema.parse(r.organization)) === m.nameKey,
+        )
+      )
+        throw new ForbiddenException('该学校映射由多个竞赛共用，请由系统管理员确认');
+    };
+    await checkSharedScope(db);
     checkVersion(m.version, input.version);
     const c = await platformConfig(bindingId);
     const adapter = new (await import('@contest-center/connectors')).DOMjudgeConnector();
@@ -643,8 +745,13 @@ export class IntegrationService {
       );
       const currentBinding = await tx.platformBinding.findUniqueOrThrow({
         where: { id: bindingId },
+        include: { instance: true },
       });
       checkVersion(currentBinding.version, b.version);
+      checkVersion(currentBinding.instance.version, b.instance.version);
+      if (!currentBinding.enabled || !currentBinding.instance.enabled)
+        throw new BadRequestException('平台绑定或实例已停用');
+      await checkSharedScope(tx);
       const saved = await tx.organizationMapping.update({
         where: { id },
         data: { ...info, remoteId, status: 'CONFIRMED', version: { increment: 1 } },
@@ -725,7 +832,11 @@ export class IntegrationService {
       throw new ForbiddenException('个人比赛账号仅向参赛者本人及管理员交付');
     if (!r.eligible && !manager) throw new ForbiddenException('此报名暂不能领取比赛账号');
     const rows = await db.accountMapping.findMany({
-      where: { registrationId: id, state: 'VERIFIED' },
+      where: {
+        registrationId: id,
+        state: 'VERIFIED',
+        binding: { enabled: true, instance: { enabled: true } },
+      },
     });
     await db.$transaction((tx) => audit(tx, u.id, 'CREDENTIAL_VIEW', id));
     return rows

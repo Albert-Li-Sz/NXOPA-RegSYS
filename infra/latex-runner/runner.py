@@ -15,7 +15,9 @@ def run(job):
     if not isinstance(source,str) or len(source)>250000:
         raise ValueError('Invalid or oversized template')
     work=job/'input'
-    work.mkdir(mode=0o700,exist_ok=True)
+    # A restart can leave auxiliary files owned by a previous compile UID.
+    shutil.rmtree(work,ignore_errors=True)
+    work.mkdir(mode=0o700)
     (work/'document.tex').write_text(source)
     assets=request.get('assets',{})
     if not isinstance(assets,dict) or len(assets)>30: raise ValueError('Invalid assets')

@@ -1,13 +1,22 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onScopeDispose } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { defaultSite } from '@contest-center/contracts';
-import { api, auth } from './api';
+import { api, auth, loadAuth } from './api';
 import { setClientCsrf } from './generated-client';
 import { confirmLeaveEdits, discardEdits } from './composables/useEditSession';
 import { adminLevelLabels } from '@contest-center/contracts';
 import { adminCenters, centerTabs } from './admin-centers';
+import { hasPendingOperations } from './composables/usePendingOperations';
+const beforeUnload = (event: BeforeUnloadEvent) => {
+  if (hasPendingOperations.value) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+};
+window.addEventListener('beforeunload', beforeUnload);
+onScopeDispose(() => window.removeEventListener('beforeunload', beforeUnload));
 const router = useRouter();
 const route = useRoute();
 const visibleCenters = computed(() =>
@@ -20,6 +29,38 @@ const displayName = computed(() => {
 });
 const site = ref({ ...defaultSite });
 const loggingOut = ref(false);
+const recoveryPassword = ref(''),
+  recovering = ref(false),
+  recoveryError = ref('');
+async function recoverSession(passwordLogin = true) {
+  if (recovering.value || !auth.expiredUser) return;
+  recovering.value = true;
+  recoveryError.value = '';
+  try {
+    if (passwordLogin) {
+      const current = await api<{ csrf: string }>('/auth/me');
+      auth.csrf = current.csrf;
+      setClientCsrf(current.csrf);
+      await api('/auth/login', 'POST', {
+        account: auth.expiredUser.email,
+        password: recoveryPassword.value,
+      });
+    }
+    await loadAuth();
+    recoveryPassword.value = '';
+  } catch (error) {
+    recoveryError.value = error instanceof Error ? error.message : '恢复登录失败';
+  } finally {
+    recovering.value = false;
+  }
+}
+async function leaveExpiredSession() {
+  if (!(await confirmLeaveEdits())) return;
+  discardEdits();
+  auth.expiredUser = null;
+  recoveryPassword.value = '';
+  await router.replace({ path: '/login', query: { next: route.fullPath } });
+}
 const brand = computed(() =>
   site.value.name.endsWith('在线报名系统')
     ? { name: site.value.name.slice(0, -6), subtitle: '在线报名系统' }
@@ -52,7 +93,7 @@ async function logout() {
 </script>
 <template>
   <div class="site-shell" :class="{ 'landing-shell': isLanding }" :aria-busy="loggingOut">
-    <header class="site-header" :inert="loggingOut || undefined">
+    <header class="site-header" :inert="loggingOut || !!auth.expiredUser || undefined">
       <div
         class="header-inner"
         :class="{ 'admin-header': visibleCenters.length > 0 && !isLanding }"
@@ -106,10 +147,10 @@ async function logout() {
         </template>
       </div>
     </header>
-    <main class="page" :inert="loggingOut || undefined">
+    <main class="page" :inert="loggingOut || !!auth.expiredUser || undefined">
       <router-view :key="$route.fullPath" />
     </main>
-    <footer class="site-footer" :inert="loggingOut || undefined">
+    <footer class="site-footer" :inert="loggingOut || !!auth.expiredUser || undefined">
       <div class="footer-brand">
         <img src="/brand/openatom-club.jpg" width="30" height="30" alt="" />
         <div>
@@ -126,5 +167,35 @@ async function logout() {
         <span>开放 · 协作 · 探索</span><span>© {{ new Date().getFullYear() }} 南晓开放原子社</span>
       </div>
     </footer>
+    <el-dialog
+      :model-value="!!auth.expiredUser"
+      title="登录已失效"
+      width="min(440px, calc(100vw - 32px))"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+    >
+      <p>当前草稿已保留，请使用原账号重新登录后继续编辑。</p>
+      <el-form @submit.prevent="recoverSession()">
+        <el-form-item label="账号"
+          ><el-input :model-value="auth.expiredUser?.email" readonly
+        /></el-form-item>
+        <el-form-item label="密码"
+          ><el-input
+            v-model="recoveryPassword"
+            aria-label="恢复登录密码"
+            type="password"
+            show-password
+            autocomplete="current-password"
+        /></el-form-item>
+        <el-alert v-if="recoveryError" :title="recoveryError" type="error" :closable="false" />
+        <el-button type="primary" native-type="submit" :loading="recovering"
+          >重新登录并继续</el-button
+        >
+      </el-form>
+      <p><a href="/login" target="_blank" rel="noopener">在新窗口使用其他登录方式</a></p>
+      <el-button :disabled="recovering" @click="recoverSession(false)">已登录，恢复编辑</el-button>
+      <el-button :disabled="recovering" @click="leaveExpiredSession">放弃草稿并前往登录</el-button>
+    </el-dialog>
   </div>
 </template>

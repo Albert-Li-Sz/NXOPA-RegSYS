@@ -3,11 +3,28 @@ import { ElMessage } from 'element-plus';
 import type { Principal } from './types';
 import { setClientCsrf } from './generated-client';
 import { requestId } from './request-id';
+import { beginOperation } from './composables/usePendingOperations';
 export const auth = reactive<{
   user: Principal | null;
   csrf: string;
   loaded: boolean;
-}>({ user: null, csrf: '', loaded: false });
+  expiredUser: Principal | null;
+}>({ user: null, csrf: '', loaded: false, expiredUser: null });
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+function expireSession(path: string, status: number) {
+  if (status !== 401 || path === '/auth/login' || !auth.user) return;
+  auth.expiredUser = auth.user;
+  auth.user = null;
+  auth.csrf = '';
+  setClientCsrf('');
+}
 const pendingWrites = new Map<string, Promise<any>>();
 const retryKeys = new Map<string, { key: string; expiresAt: number }>();
 export function api<T = any>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -48,23 +65,32 @@ async function requestApi<T = any>(
     body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   });
   const content = await response.text();
+  expireSession(path, response.status);
   let value: any;
   try {
     value = JSON.parse(content);
   } catch {
     const message = `服务暂时不可用（${response.status}），请稍后重试`;
     ElMessage.error(message);
-    throw new Error(message);
+    throw new ApiError(response.status, message);
   }
   if (!response.ok) {
     const message = value.message ?? '请求失败';
     ElMessage.error(message);
-    throw new Error(message);
+    throw new ApiError(response.status, message);
   }
   return value;
 }
-export async function loadAuth() {
+export async function loadAuth(options: { allowSignedOut?: boolean } = {}) {
   const data = await api<{ user: Principal | null; csrf: string }>('/auth/me');
+  if (options.allowSignedOut && !data.user) auth.expiredUser = null;
+  if (auth.expiredUser) {
+    if (data.user?.id !== auth.expiredUser.id)
+      throw new ApiError(401, '请使用原账号登录后恢复编辑；更换账号需先放弃当前草稿');
+    auth.expiredUser = null;
+  } else if (!data.user && auth.user && !options.allowSignedOut) {
+    expireSession('/auth/me', 401);
+  }
   auth.user = data.user;
   auth.csrf = data.csrf;
   setClientCsrf(data.csrf);
@@ -79,9 +105,10 @@ export async function downloadArchive(path: string, body: unknown, name: string)
     body: JSON.stringify(body),
   });
   if (!response.ok) {
+    expireSession(path, response.status);
     const data = await response.json().catch(() => ({ message: '下载失败，请稍后重试' }));
     ElMessage.error(data.message);
-    throw new Error(data.message);
+    throw new ApiError(response.status, data.message);
   }
   const url = URL.createObjectURL(await response.blob()),
     link = document.createElement('a');
@@ -95,11 +122,16 @@ export async function downloadArchive(path: string, body: unknown, name: string)
 export async function upload(file: File, registrationId?: string, ticketId?: string) {
   const body = new FormData();
   body.append('file', file);
-  return api<{ id: string; name: string }>(
-    `/files${registrationId ? `?registrationId=${registrationId}` : ticketId ? `?ticketId=${ticketId}` : ''}`,
-    'POST',
-    body,
-  );
+  const end = beginOperation();
+  try {
+    return await api<{ id: string; name: string }>(
+      `/files${registrationId ? `?registrationId=${registrationId}` : ticketId ? `?ticketId=${ticketId}` : ''}`,
+      'POST',
+      body,
+    );
+  } finally {
+    end();
+  }
 }
 export const money = (cents: number) => `¥ ${(cents / 100).toFixed(2)}`;
 export const date = (value: string) =>

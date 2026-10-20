@@ -15,6 +15,7 @@ import type { Data, FieldDefinition } from '../types';
 import { useEditSession, mayLeaveEdits } from '../composables/useEditSession';
 import EditActions from '../components/EditActions.vue';
 import DynamicFields from '../components/DynamicFields.vue';
+import { beginOperation, operationsSettled } from '../composables/usePendingOperations';
 import MailDelivery from '../components/MailDelivery.vue';
 import { usePagedList } from '../composables/usePagedList';
 import ListPagination from '../components/ListPagination.vue';
@@ -134,7 +135,7 @@ onMounted(async () => {
   if (auth.user?.grants?.length) contests.value = await api('/contests?all=true');
 });
 async function save() {
-  if (busy.value) return;
+  if (busy.value || !operationsSettled()) return;
   busy.value = true;
   try {
     await api('/auth/profile', 'PUT', {
@@ -154,6 +155,7 @@ async function save() {
   }
 }
 async function submitIdentity() {
+  if (!operationsSettled()) return;
   if (busy.value || requests.value.some((request) => request.status === 'PENDING')) return;
   busy.value = true;
   try {
@@ -168,6 +170,7 @@ async function avatar(event: Event) {
   const input = event.target as HTMLInputElement,
     file = input.files?.[0];
   if (!file) return;
+  const end = beginOperation();
   busy.value = true;
   try {
     const data = new FormData();
@@ -176,6 +179,7 @@ async function avatar(event: Event) {
     profile.avatarAttachmentId = uploaded.id;
     ElMessage.success('头像已选择，保存资料后生效');
   } finally {
+    end();
     input.value = '';
     busy.value = false;
   }
@@ -195,7 +199,7 @@ async function verify() {
 }
 async function revokeSession(id: string) {
   await api(`/auth/sessions/${id}`, 'DELETE');
-  await loadAuth();
+  await loadAuth({ allowSignedOut: true });
   if (!auth.user) {
     await router.replace('/login');
     return;
@@ -218,7 +222,7 @@ async function closeAccount() {
     { type: 'warning' },
   );
   await api('/auth/account', 'DELETE', closure);
-  await loadAuth();
+  await loadAuth({ allowSignedOut: true });
   await router.replace('/login');
   ElMessage.success('账号已注销');
 }
@@ -284,7 +288,10 @@ const contestName = (id: string | null) =>
               @submit.prevent="save"
               ><div class="form-grid">
                 <el-form-item label="姓名" for="profile-name"
-                  ><el-input id="profile-name" v-model="profile.name" :disabled="locked"
+                  ><el-input
+                    id="profile-name"
+                    v-model="profile.name"
+                    :disabled="busy || !edit.editing.value || locked"
                 /></el-form-item>
                 <el-form-item label="邮箱" for="profile-email"
                   ><el-input id="profile-email" v-model="profile.email" type="email"

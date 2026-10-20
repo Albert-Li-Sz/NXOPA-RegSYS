@@ -11,6 +11,27 @@ afterEach(() => {
   config.allowPrivate = false;
 });
 describe('integration destination boundary', () => {
+  it('rejects oversized chunked platform responses before buffering the entire body', async () => {
+    config.allowPrivate = true;
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      for (let i = 0; i < 11; i++) res.write(Buffer.alloc(1024 * 1024, 32));
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing test address');
+    try {
+      await expect(
+        integrationRequest(`http://127.0.0.1:${address.port}/`, {
+          signal: AbortSignal.timeout(3000),
+        }),
+      ).rejects.toThrow('10 MiB');
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
   it.each([
     '::ffff:127.0.0.1',
     '::ffff:a9fe:a9fe',

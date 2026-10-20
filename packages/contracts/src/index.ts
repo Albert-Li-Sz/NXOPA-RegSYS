@@ -201,37 +201,49 @@ export const accountInvitationSchema = z
 export type AccountInvitationInput = z.infer<typeof accountInvitationSchema>;
 export const invitationReturnPathSchema = z.string().regex(/^\/invite\/[A-Za-z0-9_-]{30,100}$/);
 export const answersSchema = z.record(z.string().max(80), z.json());
-export const fieldSchema = z.object({
-  key: z
-    .string()
-    .regex(/^[a-z][a-z0-9_]{0,63}$/)
-    .refine((v) => !['constructor', 'prototype', '__proto__'].includes(v)),
-  label: z.string().min(1).max(100),
-  scope: z.enum(['PERSON', 'TEAM', 'COACH', 'REGISTRATION']),
-  type: z.enum([
-    'text',
-    'textarea',
-    'number',
-    'date',
-    'select',
-    'multiselect',
-    'boolean',
-    'file',
-    'photo',
-  ]),
-  required: z.boolean().default(false),
-  sensitive: z.boolean().default(false),
-  options: z.array(z.string().max(100)).max(100).default([]),
-  help: z.string().max(500).default(''),
-  group: z.string().max(100).default('基本信息'),
-  locked: z.boolean().default(false),
-  source: z.string().max(80).optional(),
-  min: z.number().optional(),
-  max: z.number().optional(),
-  condition: z
-    .object({ key: z.string(), equals: z.json().optional(), includes: z.string().optional() })
-    .optional(),
-});
+export const fieldSchema = z
+  .object({
+    key: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{0,63}$/)
+      .refine((v) => !['constructor', 'prototype', '__proto__'].includes(v)),
+    label: z.string().min(1).max(100),
+    scope: z.enum(['PERSON', 'TEAM', 'COACH', 'REGISTRATION']),
+    type: z.enum([
+      'text',
+      'textarea',
+      'number',
+      'date',
+      'select',
+      'multiselect',
+      'boolean',
+      'file',
+      'photo',
+    ]),
+    required: z.boolean().default(false),
+    sensitive: z.boolean().default(false),
+    options: z.array(z.string().max(100)).max(100).default([]),
+    help: z.string().max(500).default(''),
+    group: z.string().max(100).default('基本信息'),
+    locked: z.boolean().default(false),
+    source: z.string().max(80).optional(),
+    min: z.number().optional(),
+    max: z.number().optional(),
+    condition: z
+      .object({ key: z.string(), equals: z.json().optional(), includes: z.string().optional() })
+      .optional(),
+  })
+  .superRefine((field, ctx) => {
+    if (field.min !== undefined && field.max !== undefined && field.min > field.max)
+      ctx.addIssue({ code: 'custom', path: ['max'], message: '最大值不能小于最小值' });
+    if (field.type === 'text' || field.type === 'textarea') {
+      for (const key of ['min', 'max'] as const) {
+        const value = field[key];
+        if (value !== undefined && (!Number.isInteger(value) || value < 0))
+          ctx.addIssue({ code: 'custom', path: [key], message: '文本长度须为非负整数' });
+      }
+    }
+  });
 export type FieldDefinition = z.infer<typeof fieldSchema>;
 export const fieldsSchema = z
   .array(fieldSchema)

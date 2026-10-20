@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onScopeDispose, watch } from 'vue';
 import { fieldVisible } from '@contest-center/contracts';
 import type { FieldDefinition, Data } from '../types';
 import { upload } from '../api';
 import PaginatedList from './PaginatedList.vue';
+import { beginOperation } from '../composables/usePendingOperations';
 const props = defineProps<{
   fields: FieldDefinition[];
   scope: FieldDefinition['scope'];
@@ -15,11 +16,34 @@ const props = defineProps<{
 const visible = computed(() =>
   props.fields.filter((f) => f.scope === props.scope && fieldVisible(f, props.answers)),
 );
+const uploading = ref<Record<string, boolean>>({});
+const uploadError = ref<Record<string, string>>({});
+let generation = 0;
+watch(
+  () => [props.answers, props.registrationId, props.disabled],
+  () => generation++,
+);
+onScopeDispose(() => generation++);
 async function file(e: Event, key: string) {
   const input = e.target as HTMLInputElement;
-  if (input.files?.[0]) {
-    const result = await upload(input.files[0], props.registrationId);
-    props.answers[key] = result.id;
+  const selected = input.files?.[0];
+  if (!selected || props.disabled || uploading.value[key]) return;
+  const answers = props.answers,
+    current = generation,
+    end = beginOperation();
+  uploading.value[key] = true;
+  uploadError.value[key] = '';
+  try {
+    const result = await upload(selected, props.registrationId);
+    if (current === generation && answers === props.answers && !props.disabled)
+      answers[key] = result.id;
+  } catch (error) {
+    if (current === generation)
+      uploadError.value[key] = error instanceof Error ? error.message : '上传失败，请重试';
+  } finally {
+    uploading.value[key] = false;
+    input.value = '';
+    end();
   }
 }
 </script>
@@ -94,9 +118,11 @@ async function file(e: Event, key: string) {
               :id="`${prefix || scope}-${f.key}`"
               type="file"
               :accept="f.type === 'photo' ? 'image/png,image/jpeg' : '.pdf,.png,.jpg,.jpeg,.txt'"
-              :disabled="disabled"
+              :disabled="disabled || uploading[f.key]"
               @change="file($event, f.key)"
-            /><span class="form-help">支持 PDF、PNG、JPEG，单个文件不超过 10 MB</span></template
+            /><span v-if="uploading[f.key]" role="status">附件正在上传…</span
+            ><span v-if="uploadError[f.key]" role="alert">{{ uploadError[f.key] }}</span
+            ><span class="form-help">支持 PDF、PNG、JPEG，单个文件不超过 10 MB</span></template
           >
           <div v-if="f.help" class="form-help">{{ f.help }}</div>
         </div>

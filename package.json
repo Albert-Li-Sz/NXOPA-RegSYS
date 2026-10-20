@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -66,6 +66,7 @@
     "test:exam-sites": "tsx tests/integrations/exam-sites.ts",
     "test:workflow-upgrade": "tsx tests/integrations/workflow-upgrade.ts",
     "test:security": "tsx tests/integrations/security-audit.ts",
+    "test:whole-audit": "tsx tests/integrations/whole-project-audit.ts",
     "test:audit-fixes": "tsx tests/integrations/audit-fixes.ts",
     "test:backup-security": "node --test tests/backup-security.test.mjs tests/backup-lifecycle.test.mjs",
     "audit:runtime": "node scripts/audit-runtime.mjs"

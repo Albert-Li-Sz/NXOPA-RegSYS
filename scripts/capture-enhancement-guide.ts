@@ -10,6 +10,7 @@ const folder = 'docs/configuration-screenshots';
 const manifest = JSON.parse(await readFile(`${folder}/capture.json`, 'utf8'));
 const images = new Set<string>(manifest.images);
 let exampleContestId = '';
+let financeGrantId = '';
 const browser = await chromium.launch({
   executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
 });
@@ -157,7 +158,16 @@ try {
       paidAt: new Date().toISOString(),
       attachmentId: attachment.id,
     });
-    await admin.api(`/finance/vouchers/${voucher.id}/review`, 'POST', { decision: 'CONFIRMED' });
+    const finance = await new Client().login('bob');
+    financeGrantId = (
+      await admin.api('/admin/grants', 'POST', {
+        userId: finance.user.id,
+        level: 'CONTEST',
+        contestId: example.id,
+        permissions: ['FINANCE'],
+      })
+    ).id;
+    await finance.api(`/finance/vouchers/${voucher.id}/review`, 'POST', { decision: 'CONFIRMED' });
     await web.goto(`http://localhost:5173/registrations/${r.id}?tab=finance`);
     await web.getByRole('button', { name: '申请开票', exact: true }).click();
     const dialog = web.getByRole('dialog');
@@ -210,6 +220,8 @@ try {
   await writeFile(`${folder}/capture.json`, JSON.stringify(manifest, null, 2) + '\n');
   console.log(`Tutorial screenshots: ${images.size} captured; ${mode} complete`);
 } finally {
+  if (financeGrantId)
+    await db.adminGrant.update({ where: { id: financeGrantId }, data: { revokedAt: new Date() } });
   if (exampleContestId)
     await db.contest.update({
       where: { id: exampleContestId },

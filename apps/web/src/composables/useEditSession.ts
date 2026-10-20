@@ -1,8 +1,10 @@
 import { computed, ref, onScopeDispose, type Ref } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
+import { hasPendingOperations, operationsSettled } from './usePendingOperations';
 const sessions = new Set<{ mayLeave: () => Promise<boolean>; cancel: () => void }>();
 export async function confirmLeaveEdits() {
+  if (!operationsSettled()) return false;
   const active = [...sessions];
   for (const session of active) if (!(await session.mayLeave())) return false;
   return true;
@@ -39,6 +41,7 @@ export function useEditSession<T extends object | undefined>(
     baseline.value = '';
   }
   function cancel() {
+    if (!operationsSettled()) return;
     if (baseline.value) {
       const saved = JSON.parse(baseline.value);
       if (model && typeof model === 'object' && 'value' in model) (model as Ref<T>).value = saved;
@@ -50,6 +53,7 @@ export function useEditSession<T extends object | undefined>(
     finish();
   }
   async function mayLeave() {
+    if (!operationsSettled()) return false;
     if (!dirty.value) return true;
     try {
       await ElMessageBox.confirm('有未保存的修改，确定离开并放弃修改？', '未保存修改', {
@@ -65,7 +69,7 @@ export function useEditSession<T extends object | undefined>(
   onBeforeRouteLeave(mayLeave);
   onBeforeRouteUpdate(mayLeave);
   const beforeUnload = (e: BeforeUnloadEvent) => {
-    if (dirty.value) {
+    if (dirty.value || hasPendingOperations.value || !operationsSettled()) {
       e.preventDefault();
       e.returnValue = '';
     }

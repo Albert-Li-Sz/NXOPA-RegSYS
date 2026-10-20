@@ -10,6 +10,7 @@ import { usePagedList } from '../composables/usePagedList';
 import type { Data, ContestView } from '../types';
 import PaginatedList from '../components/PaginatedList.vue';
 import { useEditSession } from '../composables/useEditSession';
+import { useOperationGuard } from '../composables/usePendingOperations';
 const list = usePagedList('support', () => '/support');
 const route = useRoute(),
   router = useRouter(),
@@ -39,6 +40,7 @@ function mayNavigate() {
 }
 onBeforeRouteLeave(mayNavigate);
 onBeforeRouteUpdate(mayNavigate);
+useOperationGuard(mayNavigate);
 const createEdit = useEditSession(form),
   replyEdit = useEditSession(reply, !!route.params.id);
 watch(

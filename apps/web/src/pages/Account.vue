@@ -6,6 +6,7 @@ import { defaultFields, invitationReturnPathSchema } from '@contest-center/contr
 import { api, auth, loadAuth, date } from '../api';
 import type { Data } from '../types';
 import DynamicFields from '../components/DynamicFields.vue';
+import { operationsSettled } from '../composables/usePendingOperations';
 import ProfileCenter from './ProfileCenter.vue';
 const route = useRoute(),
   router = useRouter(),
@@ -153,7 +154,7 @@ async function submit() {
           ? { email: form.email, code: form.code, password: form.password }
           : { token: route.query.token, password: form.password },
       );
-      await loadAuth();
+      await loadAuth({ allowSignedOut: true });
       ElMessage.success('密码已重置，请登录');
       await router.replace('/login');
       return;
@@ -186,6 +187,7 @@ async function submit() {
   }
 }
 async function save() {
+  if (!operationsSettled()) return;
   busy.value = true;
   try {
     await api('/auth/profile', 'PUT', {
@@ -208,7 +210,7 @@ async function resend() {
 }
 async function revokeSession(id: string) {
   await api(`/auth/sessions/${id}`, 'DELETE');
-  await loadAuth();
+  await loadAuth({ allowSignedOut: true });
   if (!auth.user) {
     sessions.value = [];
     await router.replace('/login');

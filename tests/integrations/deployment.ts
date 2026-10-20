@@ -71,6 +71,36 @@ try {
 }
 try {
   const admin = await new Client().login(credentials.email, credentials.password);
+  const financeEmail = `deployment-finance-${Date.now()}@example.test`,
+    financePassword = randomBytes(24).toString('base64url');
+  execFileSync(
+    'docker',
+    [
+      'compose',
+      'run',
+      '--rm',
+      '-T',
+      '-e',
+      'ADMIN_EMAIL',
+      '-e',
+      'ADMIN_PASSWORD',
+      '-e',
+      'ADMIN_USERNAME',
+      'api',
+      'pnpm',
+      'bootstrap:admin',
+    ],
+    {
+      env: {
+        ...process.env,
+        ADMIN_EMAIL: financeEmail,
+        ADMIN_PASSWORD: financePassword,
+        ADMIN_USERNAME: `finance_${Date.now()}`,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  const finance = await new Client().login(financeEmail, financePassword);
   assert.ok(admin.user.isAdmin);
   report.push(
     'Production Compose health, versioned migrations, formal administrator bootstrap and login',
@@ -110,7 +140,7 @@ try {
     paidAt: new Date().toISOString(),
     attachmentId: file.id,
   });
-  await admin.api(`/finance/vouchers/${voucher.id}/review`, 'POST', { decision: 'CONFIRMED' });
+  await finance.api(`/finance/vouchers/${voucher.id}/review`, 'POST', { decision: 'CONFIRMED' });
   r = await admin.api(`/registrations/${r.id}`);
   assert.equal(r.eligible, true);
   assert.equal(r.netPaidCents, 500);
@@ -177,7 +207,9 @@ try {
   const cancel = await admin.api(`/registrations/${r.id}/cancel`, 'POST', {
     version: before.version,
   });
-  assert.equal(cancel.eligible, false);
+  assert.equal(cancel.deleted, true);
+  assert.equal((await admin.raw(`/api/v1/registrations/${r.id}`)).status, 404);
+  assert.equal((await admin.api(`/finance/accounts/${r.id}`)).netPaidCents, 500);
   execFileSync('bash', ['scripts/restore.sh', `.runtime/backups/${backup}`], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
@@ -192,6 +224,7 @@ try {
   report.push(
     'AES-256-GCM encrypted backup restores database versions, ledger, private files and original session',
   );
+  for (const grant of finance.user.grants) await admin.api(`/admin/grants/${grant.id}`, 'DELETE');
   console.log(`Deployment acceptance: ${report.length} checks passed`);
 } finally {
   await writeFile('.runtime/reports/deployment.json', JSON.stringify({ report }, null, 2));

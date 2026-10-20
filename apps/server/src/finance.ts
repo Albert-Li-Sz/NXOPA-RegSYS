@@ -261,7 +261,7 @@ export class FinanceService {
       const r = await loaded(tx, e.registrationId);
       requireManager(u, r.contestId, 'FINANCE');
       if (e.kind !== 'PAYMENT') throw new BadRequestException('只能冲正确认收款');
-      const prior = await tx.ledgerEntry.findUnique({ where: { sourceId: `reverse:${id}` } });
+      const prior = await tx.ledgerEntry.findUnique({ where: { sourceId: `reverse:${e.id}` } });
       if (prior) return prior;
       const totalInvoices = await tx.invoiceRequest.aggregate({
         where: { registrationId: r.id, status: { in: ['REQUESTED', 'ISSUED'] } },
@@ -275,7 +275,7 @@ export class FinanceService {
           contestId: r.contestId,
           kind: 'REVERSAL',
           amountCents: -e.amountCents,
-          sourceId: `reverse:${id}`,
+          sourceId: `reverse:${e.id}`,
           actorId: u.id,
           note: reason,
         },
@@ -314,6 +314,8 @@ export class FinanceService {
         attachmentId: z.string().uuid().optional(),
       })
       .parse(body);
+    if (b.attachmentId && b.decision !== 'COMPLETED')
+      throw new BadRequestException('仅登记实际退款时可上传退款凭证');
     const refund = await db.refund.findUniqueOrThrow({ where: { id } });
     return db.$transaction(async (tx) => {
       await lock(tx, refund.registrationId);
@@ -410,6 +412,8 @@ export class FinanceService {
         reason: z.string().max(3000).default(''),
       })
       .parse(body);
+    if (b.attachmentId && b.decision !== 'ISSUED')
+      throw new BadRequestException('仅实际开票时可上传发票文件');
     const x = await db.invoiceRequest.findUniqueOrThrow({ where: { id } });
     return db.$transaction(async (tx) => {
       await lock(tx, x.registrationId);

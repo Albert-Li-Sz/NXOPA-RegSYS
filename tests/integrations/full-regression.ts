@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+// @ts-expect-error Shared release validator is a native JavaScript module.
+import { fullRegressionSuites } from '../../scripts/release-validation.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const exec = promisify(execFile);
@@ -13,7 +15,18 @@ await mkdir(path.join(root, '.runtime/reports'), { recursive: true });
 const stage = await mkdtemp(path.join(root, '.runtime/full-regression-'));
 const project = `nxopa-regression-${process.pid}`;
 const children: ChildProcess[] = [];
-const results: { suite: string; success: boolean; elapsedMs: number; log: string }[] = [];
+const results: {
+  suite: string;
+  success: boolean;
+  elapsedMs: number;
+  log: string;
+  command: string[];
+  browser?: Record<string, number>;
+}[] = [];
+const startCommit = (await exec('git', ['rev-parse', 'HEAD'], { cwd: root })).stdout.trim();
+const startWorkingTreeDirty = !!(
+  await exec('git', ['status', '--porcelain'], { cwd: root })
+).stdout.trim();
 async function freePort() {
   const server = createServer();
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -58,6 +71,11 @@ const env = {
     root,
     '.runtime/reports',
     `full-browser-report-${process.pid}`,
+  ),
+  PLAYWRIGHT_JSON_OUTPUT_FILE: path.join(
+    root,
+    '.runtime/reports',
+    `full-browser-${process.pid}.json`,
   ),
 };
 await mkdir(env.STORAGE_DIR, { recursive: true });
@@ -159,23 +177,21 @@ async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
   const log = `.runtime/reports/full-${name.replaceAll(':', '-')}.log`;
   let output = '',
     success = false;
+  let browser: Record<string, number> | undefined;
+  const args = [
+    suite,
+    ...(suite === 'test:e2e' && process.env.E2E_SPEC ? [process.env.E2E_SPEC] : []),
+    ...(suite === 'test:e2e' && process.env.E2E_MAX_FAILURES
+      ? [`--max-failures=${process.env.E2E_MAX_FAILURES}`]
+      : []),
+  ];
   try {
-    const execution = exec(
-      'pnpm',
-      [
-        suite,
-        ...(suite === 'test:e2e' && process.env.E2E_SPEC ? [process.env.E2E_SPEC] : []),
-        ...(suite === 'test:e2e' && process.env.E2E_MAX_FAILURES
-          ? [`--max-failures=${process.env.E2E_MAX_FAILURES}`]
-          : []),
-      ],
-      {
-        cwd: root,
-        env: variables,
-        timeout: 900000,
-        maxBuffer: 5 * 1024 * 1024,
-      },
-    );
+    const execution = exec('pnpm', args, {
+      cwd: root,
+      env: variables,
+      timeout: 900000,
+      maxBuffer: 5 * 1024 * 1024,
+    });
     if (suite === 'test:e2e')
       execution.child.stdout?.on('data', (chunk: Buffer) => {
         const lines = chunk
@@ -190,6 +206,17 @@ async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
       });
     const result = await execution;
     output = result.stdout + result.stderr;
+    if (suite === 'test:e2e') {
+      const report = JSON.parse(await readFile(env.PLAYWRIGHT_JSON_OUTPUT_FILE, 'utf8'));
+      browser = report.stats;
+      assert.ok(
+        browser && browser.expected > 0 && !report.errors?.length,
+        'No complete browser results',
+      );
+      assert.equal(browser.unexpected, 0);
+      assert.equal(browser.skipped, 0);
+      assert.equal(browser.flaky, 0);
+    }
     success = true;
   } catch (error) {
     const failure = error as { stdout?: string; stderr?: string; message: string };
@@ -201,7 +228,14 @@ async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
     output.replaceAll(secret, '[REDACTED]').replaceAll(env.ENCRYPTION_KEY, '[REDACTED]'),
     { mode: 0o600 },
   );
-  results.push({ suite: name, success, elapsedMs: Date.now() - started, log });
+  results.push({
+    suite: name,
+    success,
+    elapsedMs: Date.now() - started,
+    log,
+    command: ['pnpm', ...args],
+    ...(browser ? { browser } : {}),
+  });
   console.log(
     `[完整回归] ${name}: ${success ? 'PASS' : 'FAIL'} (${Math.round((Date.now() - started) / 1000)}s)`,
   );
@@ -222,10 +256,7 @@ try {
   setup = true;
   saveLogs.push(start(['exec', 'node', 'tests/fixtures/feishu-oauth.mjs'], 'feishu-fixture'));
   await wait(`${env.FEISHU_API_BASE_URL}/fixture`);
-  const suites = (
-    process.env.FULL_REGRESSION_SUITES ??
-    'test:integration,test:auth,test:accounts,test:feishu,test:invitations,test:mail,test:mail-failover,test:template-bugs,test:overview,test:enhancements,test:admissions,test:activity-workflows,test:exam-sites,test:workflow-upgrade,test:bugs,test:security,test:audit-fixes,test:permissions,test:file-race,test:load,test:mcp,test:e2e'
-  )
+  const suites = (process.env.FULL_REGRESSION_SUITES ?? fullRegressionSuites.join(','))
     .split(',')
     .filter(Boolean);
   if (process.env.FULL_REGRESSION_OJ === '1') {
@@ -288,6 +319,12 @@ try {
       {
         success: setup && results.length > 0 && results.every((result) => result.success),
         results,
+        fullRun:
+          !process.env.FULL_REGRESSION_SUITES &&
+          !process.env.E2E_SPEC &&
+          !process.env.E2E_MAX_FAILURES,
+        startCommit,
+        startWorkingTreeDirty,
         checkedAt: new Date().toISOString(),
         commit: (await exec('git', ['rev-parse', 'HEAD'], { cwd: root })).stdout.trim(),
         workingTreeDirty: !!(

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { useEditSession } from '../composables/useEditSession';
+import { hasPendingOperations } from '../composables/usePendingOperations';
 withDefaults(
   defineProps<{ session: ReturnType<typeof useEditSession>; allow?: boolean; label?: string }>(),
   { allow: true },
@@ -12,7 +13,9 @@ withDefaults(
     }}</el-button>
     <template v-else
       ><el-tag type="info">{{ session.dirty.value ? '有未保存修改' : '编辑中' }}</el-tag
-      ><el-button @click="session.cancel">取消修改</el-button></template
+      ><el-button :disabled="hasPendingOperations" @click="session.cancel"
+        >取消修改</el-button
+      ></template
     >
   </div>
 </template>

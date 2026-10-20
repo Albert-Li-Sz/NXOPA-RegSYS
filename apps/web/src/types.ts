@@ -57,6 +57,7 @@ export interface PersonView {
   answers: Data;
 }
 export interface RegistrationView {
+  canReadFinanceDetails: boolean;
   actions: {
     edit: boolean;
     editOwnMember: boolean;

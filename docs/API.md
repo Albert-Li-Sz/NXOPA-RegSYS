@@ -230,7 +230,7 @@ X-ContestCenter-Signature: sha256=<hex HMAC>
 
 ## 新版账号、标签与报名审核
 
-`GET /auth/me` 返回 `user.profileComplete`。`PUT /auth/profile` 接收 `{version,name,profile}`；报名要求姓名及 `profile.student_id`、`class_name`、`college` 非空，`gender` 为 `男`、`女`、`其他` 或 `不便透露`。缺项时创建 / 提交报名返回 400，已绑定账号的参赛成员也须完善资料。
+`GET /auth/me` 返回 `user.profileComplete`。`PUT /auth/profile` 接收 `{version,name,profile}`；学生报名要求姓名及 `profile.student_id`、`class_name`、`college` 非空，`gender` 为 `男` 或 `女`；教师使用 `employee_id`、有效日期 `employed_at`、`college` 和相同的性别选项。缺项时创建 / 提交报名返回 400，已绑定账号的参赛成员也须完善资料。
 
 | 接口（均以 `/api/v1` 为前缀）     | 行为                                                              |
 | --------------------------------- | ----------------------------------------------------------------- |
@@ -264,3 +264,7 @@ GET `/auth/sessions?page=1&pageSize=20` 返回当前账号尚未过期的登录�
 GET `/auth/identity` 保留状态、实名资料和 `requests` 数组结构，返回当前账号的完整审核历史，按创建时间和 ID 降序排列；不再截取最近 20 条。个人中心对该数组使用 20／50／100 项分页，不会包含其他账号的审核记录。
 
 GET `/contests/:id/public-teams` 与 `/export` 不要求登录，按竞赛 publicRosterEnabled、publicRosterReviews 筛选并仅输出公示字段。PUT `/registrations/:id/public-rank` 配置排名。GET `/admin/mail/templates`、PUT `/admin/mail/templates/:key` 设置邮件完整格式；GET `/notifications/mail?resourceId=UUID` 查看投递状态，POST `/notifications/mail/:id/retry` 重发失败业务邮件，均验证资源访问权限。详细操作见 [平台功能说明](PLATFORM_GUIDE.md)。
+
+## v0.6.7 权限与流程补充
+
+报名详情返回 `canReadFinanceDetails`。财务明细、附件及历史需财务授权或本人参与关系，普通查看与报名审核授权只保留费用及净到账摘要。停用实例、绑定或撤销竞赛对实例的使用授权，会停止账号交付并登记人工远端撤权待办。`RemoteRevocation.state` 的 `SUPERSEDED` 表示相同远端目标与账号重新同步验证成功，旧待办已失效，不能再标记完成。共享学校映射涉及其他竞赛时只允许系统管理员确认。

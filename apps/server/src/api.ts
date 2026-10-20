@@ -453,12 +453,15 @@ export class ApiController {
       const item = await tx.remoteRevocation.findUniqueOrThrow({ where: { id } });
       requireManager(user(r), item.contestId, 'INTEGRATIONS');
       if (item.state === 'COMPLETED') return item;
-      const result = await tx.remoteRevocation.update({
-        where: { id },
+      if (item.state !== 'PENDING')
+        throw new BadRequestException('该撤权待办已因重新同步失效，请刷新列表');
+      const changed = await tx.remoteRevocation.updateMany({
+        where: { id, state: 'PENDING' },
         data: { state: 'COMPLETED', handledBy: user(r).id, completedAt: new Date() },
       });
+      if (!changed.count) throw new BadRequestException('该撤权待办状态已更新，请刷新列表');
       await audit(tx, user(r).id, 'REMOTE_REVOCATION_COMPLETE', id, { contestId: item.contestId });
-      return result;
+      return tx.remoteRevocation.findUniqueOrThrow({ where: { id } });
     });
   }
   @Get('finance/accounts') financeAccounts(

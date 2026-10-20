@@ -43,6 +43,7 @@ import {
 } from './db.js';
 import {
   canRead,
+  canReadFinanceRecords,
   canEdit,
   canActForApplicant,
   ownerIds,
@@ -56,6 +57,7 @@ import {
   sha,
 } from './security.js';
 import { ensureFinance } from './finance-accounts.js';
+import { publicUser } from './auth.js';
 import { removeRegistration, recordRemoteRevocation } from './registration-removal.js';
 import {
   registrationActions,
@@ -478,21 +480,25 @@ export class RegistrationService {
   }
   async detail(u: Principal, id: string, history = true) {
     const r = await getRegistration(u, id);
+    const financeDetails = canReadFinanceRecords(u, r);
     const [vouchers, ledger, refunds, invoices, admissions, mappings, invitations] =
       await Promise.all([
         db.paymentVoucher.findMany({
-          take: history ? undefined : 0,
+          take: history && financeDetails ? undefined : 0,
           where: { registrationId: id },
           orderBy: { createdAt: 'desc' },
         }),
         db.ledgerEntry.findMany({
-          take: history ? undefined : 0,
+          take: history && financeDetails ? undefined : 0,
           where: { registrationId: id },
           orderBy: { createdAt: 'desc' },
         }),
-        db.refund.findMany({ take: history ? undefined : 0, where: { registrationId: id } }),
+        db.refund.findMany({
+          take: history && financeDetails ? undefined : 0,
+          where: { registrationId: id },
+        }),
         db.invoiceRequest.findMany({
-          take: history ? undefined : 0,
+          take: history && financeDetails ? undefined : 0,
           where: { registrationId: id },
         }),
         db.admissionDocument.findMany({
@@ -562,6 +568,7 @@ export class RegistrationService {
       : [];
     return {
       ...r,
+      canReadFinanceDetails: financeDetails,
       actions: registrationActions(u, r),
       displayState: registrationDisplayState(r),
       reviews: reviews.map((review) => ({
@@ -1146,7 +1153,7 @@ export class RegistrationService {
     return db.$transaction(async (tx) => {
       const record = await tx.invitation.findUnique({ where: { tokenHash: sha(token) } });
       if (!record) throw new BadRequestException('邀请已失效');
-      if (record.kind !== 'MEMBER') await lock(tx, 'role-authorizations');
+      await lock(tx, 'role-authorizations');
       await lock(tx, `invitation:${record.id}`);
       const i = await tx.invitation.findUnique({ where: { id: record.id } });
       if (!i || i.revoked || i.expiresAt < new Date()) throw new BadRequestException('邀请已失效');
@@ -1157,7 +1164,12 @@ export class RegistrationService {
       if (i.targetEmail && i.targetEmail !== u.email)
         throw new ForbiddenException('邀请邮箱与当前账号不符');
       const receiver = await tx.user.findUnique({ where: { id: u.id } });
-      if (!receiver?.verified || receiver.email !== u.email)
+      if (
+        !receiver?.verified ||
+        receiver.bannedAt ||
+        receiver.deactivatedAt ||
+        receiver.email !== u.email
+      )
         throw new ForbiddenException('请验证当前账号邮箱后重新确认邀请');
       const id = i.registrationId ?? b.registrationId;
       if (!id) throw new BadRequestException('请选择关联报名');
@@ -1165,6 +1177,16 @@ export class RegistrationService {
       const r = await loaded(tx, id);
       windowOpen(r);
       const p = policy(r);
+      if (i.kind !== 'COACH_LINK') {
+        const issuer = await tx.user.findUnique({ where: { id: i.inviterId } });
+        if (
+          !issuer ||
+          issuer.bannedAt ||
+          issuer.deactivatedAt ||
+          !canEdit(await publicUser(issuer.id, tx), r)
+        )
+          throw new BadRequestException('邀请人的报名管理权限已失效，请重新获取邀请');
+      }
       if (i.kind === 'MEMBER') {
         if (r.people.some((person) => person.userId === u.id && person.active))
           throw new ConflictException('您已是此队伍的成员');
@@ -1216,11 +1238,23 @@ export class RegistrationService {
   async removeCoach(u: Principal, id: string, coachId: string, body: unknown) {
     const { version } = z.object({ version: z.number().int() }).parse(body);
     return db.$transaction(async (tx) => {
+      await lock(tx, 'role-authorizations');
       await lock(tx, id);
       const r = await loaded(tx, id);
       if (!canEdit(u, r)) throw new ForbiddenException();
       checkVersion(r.version, version);
+      const coach = r.coaches.find((c) => c.id === coachId);
       await tx.registrationCoach.deleteMany({ where: { registrationId: id, id: coachId } });
+      if (coach)
+        await tx.invitation.updateMany({
+          where: {
+            registrationId: r.id,
+            inviterId: coach.userId,
+            acceptedBy: null,
+            revoked: false,
+          },
+          data: { revoked: true },
+        });
       await dirty(tx, r, u, 'COACH_REMOVE');
       windowOpen(r);
       return refresh(tx, id);

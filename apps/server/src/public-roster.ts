@@ -89,7 +89,7 @@ export class PublicRosterService {
     }
     const cell = (value: unknown) => {
       const text = String(value ?? '');
-      return `"${(/^[=+\-@\t\r]/.test(text) ? "'" + text : text).replaceAll('"', '""')}"`;
+      return `"${(/^\s*[=+\-@]|^[\t\r\n]/.test(text) ? "'" + text : text).replaceAll('"', '""')}"`;
     };
     return (
       '\ufeff' +

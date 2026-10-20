@@ -4,14 +4,18 @@ import { db, lock, json, registrationInclude, type Tx } from './db.js';
 import { decrypt } from './security.js';
 import { envelope, platformConfig } from './integrations.js';
 import { modulesFor } from './workflow.js';
-import { recordRemoteRevocation } from './registration-removal.js';
+import { recordRemoteRevocation, supersedeRemoteRevocations } from './registration-removal.js';
 import { redis } from './auth.js';
 
 export async function synchronizePlatform(job: { id: string; payload: unknown }) {
   const payload = job.payload as Record<string, any>;
   const mappingId = String(payload.mappingId);
   const initial = await db.$transaction(async (tx) => {
-    const found = await tx.accountMapping.findUniqueOrThrow({ where: { id: mappingId } });
+    const found = await tx.accountMapping.findUniqueOrThrow({
+      where: { id: mappingId },
+      include: { binding: { select: { instanceId: true } } },
+    });
+    await lock(tx, `platform-instance:${found.binding.instanceId}`);
     await lock(tx, found.registrationId);
     await lock(tx, `sync:${mappingId}`);
     const mapping = await tx.accountMapping.findUniqueOrThrow({ where: { id: mappingId } });
@@ -113,6 +117,12 @@ export async function synchronizePlatform(job: { id: string; payload: unknown })
             }),
           },
         });
+        if (output.state === 'VERIFIED')
+          await supersedeRemoteRevocations(tx, {
+            ...output,
+            bindingId: mapping.bindingId,
+            registrationId: registration.id,
+          });
         await tx.job.updateMany({
           where: { id: job.id, state: 'RUNNING' },
           data: { result: json(output) },

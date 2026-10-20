@@ -15,8 +15,10 @@ const contestIds: string[] = [];
 const userIds: string[] = [];
 const results: { case: string; status: string; error?: string }[] = [];
 const selected = process.argv.slice(2);
+const known = new Set<string>();
 
 async function check(name: string, fn: () => Promise<void>) {
+  known.add(name);
   if (selected.length && !selected.includes(name)) return;
   try {
     await fn();
@@ -774,4 +776,8 @@ try {
   await redis.quit();
   await db.$disconnect();
 }
+assert.ok(
+  results.length && selected.every((name) => known.has(name)),
+  'Unknown or empty bug regression selection',
+);
 if (results.some((row) => row.status === 'FAIL')) process.exitCode = 1;

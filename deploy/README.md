@@ -19,7 +19,7 @@ bash install.sh --dir /opt/my-registration
 
 菜单提供安装、更新、卸载与状态；也可执行 `bash install.sh install`。向导选择项目名、镜像版本、Caddy 的本机端口与邮件链接的站点地址，生成随机数据库密码和 32 字节加密密钥，保存为权限 `600` 的 `deploy/.env`，启动后交互创建管理员。密码输入不显示，正式实例不创建演示账号。
 
-从 Release 下载的 `nxopa-regsys-v0.6.6-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
+从 Release 下载的 `nxopa-regsys-v0.6.7-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
 
 ## 更新与卸载
 
@@ -79,7 +79,7 @@ bash install.sh compose ps
 
 多个实例用 `INSTALL_ENV_FILE=/absolute/path/.env` 选择配置。`init` 保留已有文件，`up` 按配置构建或拉取，`update --yes` 按已保存版本先备份再更新。不要公开 `.env` 或完整 `compose config`，其中包含密钥。
 
-业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v0.6.6`，支持 amd64/arm64。所有安装服务使用固定版本标签：PostgreSQL 为 `postgres:17.6-alpine`，Redis 为 `redis:7.4.5-alpine`，Caddy 为 `caddy:2.10.2-alpine`；按 Docker 服务端选择平台，不附加 `@sha256`。`IMAGE_TAG` 必须为完整版本号，不能填写 `latest` 或浮动小版本。
+业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v0.6.7`，支持 amd64/arm64。所有安装服务使用固定版本标签：PostgreSQL 为 `postgres:17.6-alpine`，Redis 为 `redis:7.4.5-alpine`，Caddy 为 `caddy:2.10.2-alpine`；按 Docker 服务端选择平台，不附加 `@sha256`。`IMAGE_TAG` 必须为完整版本号，不能填写 `latest` 或浮动小版本。
 
 从 `main` 获取的新 `install.sh` 会在校验下载包后转换旧包的哈希覆盖，也会处理已有安装目录中的旧材料。新版安装、更新、备份和恢复不再自动加载遗留的 `compose.digest.yaml`；发布记录 `images.json` 仍保留摘要供核验，安装包 SHA-256 校验继续执行。保持原数据库版本和卷名；`content descriptor ... not found` 时检查具体镜像及镜像代理，不能把拉取失败当成安装完成。
 
@@ -89,7 +89,7 @@ bash install.sh compose ps
 
 每场竞赛按首次成功提交生成从 1 开始的编号，草稿暂不编号。补正与重新提交保留原编号；取消后永久删除报名，编号不重复使用，财务记录独立保留。审核列表和 CSV 导出按编号从小到大展示。升级会为历史已提交记录按首次提交时间补齐编号，保留原 UUID。
 
-GitHub 登录在“管理中心 → GitHub 登录”配置 OAuth App 的 Client ID、Client Secret 与回调地址。回调默认为当前域名的 `/api/v1/auth/github/callback`。密钥加密保存，不返回浏览器。同邮箱已有账号需先用本站密码登录后主动绑定；不会自动合并账号。只有已验证的 GitHub 邮箱可以创建账号。协议参考 [GitHub 官方流程](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps) 和 [Auth.js GitHub provider](https://github.com/nextauthjs/next-auth/blob/main/packages/core/src/providers/github.ts)。
+GitHub 登录在“管理中心 → GitHub 登录”配置 OAuth App 的 Client ID、Client Secret 与回调地址。回调默认为后台有效公网地址的 `/api/v1/auth/github/callback`。密钥加密保存，不返回浏览器。同邮箱已有账号需先用本站密码登录后主动绑定；不会自动合并账号。只有已验证的 GitHub 邮箱可以创建账号。协议参考 [GitHub 官方流程](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps) 和 [Auth.js GitHub provider](https://github.com/nextauthjs/next-auth/blob/main/packages/core/src/providers/github.ts)。
 
 可选环境初始值：`GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`GITHUB_CALLBACK_URL`。后台保存后使用数据库设置。GitHub Enterprise 可同时配置 `GITHUB_OAUTH_BASE_URL` 和 `GITHUB_API_BASE_URL`，普通 GitHub 保留默认值。
 

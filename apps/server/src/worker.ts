@@ -12,7 +12,7 @@ import { decrypt, hmac, safeUrl, sha } from './security.js';
 import { platformConfig, envelope, scheduleSync } from './integrations.js';
 import { admissionMaterial, activeTemplate } from './admissions.js';
 import { modulesFor } from './workflow.js';
-import { migrateCancelledRegistrations } from './registration-removal.js';
+import { migrateCancelledRegistrations, recordRemoteRevocation } from './registration-removal.js';
 import { renderTemplate } from './templates.js';
 import { sendSystemMail } from './mail.js';
 import { publicLink } from './site-settings.js';
@@ -502,11 +502,20 @@ async function dispatch() {
               },
             });
             for (const b of bindings) await scheduleSync(tx, r.id, b.id);
-          } else
+          } else {
+            const mappings = await tx.accountMapping.findMany({ where: { registrationId: r.id } });
+            for (const mapping of mappings)
+              await recordRemoteRevocation(tx, mapping, r.contestId, {
+                reason: 'REGISTRATION_INELIGIBLE',
+              });
             await tx.accountMapping.updateMany({
-              where: { registrationId: r.id, state: 'VERIFIED' },
+              where: {
+                registrationId: r.id,
+                OR: [{ remoteUserId: { not: null } }, { remoteTeamId: { not: null } }],
+              },
               data: { state: 'REVOKED_LOCALLY' },
             });
+          }
           const hooks = await tx.webhook.findMany({
             where: { enabled: true, OR: [{ contestId: r.contestId }, { contestId: null }] },
           });

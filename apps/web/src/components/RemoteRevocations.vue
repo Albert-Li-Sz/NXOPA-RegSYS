@@ -37,7 +37,9 @@ defineExpose({ refresh: load });
       <h3>外接平台撤权待办</h3>
       <el-button @click="load">刷新</el-button>
     </div>
-    <p class="form-help">报名已从本站删除。请在对应外接平台处理账号或队伍权限，完成后登记结果。</p>
+    <p class="form-help">
+      报名删除、资格失效或平台授权撤销后，请在对应外接平台处理账号或队伍权限，完成后登记结果。重新同步验证成功的旧待办会失效。
+    </p>
     <PaginatedTable page-key="remoterevocations-rows" :data="rows"
       ><el-table-column label="外接平台" min-width="220"
         ><template #default="{ row }"
@@ -53,7 +55,11 @@ defineExpose({ refresh: load });
         ><template #default="{ row }">{{ date(row.createdAt) }}</template></el-table-column
       ><el-table-column label="状态"
         ><template #default="{ row }">{{
-          row.state === 'COMPLETED' ? '已人工确认撤权' : '待远端撤权'
+          row.state === 'COMPLETED'
+            ? '已人工确认撤权'
+            : row.state === 'SUPERSEDED'
+              ? '重新同步后已失效'
+              : '待远端撤权'
         }}</template></el-table-column
       ><el-table-column label="操作" min-width="200"
         ><template #default="{ row }"

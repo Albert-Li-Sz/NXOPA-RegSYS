@@ -5,10 +5,11 @@ import { cp, mkdir, readFile, readdir, rm, writeFile, chmod } from 'node:fs/prom
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateReleaseImages } from './release-images.mjs';
+import { validateFullRegression } from './release-validation.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
-assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.6.6');
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.6.7');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
@@ -219,36 +220,7 @@ try {
     const report = JSON.parse(
       await readFile(join(root, 'dist/feature-reports/full-regression.json'), 'utf8'),
     );
-    assert.equal(report.success, true);
-    assert.equal(report.commit, commit);
-    for (const suite of [
-      'test:integration',
-      'test:auth',
-      'test:accounts',
-      'test:feishu',
-      'test:invitations',
-      'test:mail',
-      'test:mail-failover',
-      'test:template-bugs',
-      'test:overview',
-      'test:enhancements',
-      'test:admissions',
-      'test:activity-workflows',
-      'test:exam-sites',
-      'test:workflow-upgrade',
-      'test:bugs',
-      'test:security',
-      'test:audit-fixes',
-      'test:permissions',
-      'test:file-race',
-      'test:load',
-      'test:mcp',
-      'test:e2e',
-    ])
-      assert.ok(
-        report.results.some((result) => result.suite === suite && result.success),
-        `${suite} must pass before packaging`,
-      );
+    validateFullRegression(report, commit);
     await writeFile(join(output, 'full-regression.json'), JSON.stringify(report, null, 2));
   } catch (error) {
     if (error.code !== 'ENOENT' || process.env.CI) throw error;

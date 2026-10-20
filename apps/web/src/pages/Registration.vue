@@ -4,7 +4,7 @@ import PaginatedList from '../components/PaginatedList.vue';
 import { ref, shallowRef, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { api, auth, money, date, label, upload } from '../api';
+import { api, ApiError, auth, money, date, label, upload } from '../api';
 import type { RegistrationView, PersonView, Data } from '../types';
 import { useEditSession, mayLeaveEdits } from '../composables/useEditSession';
 import EditActions from '../components/EditActions.vue';
@@ -18,6 +18,7 @@ import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
 import { policySchema } from '@contest-center/contracts';
 import DynamicFields from '../components/DynamicFields.vue';
+import { operationsSettled } from '../composables/usePendingOperations';
 const route = useRoute(),
   r = shallowRef<RegistrationView>(),
   form = ref<{
@@ -68,7 +69,7 @@ const voucherPage = usePagedList(
     () => `/registrations/${route.params.id}/finance/invoices`,
   );
 async function loadFinance() {
-  if (r.value)
+  if (r.value?.canReadFinanceDetails)
     await Promise.all([
       voucherPage.load(),
       ledgerPage.load(),
@@ -151,6 +152,7 @@ async function refresh() {
     if (sequence !== refreshSequence) return;
     r.value = next;
     const x = r.value!;
+    if (tab.value === 'finance' && !x.canReadFinanceDetails) tab.value = 'registration';
     if (!rankEdit.editing.value) rank.value = { rank: x.publicRank };
     form.value = JSON.parse(
       JSON.stringify({
@@ -169,6 +171,7 @@ async function refresh() {
     if (tab.value === 'finance') await loadFinance();
   } catch (e) {
     if (sequence !== refreshSequence) return;
+    if (e instanceof ApiError && e.status === 401 && r.value) return;
     if (route.query.tab === 'finance') {
       try {
         await api(`/finance/accounts/${route.params.id}`);
@@ -185,6 +188,7 @@ onMounted(async () => {
   if (route.query.edit === '1' && r.value?.actions.edit) edit.begin();
 });
 async function action(path: string, body: Data = {}) {
+  if (!operationsSettled()) return;
   busy.value = true;
   try {
     const result = await api(path, 'POST', body);
@@ -195,6 +199,7 @@ async function action(path: string, body: Data = {}) {
   }
 }
 async function save() {
+  if (!operationsSettled()) return;
   const wasDraft = savingDraft.value;
   busy.value = true;
   try {
@@ -211,6 +216,7 @@ async function save() {
   }
 }
 async function submit() {
+  if (!operationsSettled()) return;
   const selectedSite = edit.editing.value ? form.value.examSiteId : r.value!.examSiteId;
   if (r.value!.contest.examSites.length && !selectedSite) {
     if (!edit.editing.value) edit.begin();
@@ -222,6 +228,7 @@ async function submit() {
   ElMessage.success('报名已提交');
 }
 async function cancel() {
+  if (!operationsSettled()) return;
   await ElMessageBox.confirm(
     '报名资料、成员关联及准考证将永久删除；已付款的财务单据独立保留，可继续申请退款。确认取消？',
     '永久取消报名',
@@ -235,6 +242,7 @@ async function cancel() {
   await router.push(result.financeAccountId ? `/registrations?tab=finance` : '/registrations');
 }
 async function removeRegistration() {
+  if (!operationsSettled()) return;
   const { value } = await ElMessageBox.prompt(
     '报名资料及准考证将永久删除，财务独立保留。请填写删除原因。',
     '删除报名',
@@ -254,6 +262,7 @@ async function removeRegistration() {
   await router.push(`/admin/contests/${r.value!.contestId}?tab=registrations`);
 }
 async function invite(kind: string) {
+  if (!operationsSettled()) return;
   if (edit.dirty.value) await save();
   const result = await action(`/registrations/${r.value!.id}/invites`, { kind });
   link.value = result.url;
@@ -264,6 +273,7 @@ async function copy() {
   ElMessage.success('链接已复制');
 }
 async function removeCoach(id: string) {
+  if (!operationsSettled()) return;
   if (edit.dirty.value) await save();
   await api(`/registrations/${r.value!.id}/coaches/${id}`, 'DELETE', { version: r.value!.version });
   await refresh();
@@ -372,6 +382,7 @@ async function generate() {
   ElMessage.success('生成任务已入队，请刷新查看结果');
 }
 async function memberSave(id: string, index: number) {
+  if (!operationsSettled()) return;
   await api(`/registrations/${r.value!.id}/people/${id}`, 'PUT', {
     version: r.value!.version,
     name: form.value.people[index].name,
@@ -425,7 +436,10 @@ async function memberSave(id: string, index: number) {
       ><el-tab-pane label="报名资料" name="registration" /><el-tab-pane
         v-if="r.contest.modules.admissions"
         label="准考证"
-        name="admissions" /><el-tab-pane label="财务" name="finance" /><el-tab-pane
+        name="admissions" /><el-tab-pane
+        v-if="r.canReadFinanceDetails"
+        label="财务"
+        name="finance" /><el-tab-pane
         v-if="r.contest.modules.integrations"
         label="比赛账号"
         name="accounts" /><el-tab-pane
@@ -779,7 +793,7 @@ async function memberSave(id: string, index: number) {
         ><el-button text type="primary">对此报名提起工单</el-button></router-link
       >
     </div>
-    <div class="panel" v-if="tab === 'finance'">
+    <div class="panel" v-if="tab === 'finance' && r.canReadFinanceDetails">
       <div class="stats">
         <div class="stat">
           <span>应付金额</span>

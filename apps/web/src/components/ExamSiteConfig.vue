@@ -2,11 +2,12 @@
 import ListPagination from './ListPagination.vue';
 import { useLocalPagination } from '../composables/useLocalPagination';
 import type { ExamSiteView } from '../types';
+import { requestId } from '../request-id';
 const sites = defineModel<ExamSiteView[]>({ required: true });
 defineProps<{ editing: boolean }>();
 const list = useLocalPagination('contest-exam-sites', () => sites.value);
 function add() {
-  sites.value.push({ id: crypto.randomUUID(), name: '', address: '', enabled: true });
+  sites.value.push({ id: requestId(), name: '', address: '', enabled: true });
   list.page.value = Math.ceil(sites.value.length / list.pageSize.value);
 }
 </script>

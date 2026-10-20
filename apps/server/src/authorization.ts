@@ -62,6 +62,19 @@ export async function ensurePermanentAdministrator(
   )
     throw new BadRequestException('必须保留至少一名永久授权的系统管理员');
 }
+export async function revokeIssuedAuthorizationInvitations(tx: Tx, userId: string) {
+  const authority = await effectiveAuthorization(userId, tx);
+  const kinds = !authority.isAdmin
+    ? ['ACCOUNT', 'SYSTEM_ADMIN', 'SENIOR_ADMIN', 'CONTEST_ADMIN', 'COACH_ROLE']
+    : !authority.isSystemAdmin
+      ? ['SYSTEM_ADMIN', 'SENIOR_ADMIN']
+      : [];
+  if (kinds.length)
+    await tx.invitation.updateMany({
+      where: { inviterId: userId, acceptedBy: null, revoked: false, kind: { in: kinds } },
+      data: { revoked: true },
+    });
+}
 export class AuthorizationService {
   async resign(u: Principal, id: string) {
     return db.$transaction(async (tx) => {
@@ -74,6 +87,7 @@ export class AuthorizationService {
         await ensurePermanentAdministrator(tx, grant.id);
       await tx.adminGrant.update({ where: { id }, data: { revokedAt: new Date() } });
       await tx.user.update({ where: { id: u.id }, data: { version: { increment: 1 } } });
+      await revokeIssuedAuthorizationInvitations(tx, u.id);
       await audit(tx, u.id, 'ADMIN_GRANT_RESIGN', id);
       return { ok: true };
     });
@@ -164,11 +178,7 @@ export class AuthorizationService {
         },
         data: { revoked: true },
       });
-      if (!(await effectiveAuthorization(grant.userId, tx)).isAdmin)
-        await tx.invitation.updateMany({
-          where: { inviterId: grant.userId, acceptedBy: null, revoked: false },
-          data: { revoked: true },
-        });
+      await revokeIssuedAuthorizationInvitations(tx, grant.userId);
       await audit(tx, u.id, 'ADMIN_GRANT_REVOKE', id);
       return { ok: true };
     });

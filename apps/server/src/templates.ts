@@ -67,24 +67,36 @@ export function renderTemplate(source: string, context: Record<string, unknown>)
             : undefined,
         ctx,
       );
-  const render = (ns: Node[], ctx: Record<string, unknown>): string =>
-    ns
-      .map(
-        (n) =>
-          n.text ??
-          (n.kind === 'each'
-            ? Array.isArray(get(n.path!, ctx))
-              ? (get(n.path!, ctx) as unknown[])
-                  .slice(0, 100)
-                  .map((x) => render(n.children!, { ...ctx, this: x }))
-                  .join('')
-              : ''
-            : n.kind === 'if'
-              ? get(n.path!, ctx)
-                ? render(n.children!, ctx)
-                : ''
-              : texEscape(get(n.path!, ctx))),
-      )
-      .join('');
-  return render(nodes, context);
+  const parts: string[] = [];
+  let visited = 0,
+    iterations = 0,
+    characters = 0;
+  const append = (value: string) => {
+    characters += value.length;
+    if (characters > 250000) throw new BadRequestException('模板展开结果超过 250000 字符');
+    if (value) parts.push(value);
+  };
+  const render = (ns: Node[], ctx: Record<string, unknown>): void => {
+    for (const n of ns) {
+      if (++visited > 50000) throw new BadRequestException('模板展开节点过多');
+      if (n.text !== undefined) append(n.text);
+      else if (n.kind === 'each') {
+        const values = get(n.path!, ctx);
+        if (Array.isArray(values))
+          for (const value of values.slice(0, 100)) {
+            if (++iterations > 10000) throw new BadRequestException('模板循环总次数过多');
+            render(n.children!, { ...ctx, this: value });
+          }
+      } else if (n.kind === 'if') {
+        if (get(n.path!, ctx)) render(n.children!, ctx);
+      } else {
+        const value = String(get(n.path!, ctx) ?? '');
+        if (value.length > 250000 - characters)
+          throw new BadRequestException('模板展开结果超过 250000 字符');
+        append(texEscape(value));
+      }
+    }
+  };
+  render(nodes, context);
+  return parts.join('');
 }

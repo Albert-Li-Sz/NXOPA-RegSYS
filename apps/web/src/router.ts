@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { auth, loadAuth } from './api';
 import { adminCenters, centerTabs, adminTabTarget } from './admin-centers';
+import { operationsSettled } from './composables/usePendingOperations';
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -54,6 +55,7 @@ export const router = createRouter({
   ],
 });
 router.beforeEach(async (to) => {
+  if (!operationsSettled()) return false;
   if (!auth.loaded)
     try {
       await loadAuth();

@@ -53,7 +53,15 @@ export async function integrationRequest(raw: string, init: RequestInit): Promis
       async (response) => {
         try {
           const chunks: Buffer[] = [];
-          for await (const chunk of response) chunks.push(Buffer.from(chunk));
+          let bytes = 0;
+          for await (const chunk of response) {
+            bytes += chunk.length;
+            if (bytes > 10 * 1024 * 1024) {
+              response.destroy();
+              throw new Error('外接平台响应超过 10 MiB，请缩小数据范围');
+            }
+            chunks.push(Buffer.from(chunk));
+          }
           const headers = new Headers();
           for (let i = 0; i < response.rawHeaders.length; i += 2)
             headers.append(response.rawHeaders[i]!, response.rawHeaders[i + 1]!);

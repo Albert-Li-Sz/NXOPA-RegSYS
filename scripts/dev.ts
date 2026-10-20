@@ -17,24 +17,32 @@ for (const args of [
   ],
 ]) {
   const r = spawnSync('docker', args, { stdio: 'inherit' });
-  if (r.status) process.exit(r.status ?? 1);
+  if (r.status !== 0) process.exit(r.status ?? 1);
 }
 for (const script of ['db:generate', 'db:migrate']) {
   const r = spawnSync('pnpm', [script], { stdio: 'inherit' });
-  if (r.status) process.exit(r.status ?? 1);
+  if (r.status !== 0) process.exit(r.status ?? 1);
 }
 const children = [
   spawn('pnpm', ['--filter', '@contest-center/server', 'dev'], { stdio: 'inherit' }),
   spawn('pnpm', ['--filter', '@contest-center/server', 'worker'], { stdio: 'inherit' }),
   spawn('pnpm', ['--filter', '@contest-center/web', 'dev'], { stdio: 'inherit' }),
 ];
-const stop = () => {
+let stopping = false;
+const stop = (code: number) => {
+  if (stopping) return;
+  stopping = true;
   for (const p of children) p.kill('SIGTERM');
-  process.exit();
+  process.exit(code);
 };
-process.on('SIGINT', stop);
-process.on('SIGTERM', stop);
-for (const p of children)
-  p.on('exit', (code) => {
-    if (code) stop();
+process.on('SIGINT', () => stop(130));
+process.on('SIGTERM', () => stop(143));
+for (const p of children) {
+  p.on('error', (error) => {
+    console.error(error.message);
+    stop(1);
   });
+  p.on('exit', (code, signal) => {
+    stop(code && code > 0 ? code : signal ? 1 : 0);
+  });
+}

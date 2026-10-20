@@ -69,4 +69,26 @@ describe('domain boundaries', () => {
     expect(() => renderTemplate('{{{secret}}}', {})).toThrow();
     expect(() => renderTemplate('{{__proto__.x}}', {})).toThrow();
   });
+  it('bounds total template work even when nested loops produce no text', () => {
+    const source = '{{#each members}}'.repeat(8) + '{{/each}}'.repeat(8);
+    expect(() => renderTemplate(source, { members: Array(100).fill({}) })).toThrow(
+      /模板展开|模板循环/,
+    );
+  });
+  it('bounds expanded and escaped template output', () => {
+    expect(() => renderTemplate('{{value}}{{value}}', { value: '中'.repeat(150000) })).toThrow(
+      /250000/,
+    );
+    expect(() => renderTemplate('{{value}}', { value: '&'.repeat(150000) })).toThrow(/250000/);
+  });
+  it.each([{ min: -1 }, { max: 1.5 }, { min: 5, max: 2 }])(
+    'rejects invalid text bounds %j',
+    (bounds) => {
+      expect(() =>
+        fieldsSchema.parse([
+          { key: 'answer', label: '文本', scope: 'PERSON', type: 'text', ...bounds },
+        ]),
+      ).toThrow();
+    },
+  );
 });

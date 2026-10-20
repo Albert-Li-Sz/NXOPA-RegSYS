@@ -7,6 +7,7 @@ import { api, auth, date, label, loadAuth } from '../api';
 import type { Data } from '../types';
 import { useEditSession } from '../composables/useEditSession';
 import DynamicFields from './DynamicFields.vue';
+import { hasPendingOperations, operationsSettled } from '../composables/usePendingOperations';
 
 const props = withDefaults(defineProps<{ id: string; endpoint?: string }>(), { endpoint: 'users' });
 const emit = defineEmits<{ close: []; changed: [] }>();
@@ -71,7 +72,7 @@ function edit() {
   editing.value = true;
 }
 async function save() {
-  if (!form.value) return;
+  if (!form.value || !operationsSettled()) return;
   busy.value = true;
   try {
     detail.value = await api(`/admin/users/${props.id}`, 'PUT', {
@@ -226,7 +227,9 @@ async function remove() {
         />
         <div class="actions">
           <el-button type="primary" native-type="submit" :loading="busy">保存用户信息</el-button
-          ><el-button :disabled="busy" @click="editing = false">取消修改</el-button>
+          ><el-button :disabled="busy || hasPendingOperations" @click="editing = false"
+            >取消修改</el-button
+          >
         </div>
       </el-form>
       <el-descriptions v-else :column="2" border>

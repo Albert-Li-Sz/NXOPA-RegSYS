@@ -1,7 +1,7 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { policySchema, type Principal } from '@contest-center/contracts';
 import { db, json, event, registrationInclude, type Tx, type Registration } from './db.js';
-import { canRead, canActForApplicant, owns, manages } from './security.js';
+import { canReadFinanceRecords, canActForApplicant, owns, manages } from './security.js';
 
 export async function ensureFinance(tx: Tx, r: Registration) {
   const data = {
@@ -46,7 +46,7 @@ export async function getFinance(u: Principal, id: string, edit = false) {
   const allowed = edit
     ? canEditFinance(u, r)
     : r.registration
-      ? canRead(u, r.registration) || manages(u, r.contestId, 'FINANCE')
+      ? canReadFinanceRecords(u, r.registration)
       : owns(u, r.ownerId) || manages(u, r.contestId, 'FINANCE');
   if (!allowed) throw new ForbiddenException('没有此财务账户的访问权限');
   return r;

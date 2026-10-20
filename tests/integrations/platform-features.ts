@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { pdfText } from './pdf-text.js';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -728,7 +729,7 @@ try {
   );
   passed('业务邮件失败可查看并授权重发、SMTP 恢复后成功投递、验证码重置密码和重放拒绝');
   const source =
-    '\\documentclass{article}\n\\begin{document}\nAdmission {{ADMISSION.number}}\\end{document}';
+    '\\documentclass{article}\n\\begin{document}\nAdmission {{admission.number}}\\end{document}';
   await admin.api('/admissions/templates', 'POST', {
     contestId: contest.id,
     name: 'S3 验收准考证',
@@ -753,11 +754,14 @@ try {
   await admin.api(`/admissions/${documentId}/release`, 'POST');
   const pdf = await student.raw(`/admissions/${documentId}/download`);
   assert.equal(pdf.status, 200);
-  assert.equal(
-    Buffer.from(await pdf.arrayBuffer())
-      .subarray(0, 5)
-      .toString(),
-    '%PDF-',
+  const pdfBytes = Buffer.from(await pdf.arrayBuffer());
+  assert.equal(pdfBytes.subarray(0, 5).toString(), '%PDF-');
+  const expectedNumber = await sql(
+    `SELECT number FROM "AdmissionDocument" WHERE id='${documentId}'`,
+  );
+  assert.ok(
+    (await pdfText(pdfBytes)).includes(expectedNumber),
+    'PDF must contain the real admission number',
   );
   assert.equal((await teacher.raw(`/admissions/${documentId}/download`)).status, 403);
   assert.equal((await student.api('/admissions/mine')).length, 1);

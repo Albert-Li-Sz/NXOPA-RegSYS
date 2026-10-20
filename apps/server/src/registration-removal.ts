@@ -31,8 +31,27 @@ export async function recordRemoteRevocation(
   fallbackTarget: Record<string, unknown> = {},
 ) {
   if (!m.remoteUserId && !m.remoteTeamId) return;
-  const prior = await tx.remoteRevocation.findFirst({
+  const binding = await tx.platformBinding.findUnique({
+    where: { id: m.bindingId },
+    include: { instance: { select: { name: true, baseUrl: true } } },
+  });
+  const target = {
+    platformName: binding?.instance.name,
+    baseUrl: binding?.instance.baseUrl,
+    remoteContestId: binding?.remoteContestId,
+    ...fallbackTarget,
+  };
+  const pending = await tx.remoteRevocation.findMany({
     where: { bindingId: m.bindingId, registrationId: m.registrationId, state: 'PENDING' },
+  });
+  const prior = pending.find((row) => {
+    const previous = row.target as Record<string, unknown>;
+    return (
+      previous.baseUrl === target.baseUrl &&
+      previous.remoteContestId === target.remoteContestId &&
+      (!m.remoteUserId || !row.remoteUserId || row.remoteUserId === m.remoteUserId) &&
+      (!m.remoteTeamId || !row.remoteTeamId || row.remoteTeamId === m.remoteTeamId)
+    );
   });
   if (
     prior &&
@@ -48,10 +67,6 @@ export async function recordRemoteRevocation(
     });
     return;
   }
-  const binding = await tx.platformBinding.findUnique({
-    where: { id: m.bindingId },
-    include: { instance: { select: { name: true, baseUrl: true } } },
-  });
   await tx.remoteRevocation.create({
     data: {
       contestId,
@@ -59,14 +74,50 @@ export async function recordRemoteRevocation(
       registrationId: m.registrationId,
       remoteUserId: m.remoteUserId,
       remoteTeamId: m.remoteTeamId,
-      target: json({
-        ...fallbackTarget,
-        platformName: binding?.instance.name ?? fallbackTarget.platformName,
-        baseUrl: binding?.instance.baseUrl ?? fallbackTarget.baseUrl,
-        remoteContestId: binding?.remoteContestId ?? fallbackTarget.remoteContestId,
-      }),
+      target: json(target),
     },
   });
+}
+export async function supersedeRemoteRevocations(
+  tx: Tx,
+  mapping: {
+    bindingId: string;
+    registrationId: string;
+    remoteUserId?: string;
+    remoteTeamId?: string;
+  },
+) {
+  const binding = await tx.platformBinding.findUniqueOrThrow({
+    where: { id: mapping.bindingId },
+    include: { instance: true },
+  });
+  const rows = await tx.remoteRevocation.findMany({
+    where: {
+      bindingId: mapping.bindingId,
+      registrationId: mapping.registrationId,
+      state: 'PENDING',
+    },
+  });
+  const ids = rows
+    .filter((row) => {
+      const target = row.target as Record<string, unknown>;
+      return (
+        (!row.remoteUserId || row.remoteUserId === mapping.remoteUserId) &&
+        (!row.remoteTeamId || row.remoteTeamId === mapping.remoteTeamId) &&
+        target.baseUrl === binding.instance.baseUrl &&
+        target.remoteContestId === binding.remoteContestId
+      );
+    })
+    .map((row) => row.id);
+  if (ids.length) {
+    await tx.remoteRevocation.updateMany({
+      where: { id: { in: ids }, state: 'PENDING' },
+      data: { state: 'SUPERSEDED' },
+    });
+    await audit(tx, 'integration', 'REMOTE_REVOCATION_SUPERSEDE', mapping.registrationId, {
+      revocationIds: ids,
+    });
+  }
 }
 // Callers hold the registration lock. Only settlement data and minimal deletion metadata survive.
 export async function removeRegistration(
@@ -111,11 +162,11 @@ export async function removeRegistration(
     if (protectedFile) continue;
     const shared = await tx.teamFile.count({ where: { attachmentId: file.id } });
     const used = await tx.$queryRaw<{ used: boolean }[]>`SELECT EXISTS (
-      SELECT 1 FROM "Registration" WHERE id <> ${r.id}::uuid AND (answers::text LIKE ${`%${file.id}%`} OR snapshot::text LIKE ${`%${file.id}%`})
-      UNION ALL SELECT 1 FROM "RegistrationRevision" WHERE "registrationId" <> ${r.id}::uuid AND snapshot::text LIKE ${`%${file.id}%`}
-      UNION ALL SELECT 1 FROM "RegistrationPerson" WHERE "registrationId" <> ${r.id}::uuid AND answers::text LIKE ${`%${file.id}%`}
-      UNION ALL SELECT 1 FROM "RegistrationCoach" WHERE "registrationId" <> ${r.id}::uuid AND answers::text LIKE ${`%${file.id}%`}
-      UNION ALL SELECT 1 FROM "SupportMessage" WHERE attachments::text LIKE ${`%${file.id}%`}
+      SELECT 1 FROM "Registration" WHERE id <> ${r.id}::uuid AND (answers::text ILIKE ${`%${file.id}%`} OR snapshot::text ILIKE ${`%${file.id}%`})
+      UNION ALL SELECT 1 FROM "RegistrationRevision" WHERE "registrationId" <> ${r.id}::uuid AND snapshot::text ILIKE ${`%${file.id}%`}
+      UNION ALL SELECT 1 FROM "RegistrationPerson" WHERE "registrationId" <> ${r.id}::uuid AND answers::text ILIKE ${`%${file.id}%`}
+      UNION ALL SELECT 1 FROM "RegistrationCoach" WHERE "registrationId" <> ${r.id}::uuid AND answers::text ILIKE ${`%${file.id}%`}
+      UNION ALL SELECT 1 FROM "SupportMessage" WHERE attachments::text ILIKE ${`%${file.id}%`}
       UNION ALL SELECT 1 FROM "User" WHERE "avatarAttachmentId" = ${file.id}::uuid
     ) AS used`;
     if (
