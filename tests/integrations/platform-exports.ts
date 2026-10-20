@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { Client } from './client.js';
+import { Client, base } from './client.js';
 import { exportFixture } from './platform-export-fixture.js';
 import { db } from '../../apps/server/src/db.js';
 import { sha } from '../../apps/server/src/security.js';
@@ -139,6 +139,37 @@ try {
       404,
     );
   checks.push('旧实例、绑定、同步和凭据接口已移除');
+  const aliasFixture = await exportFixture(alice.user.id);
+  fixtures.push(aliasFixture);
+  for (const suffix of ['platform-exports/', 'PLATFORM-EXPORTS']) {
+    const key = randomUUID();
+    for (let i = 0; i < 2; i++) {
+      const response = await fetch(`${base}/api/v1/contests/${aliasFixture.contest.id}/${suffix}`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          Cookie: admin.cookie,
+          'X-CSRF-Token': admin.csrf,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': key,
+        },
+        body: JSON.stringify({ platform: 'HYDRO' }),
+      });
+      assert.equal(response.status, 201);
+      assert.match(response.headers.get('content-type') ?? '', /application\/zip/);
+      assert.equal(
+        Buffer.from(await response.arrayBuffer())
+          .subarray(0, 2)
+          .toString(),
+        'PK',
+      );
+    }
+    assert.equal(
+      await db.idempotencyRecord.findUnique({ where: { id: sha(`${admin.user.id}:${key}`) } }),
+      null,
+    );
+  }
+  checks.push('末尾斜杠和大小写路径重复使用同一幂等键仍返回 ZIP，不缓存空响应或挂起下载');
   for (const check of checks) console.log(`PASS ${check}`);
 } finally {
   for (const f of fixtures) await f.cleanup();
