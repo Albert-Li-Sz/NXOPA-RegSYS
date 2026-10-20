@@ -137,37 +137,12 @@ try {
   await expect(recipientPage.getByRole('button', { name: '确认接受', exact: true })).toBeVisible();
   await shot('06-role-confirmation', recipientPage.locator('.invitation-card'));
   await recipientPage.close();
-  await page.getByRole('tab', { name: '评测平台', exact: true }).click();
-  await page.getByRole('button', { name: '添加 Hydro / DOMjudge 实例', exact: true }).click();
-  await dialog.locator('#platform-name').fill('社团在线评测平台');
-  await dialog.locator('#platform-url').fill('https://hydro.example.org');
-  await shot('07-hydro-instance', dialog.locator('.el-dialog'));
-  await dialog.locator('.el-select').first().click();
-  await page.getByRole('option', { name: 'DOMjudge 9.0.1', exact: true }).click();
-  await dialog.locator('#platform-name').fill('社团程序设计竞赛评测平台');
-  await dialog.locator('#platform-url').fill('https://domjudge.example.org');
-  await dialog.locator('#platform-username').fill('contest_api');
-  await shot('08-domjudge-instance', dialog.locator('.el-dialog'));
-  await page.keyboard.press('Escape');
-  await expect(dialog).not.toBeVisible();
-  await page
-    .locator('.el-select')
-    .filter({ has: page.locator('#binding-contest') })
-    .click();
+  await page.goto('http://localhost:5173/admin/platforms');
+  await page.locator('#export-contest').click();
   await page.getByRole('option', { name: contest.title, exact: true }).click();
-  await page
-    .locator('.el-select')
-    .filter({ has: page.locator('#binding-instance') })
-    .click();
-  const localName = '本地程序设计竞赛评测系统验收';
-  await page
-    .getByRole('option', { name: `${localName} · DOMjudge`, exact: true })
-    .first()
-    .click();
-  await page.locator('#binding-remote').fill('social-contest-2026');
-  await page.locator('#binding-group').fill('1');
-  await page.locator('#binding-unofficial-group').fill('2');
-  await shot('09-contest-binding', page.locator('.platform-bindings'));
+  await shot('07-platform-hydro-export', page.locator('.platform-exports'));
+  await page.getByText('DOMjudge 9.x', { exact: true }).click();
+  await shot('08-platform-domjudge-export', page.locator('.platform-exports'));
   await page.goto(`http://localhost:5173/admin/contests/${contestId}`);
   await expect(page.locator('#contest-title')).toHaveValue(contest.title);
   await shot('10-contest-policy', page.locator('.panel .card').nth(1));

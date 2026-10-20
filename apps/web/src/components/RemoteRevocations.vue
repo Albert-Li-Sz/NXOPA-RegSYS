@@ -38,7 +38,7 @@ defineExpose({ refresh: load });
       <el-button @click="load">刷新</el-button>
     </div>
     <p class="form-help">
-      报名删除、资格失效或平台授权撤销后，请在对应外接平台处理账号或队伍权限，完成后登记结果。重新同步验证成功的旧待办会失效。
+      报名删除、资格失效或平台授权撤销后，请在对应外接平台处理账号或队伍权限，完成后登记结果。此列表保留旧同步版本产生的历史待办。
     </p>
     <PaginatedTable page-key="remoterevocations-rows" :data="rows"
       ><el-table-column label="外接平台" min-width="220"
@@ -58,7 +58,7 @@ defineExpose({ refresh: load });
           row.state === 'COMPLETED'
             ? '已人工确认撤权'
             : row.state === 'SUPERSEDED'
-              ? '重新同步后已失效'
+              ? '历史待办已失效'
               : '待远端撤权'
         }}</template></el-table-column
       ><el-table-column label="操作" min-width="200"

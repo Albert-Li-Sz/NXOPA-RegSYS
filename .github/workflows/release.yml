@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v0.6.7
+        description: 已存在的版本标签，例如 v0.7.0
         required: true
-        default: v0.6.7
+        default: v0.7.0
         type: string
 
 permissions:
@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       PLATFORM_TEST_LATEX_IMAGE: nxopa-latex-test:current
+      FULL_REGRESSION_OJ: '1'
     outputs:
       revision: ${{ steps.version.outputs.revision }}
       prefix: ${{ steps.version.outputs.prefix }}
@@ -76,6 +77,8 @@ jobs:
             .runtime/reports/release-features.json
             .runtime/reports/platform-features.json
             .runtime/reports/full-regression.json
+            .runtime/reports/platform-imports-hydro.json
+            .runtime/reports/platform-imports-domjudge.json
             .runtime/reports/ui-audit
           retention-days: 30
 

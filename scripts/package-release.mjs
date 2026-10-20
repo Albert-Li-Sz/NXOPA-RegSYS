@@ -9,7 +9,7 @@ import { validateFullRegression } from './release-validation.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = process.argv[2];
-assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.6.7');
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.7.0');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
@@ -91,14 +91,6 @@ try {
   for (const name of ['configuration-guide.pdf', 'configuration-guide-source.zip']) {
     await cp(join(root, 'output/pdf', name), join(output, name));
   }
-  execFileSync(
-    'pnpm',
-    ['--dir', 'plugins/hydro-contest-center', 'pack', '--pack-destination', output],
-    {
-      cwd: root,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
-  );
   const prefix = process.env.IMAGE_PREFIX ?? 'ghcr.io/albert-li-sz/nxopa-regsys';
   const images = ['api', 'worker', 'web', 'latex', 'minio'].map((service) => ({
     service,
@@ -224,6 +216,27 @@ try {
     await writeFile(join(output, 'full-regression.json'), JSON.stringify(report, null, 2));
   } catch (error) {
     if (error.code !== 'ENOENT' || process.env.CI) throw error;
+  }
+  for (const platform of ['hydro', 'domjudge']) {
+    try {
+      const report = JSON.parse(
+        await readFile(
+          join(root, `dist/feature-reports/platform-imports-${platform}.json`),
+          'utf8',
+        ),
+      );
+      assert.equal(report.success, true);
+      assert.equal(report.commit, commit);
+      assert.equal(report.sourceDirty, false);
+      assert.equal(report.reports[0].platform, platform.toUpperCase());
+      assert.equal(report.reports[0].actualLoginAndContestAccess, true);
+      await writeFile(
+        join(output, `platform-imports-${platform}.json`),
+        JSON.stringify(report, null, 2),
+      );
+    } catch (error) {
+      if (error.code !== 'ENOENT' || process.env.CI) throw error;
+    }
   }
   const names = (await readdir(output)).sort();
   const checksums = await Promise.all(

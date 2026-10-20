@@ -230,11 +230,22 @@ model Registration {
   seats SeatAssignment[]
   admissions AdmissionDocument[]
   mappings AccountMapping[]
+  exportAccounts PlatformExportAccount[]
   @@index([contestId,status,review,eligible])
   @@index([ownerId])
   @@index([examSiteId])
   @@index([contestId,createdAt,id])
   @@unique([contestId,number])
+}
+model PlatformExportAccount {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id],onDelete:Cascade)
+  platform String
+  username String @unique
+  credential String
+  createdAt DateTime @default(now())
+  @@unique([registrationId,platform])
 }
 model RegistrationPerson {
   id String @id @default(uuid()) @db.Uuid

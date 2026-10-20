@@ -332,7 +332,7 @@ async function send() {
         ><el-form-item label="分类"
           ><el-select v-model="form.category" filterable
             ><el-option
-              v-for="s in ['报名咨询', '财务问题', '准考证', '平台联动', '其他']"
+              v-for="s in ['报名咨询', '财务问题', '准考证', '平台导入', '其他']"
               :key="s"
               :value="s" /></el-select></el-form-item
         ><el-form-item label="描述" for="ticket-text"

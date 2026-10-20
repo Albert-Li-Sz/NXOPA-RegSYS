@@ -11,10 +11,10 @@ export const adminCenters = [
   {
     key: 'platforms',
     to: '/admin/platforms',
-    label: '外接平台中心',
-    description: '配置外部评测平台及竞赛绑定',
+    label: '平台导出中心',
+    description: '导出评测平台导入文件',
     tabs: [
-      { name: 'instances', label: '评测平台' },
+      { name: 'instances', label: '平台文件导出' },
       { name: 'revocations', label: '撤权待办' },
     ],
   },

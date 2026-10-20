@@ -36,7 +36,7 @@ try {
     {
       name: 'Federation boundary fixture',
       contestIds: [r.contestId],
-      scopes: ['integration:read', 'integration:write'],
+      scopes: ['integration:read'],
       fields: ['PERSON.name'],
       expiresAt: new Date(Date.now() + 3600000).toISOString(),
     },
@@ -55,42 +55,13 @@ try {
   assert.equal(e.qualification.feeCents, undefined);
   assert.ok(e.people.every((p: any) => p.name));
   reports.push('Federation envelope applies contest and field permissions');
-  const bindings = await db.platformBinding.findMany({
-    where: { contestId: r.contestId, instance: { type: process.env.OJ_TYPE ?? 'HYDRO' } },
-    select: { id: true },
+  const removedCallback = await fetch(`${base}/api/integration/v1/registrations/${r.id}/result`, {
+    method: 'POST',
+    headers: { ...authorization, 'Content-Type': 'application/json' },
+    body: '{}',
   });
-  const mapping = await db.accountMapping.findFirst({
-    where: {
-      registrationId: r.id,
-      state: 'VERIFIED',
-      bindingId: { in: bindings.map((binding) => binding.id) },
-    },
-  });
-  assert.ok(mapping, 'Run test:oj for the selected OJ_TYPE before boundary acceptance');
-  {
-    const result = mapping.details;
-    const callback = await fetch(`${base}/api/integration/v1/registrations/${r.id}/result`, {
-      method: 'POST',
-      headers: { ...authorization, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bindingId: mapping.bindingId,
-        registrationVersion: r.version,
-        result,
-      }),
-    });
-    assert.equal(callback.status, 201, await callback.text());
-    const denied = await fetch(`${base}/api/integration/v1/registrations/${r.id}/result`, {
-      method: 'POST',
-      headers: { ...authorization, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bindingId: mapping.bindingId,
-        registrationVersion: r.version,
-        result: { ...(result as any), remoteUserId: 'invented' },
-      }),
-    });
-    assert.equal(denied.status, 400);
-    reports.push('Federation callback verifies remote IDs and rejects invented results');
-  }
+  assert.equal(removedCallback.status, 404);
+  reports.push('Removed provisioning callback cannot write remote account mappings');
   const stored = await db.idempotencyRecord.findMany({ take: 20, orderBy: { createdAt: 'desc' } });
   assert.ok(stored.some((v) => typeof (v.result as any).encrypted === 'string'));
   assert.ok(!stored.some((v) => JSON.stringify(v.result).includes(token.token)));

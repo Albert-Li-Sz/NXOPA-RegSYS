@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       PLATFORM_TEST_LATEX_IMAGE: nxopa-latex-test:current
+      FULL_REGRESSION_OJ: '1'
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,5 +54,7 @@ jobs:
             .runtime/reports/release-features.json
             .runtime/reports/platform-features.json
             .runtime/reports/full-regression.json
+            .runtime/reports/platform-imports-hydro.json
+            .runtime/reports/platform-imports-domjudge.json
             .runtime/reports/ui-audit
           retention-days: 14

@@ -44,8 +44,7 @@ const route = useRoute(),
   busy = ref(false),
   loadError = ref(''),
   link = ref(''),
-  credentials = ref<Data[]>([]),
-  bindings = ref<Data[]>([]);
+  exportNote = '比赛账号由主办方导入评测平台后另行发放。';
 const edit = useEditSession(form),
   router = useRouter(),
   reviewOpen = ref(false);
@@ -166,8 +165,6 @@ async function refresh() {
         coaches: x.coaches,
       }),
     );
-    if (integrationManager.value)
-      bindings.value = await api(`/integrations/bindings?contestId=${x.contestId}`);
     if (tab.value === 'finance') await loadFinance();
   } catch (e) {
     if (sequence !== refreshSequence) return;
@@ -578,7 +575,7 @@ async function memberSave(id: string, index: number) {
             非正式参赛须经管理员审核，缴费、老师关联和准考证规则相同。
           </p>
           <p class="form-help" v-if="platformProfiles.length">
-            代表单位用于评测平台学校映射；成员个人学校资料单独填写。
+            代表单位用于平台导入文件的学校信息；成员个人学校资料单独填写。
           </p>
         </div>
         <div class="card" v-if="policy?.mode === 'TEAM'">
@@ -1191,58 +1188,10 @@ async function memberSave(id: string, index: number) {
       </div>
     </div>
     <div v-if="tab === 'accounts' && r.contest.modules.integrations" class="panel">
-      <div class="notice">比赛账号与本站账号分别管理。请妥善保存比赛账号。</div>
-      <div v-if="integrationManager">
-        <PaginatedList
-          :items="bindings"
-          page-key="registration-bindings"
-          :always="false"
-          v-slot="{ items }"
-          ><div class="actions">
-            <el-button
-              v-for="b in items"
-              :key="b.id"
-              @click="action(`/integrations/registrations/${r.id}/sync`, { bindingId: b.id })"
-              >同步比赛账号{{
-                bindings.length > 1 ? `（评测平台 ${bindings.indexOf(b) + 1}）` : ''
-              }}</el-button
-            >
-          </div></PaginatedList
-        >
-      </div>
-      <div class="card">
-        <PaginatedTable page-key="registration-r-mappings" :data="r.mappings"
-          ><el-table-column label="账号" prop="username" min-width="200" /><el-table-column
-            label="同步状态"
-            ><template #default="{ row }">{{ label(row.state) }}</template></el-table-column
-          ><el-table-column label="远端队伍" prop="remoteTeamId" /><el-table-column
-            label="远端用户"
-            prop="remoteUserId"
-        /></PaginatedTable>
-        <div class="actions">
-          <el-button
-            v-if="r.actions.credentials"
-            type="primary"
-            @click="
-              api(`/integrations/registrations/${r.id}/credentials`).then((v) => (credentials = v))
-            "
-            >查看获授权的比赛账号</el-button
-          >
-        </div>
-        <PaginatedList
-          :items="credentials"
-          page-key="registration-credentials"
-          :always="false"
-          v-slot="{ items }"
-        >
-          <div v-for="c in items" :key="c.id" class="notice">
-            用户名：{{ c.username }}<br />密码：<code>{{ c.password }}</code>
-          </div>
-        </PaginatedList>
-        <p v-if="r.mappings.some((m) => m.state === 'REVOKED_LOCALLY')" class="error-state">
-          本站已撤销资格。当前平台不支持自动停用，管理员需要在评测系统中手动处理原账号。
-        </p>
-      </div>
+      <div class="notice">{{ exportNote }}</div>
+      <RouterLink v-if="integrationManager" :to="`/admin/contests/${r.contestId}?tab=integrations`"
+        >前往平台文件导出</RouterLink
+      >
     </div>
     <el-dialog
       v-model="invoiceApplication"

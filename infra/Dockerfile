@@ -7,8 +7,6 @@ COPY apps/server/package.json ./apps/server/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY apps/mcp-adapter/package.json ./apps/mcp-adapter/package.json
 COPY packages/contracts/package.json ./packages/contracts/package.json
-COPY packages/connectors/package.json ./packages/connectors/package.json
-COPY plugins/hydro-contest-center/package.json ./plugins/hydro-contest-center/package.json
 RUN pnpm install --frozen-lockfile
 FROM dependencies AS backend-build
 COPY apps/server ./apps/server

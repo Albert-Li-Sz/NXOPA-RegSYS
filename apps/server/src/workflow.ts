@@ -39,10 +39,7 @@ export function registrationActions(u: Principal, r: Registration) {
     review: manager && reviewPhase === 'INITIAL',
     amendReview: manager && reviewPhase === 'AMEND',
     requestFinance: applicant,
-    credentials:
-      modulesFor(r.contest).integrations &&
-      (integrationManager ||
-        (r.eligible && (owns(u, r.ownerId) || (team && (member || applicant))))),
+    credentials: false,
     editReason: open
       ? editor
         ? ''

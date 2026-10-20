@@ -109,9 +109,9 @@ try {
     await web.goto('http://localhost:5173/admin?tab=audit');
     await web.getByPlaceholder('搜索日志', { exact: true }).fill(registration.contestId);
     await web.locator('.panel .toolbar .el-select').click();
-    await web.getByRole('option', { name: '保存平台绑定', exact: true }).click();
+    await web.getByRole('option', { name: '导出平台导入包', exact: true }).click();
     await expect(web.locator('.list-pagination')).toBeVisible();
-    await expect(web.locator('.el-table__body tr').first()).toContainText('保存平台绑定');
+    await expect(web.locator('.el-table__body tr').first()).toContainText('导出平台导入包');
     await screenshot(web, '22-pagination', '.panel .card');
     const example = await admin.api('/contests', 'POST', {
       title: '开票配置示例竞赛',

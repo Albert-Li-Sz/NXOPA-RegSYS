@@ -436,10 +436,9 @@ try {
       remoteTeamId: 'remote-team',
     },
   });
-  assert.deepEqual(
-    await alice.api(`/integrations/registrations/${original.id}/credentials`),
-    [],
-    'Older platform mapping versions must not release credentials',
+  assert.equal(
+    (await alice.raw(`/api/v1/integrations/registrations/${original.id}/credentials`)).status,
+    404,
   );
   await alice.api(
     `/registrations/${original.id}/cancel`,
@@ -521,7 +520,7 @@ try {
   );
   assert.equal(
     (await alice.raw(`/api/v1/integrations/registrations/${members.id}/credentials`)).status,
-    403,
+    404,
   );
   const todo = await db.remoteRevocation.findFirstOrThrow({
     where: { registrationId: members.id },

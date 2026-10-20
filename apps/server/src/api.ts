@@ -23,6 +23,7 @@ import archiver from 'archiver';
 import { AuthService, user, csrf, type AuthRequest } from './auth.js';
 import { RegistrationService } from './registrations.js';
 import { removeContest } from './contest-removal.js';
+import { platformExport } from './platform-export.js';
 import { registrationCsv } from './registration-export.js';
 import { SeatingService } from './seating.js';
 import { FinanceService } from './finance.js';
@@ -35,8 +36,6 @@ import {
   apiContest,
   apiRegistration,
   scopedEnvelope,
-  scheduleSync,
-  verifyCallback,
 } from './integrations.js';
 import { AdminService } from './admin.js';
 import { InvitationService } from './invitations.js';
@@ -803,46 +802,22 @@ export class ApiController {
       .setHeader('X-Content-Type-Options', 'nosniff')
       .send(d.buffer);
   }
-  @Get('integrations/instances') instances(@Req() r: AuthRequest) {
-    return this.integrations.instances(user(r));
-  }
-  @Post('integrations/instances') instance(@Req() r: AuthRequest, @Body() b: unknown) {
-    return this.integrations.instance(user(r), b);
-  }
-  @Put('integrations/instances/:id') updateInstance(
+  @Post('contests/:id/platform-exports') async exportPlatform(
     @Req() r: AuthRequest,
     @Param('id') id: string,
-    @Body() b: unknown,
+    @Body() body: unknown,
+    @Res() res: Response,
   ) {
-    return this.integrations.instance(user(r), b, id);
-  }
-  @Get('integrations/bindings') bindings(@Req() r: AuthRequest, @Query('contestId') id: string) {
-    return this.integrations.bindings(user(r), id);
-  }
-  @Post('integrations/bindings') bind(@Req() r: AuthRequest, @Body() b: unknown) {
-    return this.integrations.bind(user(r), b);
-  }
-  @Post('integrations/bindings/:id/probe') probe(@Req() r: AuthRequest, @Param('id') id: string) {
-    return this.integrations.probe(user(r), id);
-  }
-  @Post('integrations/bindings/:id/sync') syncExisting(
-    @Req() r: AuthRequest,
-    @Param('id') id: string,
-  ) {
-    return this.integrations.syncExisting(user(r), id);
-  }
-  @Post('integrations/registrations/:id/sync') sync(
-    @Req() r: AuthRequest,
-    @Param('id') id: string,
-    @Body() b: unknown,
-  ) {
-    return this.integrations.sync(user(r), id, b);
-  }
-  @Get('integrations/registrations/:id/credentials') credentials(
-    @Req() r: AuthRequest,
-    @Param('id') id: string,
-  ) {
-    return this.integrations.credentials(user(r), id);
+    const bundle = await platformExport(user(r), z.string().uuid().parse(id), body);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${bundle.filename}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', (error) => res.destroy(error));
+    res.on('close', () => archive.abort());
+    archive.pipe(res);
+    for (const [name, content] of Object.entries(bundle.files)) archive.append(content, { name });
+    await archive.finalize();
   }
   @Get('admin/jobs') jobs(@Req() r: AuthRequest, @Query() query: Record<string, string>) {
     return this.integrations.jobs(user(r), query);
@@ -917,27 +892,6 @@ export class ApiController {
   @Get('integrations/field-templates') async fieldTemplates(@Req() r: AuthRequest) {
     user(r);
     return (await import('@contest-center/contracts')).platformTemplates;
-  }
-  @Get('integrations/bindings/:id/metadata') remoteMetadata(
-    @Req() r: AuthRequest,
-    @Param('id') id: string,
-  ) {
-    return this.integrations.remoteMetadata(user(r), id);
-  }
-  @Get('integrations/bindings/:id/schools') schools(
-    @Req() r: AuthRequest,
-    @Param('id') id: string,
-    @Query() query: Record<string, string>,
-  ) {
-    return this.integrations.schools(user(r), id, query);
-  }
-  @Put('integrations/bindings/:id/schools/:schoolId') confirmSchool(
-    @Req() r: AuthRequest,
-    @Param('id') id: string,
-    @Param('schoolId') schoolId: string,
-    @Body() b: unknown,
-  ) {
-    return this.integrations.confirmSchool(user(r), id, schoolId, b);
   }
 }
 @ApiTags('Automation / Federation')
@@ -1061,34 +1015,5 @@ export class ExternalController {
         })
       ).map((row) => scopedEnvelope(row, t.fields as string[])),
     );
-  }
-  @Post('integration/v1/registrations/:id/provision') async provision(
-    @Req() r: Request,
-    @Param('id') id: string,
-    @Body() body: unknown,
-  ) {
-    const t = await apiPrincipal(r, 'integration:write');
-    const b = z.object({ bindingId: z.string().uuid() }).parse(body);
-    const registration = await db.registration.findUniqueOrThrow({ where: { id } });
-    apiContest(t, registration.contestId);
-    return db.$transaction((tx) => scheduleSync(tx, id, b.bindingId));
-  }
-  @Post('integration/v1/registrations/:id/result') async callback(
-    @Req() r: Request,
-    @Param('id') id: string,
-    @Body() body: unknown,
-  ) {
-    const t = await apiPrincipal(r, 'integration:write');
-    const registration = await db.registration.findUniqueOrThrow({ where: { id } });
-    apiContest(t, registration.contestId);
-    return verifyCallback(id, body);
-  }
-  @Get('integration/v1/jobs/:id') async result(@Req() r: Request, @Param('id') id: string) {
-    const t = await apiPrincipal(r, 'integration:read');
-    const j = await db.job.findUniqueOrThrow({ where: { id } });
-    if (j.kind !== 'SYNC') throw new ForbiddenException('此接口仅查询平台注册任务');
-    const registration = await db.registration.findUniqueOrThrow({ where: { id: j.resourceId } });
-    apiContest(t, registration.contestId);
-    return { id: j.id, state: j.state, result: j.result, error: j.error };
   }
 }

@@ -441,12 +441,12 @@ test('view-only management grants do not expose applicant actions or contest cre
     ])
       expect(detail.actions[key]).toBe(false);
     expect((await bob.raw(`/api/v1/integrations/registrations/${r.id}/credentials`)).status).toBe(
-      403,
+      404,
     );
     await login(page, 'bob');
     await page.goto(`/registrations/${r.id}?tab=accounts`);
     await expect(
-      page.getByText('比赛账号与本站账号分别管理。请妥善保存比赛账号。', { exact: true }),
+      page.getByText('比赛账号由主办方导入评测平台后另行发放。', { exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: '查看获授权的比赛账号', exact: true }),
@@ -815,7 +815,7 @@ test('new generic activities default to optional modules off and narrow screens 
     page.getByRole('checkbox', { name: '启用考场与座位', exact: true }),
   ).not.toBeChecked();
   await expect(
-    page.getByRole('checkbox', { name: '启用评测平台联动', exact: true }),
+    page.getByRole('checkbox', { name: '启用平台文件导出', exact: true }),
   ).not.toBeChecked();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('#contest-title')).toBeVisible();

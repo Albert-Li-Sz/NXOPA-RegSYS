@@ -1,166 +1,117 @@
 import { test, expect, type Page } from '@playwright/test';
+import { mkdir, readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { db } from '../../apps/server/src/db.js';
 import { redis } from '../../apps/server/src/auth.js';
-import { decrypt } from '../../apps/server/src/security.js';
 import { Client } from '../integrations/client.js';
-
-const prefix = `平台界面验收 ${Date.now()}`;
-const contestId = '33333333-3333-4333-8333-333333333333';
-const ids: string[] = [];
-let contestTitle: string;
-let admin: Client;
-test.use({ actionTimeout: 15000 });
+import { exportFixture } from '../integrations/platform-export-fixture.js';
+let fixture: Awaited<ReturnType<typeof exportFixture>>;
+const screenshots = path.join(tmpdir(), 'contest-center-platform-qa');
 test.describe.configure({ mode: 'serial' });
 test.beforeAll(async () => {
   if (redis.status === 'end') await redis.connect();
   await redis.del('rate:login:::ffff:127.0.0.1', 'rate:login:127.0.0.1');
-  admin = await new Client().login('admin');
-  contestTitle = (await admin.api(`/contests/${contestId}`)).title;
+  const admin = await new Client().login('admin'),
+    manager = await new Client().login('manager');
+  fixture = await exportFixture(admin.user.id);
+  await admin.api('/admin/grants', 'POST', {
+    userId: manager.user.id,
+    level: 'CONTEST',
+    contestId: fixture.contest.id,
+    permissions: ['VIEW', 'INTEGRATIONS'],
+  });
+  await mkdir(screenshots, { recursive: true });
 });
 test.beforeEach(async () => {
   await redis.del('rate:login:::ffff:127.0.0.1', 'rate:login:127.0.0.1');
 });
 test.afterAll(async () => {
-  await db.platformBinding.deleteMany({ where: { instanceId: { in: ids } } });
-  await db.platformInstance.deleteMany({ where: { id: { in: ids } } });
+  await fixture?.cleanup();
   await db.$disconnect();
+  redis.disconnect();
 });
-async function login(page: Page, name: string) {
+async function login(page: Page, account: string) {
   await page.goto('/login');
-  await page.locator('#account').fill(name);
+  await page.locator('#account').fill(account);
   await page.locator('#password').fill('DemoContest2026!');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page).toHaveURL(/\/contests$/);
-  await page.goto('/admin/platforms');
+  await expect(page.locator('.user-menu')).toBeVisible();
 }
-test('system administrator configures both platforms and preserves saved credentials', async ({
+test('administrator downloads both import formats and old connection controls are absent', async ({
   page,
 }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
   await login(page, 'admin');
-  for (const type of ['HYDRO', 'DOMJUDGE'] as const) {
-    const name = `${prefix} ${type}`;
-    await page.getByRole('button', { name: /添加 Hydro.*DOMjudge 实例/ }).click();
-    const dialog = page.getByRole('dialog');
-    await dialog.locator('#platform-name').fill(name);
-    if (type === 'DOMJUDGE') {
-      await dialog.locator('.el-select').first().click();
-      await page.getByRole('option', { name: 'DOMjudge 9.0.1', exact: true }).click();
-    }
-    await dialog
-      .locator('#platform-url')
-      .fill(`http://localhost:${type === 'HYDRO' ? 58888 : 58901}`);
-    const credentials =
-      type === 'HYDRO'
-        ? { token: 'local-fixture-token-32characters-for-testing-only' }
-        : { username: 'cc_api', password: 'FixtureAPI2026!' };
-    if (type === 'HYDRO') await dialog.locator('#platform-token').fill(credentials.token!);
-    else {
-      await dialog.locator('#platform-username').fill(credentials.username!);
-      await dialog.locator('#platform-password').fill(credentials.password!);
-    }
-    await dialog
-      .locator('.el-form-item')
-      .filter({ hasText: '允许使用的竞赛' })
-      .locator('.el-select')
-      .click();
-    await page.getByRole('option', { name: contestTitle, exact: true }).click();
-    await dialog.locator('.el-dialog__header').click();
-    await dialog.getByRole('button', { name: '保存实例', exact: true }).click();
-    await expect(dialog).not.toBeVisible();
-    const row = page.getByRole('row').filter({ hasText: name });
-    await expect(row).toBeVisible();
-    const saved = await db.platformInstance.findFirstOrThrow({ where: { name } });
-    ids.push(saved.id);
-    expect(JSON.parse(decrypt(saved.credentials))).toEqual(credentials);
-    await row.getByRole('button', { name: '编辑实例', exact: true }).click();
-    const credentialInput = dialog.locator(
-      type === 'HYDRO' ? '#platform-token' : '#platform-password',
+  await page.goto('/admin/platforms');
+  await expect(page).toHaveURL(/\/admin\/platforms/);
+  await expect(page.getByRole('heading', { name: '导出平台导入文件' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /同步|添加.*实例|探测连接/ })).toHaveCount(0);
+  await page.locator('#export-contest').click();
+  await page.getByRole('option', { name: fixture.contest.title, exact: true }).click();
+  for (const [label, type] of [
+    ['Hydro 最新版（Onsite Toolkit）', 'hydro'],
+    ['DOMjudge 9.x', 'domjudge'],
+  ]) {
+    await page.getByText(label, { exact: true }).click();
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: '导出平台导入包', exact: true }).click();
+    const file = await download,
+      filePath = await file.path();
+    expect(file.suggestedFilename()).toBe(`${type}-${fixture.contest.id}.zip`);
+    const teams = JSON.parse(
+      execFileSync('unzip', ['-p', filePath!, 'teams.json'], { encoding: 'utf8' }),
     );
-    await expect(credentialInput).toHaveValue('');
-    await dialog.locator('#platform-name').fill(`${name} 已编辑`);
-    await dialog.getByRole('button', { name: '保存实例', exact: true }).click();
-    await expect(dialog).not.toBeVisible();
-    const changed = await db.platformInstance.findUniqueOrThrow({ where: { id: saved.id } });
-    expect(changed.version).toBe(saved.version + 1);
-    expect(JSON.parse(decrypt(changed.credentials))).toEqual(credentials);
-    const body = {
-      name: changed.name,
-      type,
-      baseUrl: changed.baseUrl,
-      allowedContestIds: [contestId],
-      credentials: {},
-      version: saved.version,
-    };
-    expect(
-      (await admin.raw(`/api/v1/integrations/instances/${saved.id}`, 'PUT', body)).status,
-    ).toBe(409);
-    expect(
-      (await admin.raw('/api/v1/integrations/instances', 'POST', { ...body, name: '缺失凭据验收' }))
-        .status,
-    ).toBe(400);
+    expect(teams).toHaveLength(2);
+    if (type === 'hydro') expect(teams[0].displayName).toBe('NULL');
+    else
+      expect(
+        JSON.parse(
+          execFileSync('unzip', ['-p', filePath!, 'accounts.json'], { encoding: 'utf8' }),
+        )[0].type,
+      ).toBe('team');
+    await expect(page.getByRole('button', { name: '导出平台导入包', exact: true })).toBeEnabled();
+    await expect(page.locator('.el-message')).toHaveCount(0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: path.join(screenshots, `${type}-desktop.png`), fullPage: true });
+    if (process.env.CAPTURE_PLATFORM_GUIDE === '1')
+      await page.screenshot({
+        fullPage: true,
+        path: `docs/configuration-screenshots/${type === 'hydro' ? '07-platform-hydro-export' : '08-platform-domjudge-export'}.png`,
+      });
   }
-  const instances = await admin.api('/integrations/instances');
-  expect(instances.every((i: any) => !('credentials' in i))).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await expect(page.getByRole('button', { name: '导出平台导入包' })).toBeVisible();
+  await page.screenshot({ path: path.join(screenshots, 'domjudge-mobile.png'), fullPage: true });
+  expect(errors).toEqual([]);
 });
-test('contest administrator binds an authorized platform without accessing instance secrets', async ({
+test('activity administrators export qualified entries after registration without storing platform secrets', async ({
   page,
 }) => {
   await login(page, 'manager');
-  await expect(page.getByRole('button', { name: /添加 Hydro.*DOMjudge 实例/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '编辑实例', exact: true })).toHaveCount(0);
-  await page
-    .locator('.el-select')
-    .filter({ has: page.locator('#binding-contest') })
-    .click();
-  await page.getByRole('option', { name: contestTitle, exact: true }).click();
-  await page
-    .locator('.el-select')
-    .filter({ has: page.locator('#binding-instance') })
-    .click();
-  await page
-    .getByRole('option', { name: `${prefix} DOMJUDGE 已编辑 · DOMjudge`, exact: true })
-    .click();
-  await page.locator('#binding-remote').fill(`cc-ui-${Date.now()}`);
-  await page.locator('#binding-organization').fill('test-org');
-  await page.locator('#binding-group').fill('1');
-  await page
-    .locator('.el-switch')
-    .filter({ has: page.getByRole('switch', { name: '参赛资格生效时自动同步' }) })
-    .locator('.el-switch__core')
-    .click();
-  await page.getByRole('button', { name: '保存比赛绑定' }).click();
-  await expect(page.getByText('比赛绑定已保存', { exact: true })).toBeVisible();
-  const instance = await db.platformInstance.findFirstOrThrow({
-    where: { name: `${prefix} DOMJUDGE 已编辑` },
-  });
-  const binding = await db.platformBinding.findFirstOrThrow({ where: { instanceId: instance.id } });
-  expect(binding.contestId).toBe(contestId);
-  expect(binding.groupIds).toEqual(['1']);
-  expect(binding.automatic).toBe(false);
-  await page
-    .getByRole('row')
-    .filter({ hasText: binding.remoteContestId })
-    .getByRole('button', { name: '编辑绑定' })
-    .click();
-  await expect(page.locator('#binding-remote')).toBeDisabled();
-  await page.locator('#binding-organization').fill('');
-  await page.getByRole('button', { name: '保存比赛绑定' }).click();
-  await expect
-    .poll(
-      async () =>
-        (await db.platformBinding.findUniqueOrThrow({ where: { id: binding.id } })).organizationId,
-    )
-    .toBeNull();
-  await page.screenshot({
-    path: '.runtime/reports/platform-admin.png',
-    fullPage: true,
-    animations: 'disabled',
-  });
-  const manager = await new Client().login('manager');
-  const alice = await new Client().login('alice');
-  expect((await manager.raw('/api/v1/integrations/instances', 'POST', {})).status).toBe(403);
-  expect((await alice.raw('/api/v1/integrations/instances')).status).toBe(403);
-  expect((await alice.raw(`/api/v1/integrations/bindings?contestId=${contestId}`)).status).toBe(
-    403,
+  await page.goto(`/admin/contests/${fixture.contest.id}?tab=integrations`);
+  await expect(page.getByRole('tab', { name: '平台文件导出', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '导出平台导入文件' })).toBeVisible();
+  await page.getByText('包含非正式报名', { exact: true }).click();
+  await expect(page.getByRole('switch', { name: '报名范围' })).not.toBeChecked();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: '导出平台导入包' }).click();
+  const file = await download;
+  const teams = JSON.parse(
+    execFileSync('unzip', ['-p', (await file.path())!, 'teams.json'], { encoding: 'utf8' }),
   );
+  expect(teams).toHaveLength(1);
+  expect(teams[0].rank).toBe(true);
+  await expect(page.locator('input[type=password]')).toHaveCount(0);
+  await db.adminGrant.updateMany({
+    where: { contestId: fixture.contest.id },
+    data: { permissions: ['VIEW'] },
+  });
+  await page.reload();
+  await expect(page.getByRole('tab', { name: '报名管理', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '导出平台导入文件' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '导出平台导入包' })).toHaveCount(0);
 });

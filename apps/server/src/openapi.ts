@@ -14,7 +14,6 @@ import {
   registrationSchema,
   fieldSchema,
   registrationEnvelopeSchema,
-  provisioningResultSchema,
   accountInvitationSchema,
   accountInvitationKinds,
   invitationReturnPathSchema,
@@ -26,6 +25,7 @@ import {
   adminPermissions,
   userTagsSchema,
 } from '@contest-center/contracts';
+import { platformExportSchema } from './platform-export.js';
 import type { OpenAPIObject } from '@nestjs/swagger';
 const id = z.string().uuid(),
   version = z.number().int(),
@@ -77,7 +77,6 @@ export function describeApi(document: OpenAPIObject) {
     RegistrationInput: registrationSchema,
     FieldDefinition: fieldSchema,
     RegistrationEnvelopeV1: registrationEnvelopeSchema,
-    ProvisioningResultV1: provisioningResultSchema,
     AccountInvitationInput: accountInvitationSchema,
     MailSettingsInput: mailSettingsSchema,
     MailSettingsView: mailSettingsViewSchema,
@@ -324,27 +323,7 @@ export function describeApi(document: OpenAPIObject) {
         )
         .optional(),
     }),
-    'post /api/v1/integrations/bindings': object({
-      contestId: id,
-      instanceId: id,
-      remoteContestId: text,
-      domainId: text.optional(),
-      groupIds: z.array(text).optional(),
-      organizationId: text.nullish(),
-      version: version.optional(),
-      importMode: z.enum(['FOLLOW', 'FORCE_UNOFFICIAL']).optional(),
-      includeUnofficial: z.boolean().optional(),
-      nickname: z.boolean().optional(),
-      unofficialGroupId: text.nullable().optional(),
-      automatic: z.boolean().optional(),
-      enabled: z.boolean().optional(),
-    }),
-    'post /api/v1/integrations/registrations/{id}/sync': object({ bindingId: id }),
-    'put /api/v1/integrations/bindings/{id}/schools/{schoolId}': organizationSchema.extend({
-      version,
-      remoteId: text.optional(),
-      create: z.boolean().optional(),
-    }),
+    'post /api/v1/contests/{id}/platform-exports': platformExportSchema,
     'post /api/v1/admin/tokens': object({
       name: text,
       contestIds: z.array(id),
@@ -385,28 +364,7 @@ export function describeApi(document: OpenAPIObject) {
       callbackUrl: text.optional(),
     }),
     'post /api/v1/admin/mail/test': object({ version }),
-    'post /api/integration/v1/registrations/{id}/provision': object({ bindingId: id }),
-    'post /api/integration/v1/registrations/{id}/result': object({
-      bindingId: id,
-      registrationVersion: version,
-      result: provisioningResultSchema,
-    }),
   };
-  const instance = object({
-    version: version.optional(),
-    name: text,
-    type: z.enum(['HYDRO', 'DOMJUDGE']),
-    baseUrl: z.url(),
-    credentials: object({
-      username: text.optional(),
-      password: text.optional(),
-      token: text.optional(),
-    }),
-    allowedContestIds: z.array(id),
-    enabled: z.boolean().optional(),
-  });
-  bodies['post /api/v1/integrations/instances'] = instance;
-  bodies['put /api/v1/integrations/instances/{id}'] = instance;
   for (const [url, item] of Object.entries(document.paths))
     for (const [method, raw] of Object.entries(item ?? {})) {
       if (!['get', 'post', 'put', 'delete'].includes(method)) continue;
@@ -528,6 +486,15 @@ export function describeApi(document: OpenAPIObject) {
               schema: { $ref: '#/components/schemas/RegistrationDeletionReceipt' },
             },
           },
+        };
+      }
+      if (url === '/api/v1/contests/{id}/platform-exports' && method === 'post') {
+        op.description =
+          'INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Same registration/platform keeps encrypted stable credentials. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay.';
+        op.parameters = op.parameters.filter((p: any) => p.name !== 'Idempotency-Key');
+        op.responses['201'] = {
+          description: 'Platform import ZIP with plaintext competition credentials',
+          content: { 'application/zip': { schema: { type: 'string', format: 'binary' } } },
         };
       }
       if (url.endsWith('/seating/preview') || url.endsWith('/seating/commit')) {

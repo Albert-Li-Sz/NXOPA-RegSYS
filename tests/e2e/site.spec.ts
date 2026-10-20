@@ -127,7 +127,7 @@ test('admin and contest configuration pages, financial and support views', async
   await expect(page.getByRole('tab', { name: '认证服务', exact: true })).toHaveCount(0);
   for (const [path, name] of [
     ['/admin/users?tab=users', '用户与邀请'],
-    ['/admin/platforms', '评测平台'],
+    ['/admin/platforms', '平台文件导出'],
     ['/admin?tab=mail', '邮件设置'],
     ['/admin?tab=tokens', 'API 与 Webhook'],
     ['/admin?tab=site', '全局设置'],

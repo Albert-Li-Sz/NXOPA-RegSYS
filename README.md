@@ -10,7 +10,7 @@
 
 [![Release](https://img.shields.io/github/v/release/Albert-Li-Sz/NXOPA-RegSYS?style=flat-square&color=2080f0)](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/latest) [![发布检查](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/workflows/release.yml/badge.svg)](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/actions/workflows/release.yml) [![平台](https://img.shields.io/badge/platform-linux%2Famd64%20%C2%B7%20arm64-475569?style=flat-square)](deploy/README.md) [![MIT License](https://img.shields.io/badge/license-MIT-e7b416?style=flat-square)](LICENSE)
 
-**[在线教程](https://albert-li-sz.github.io/NXOPA-RegSYS/) · [下载 v0.6.7](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.6.7) · [部署文档](deploy/README.md)**
+**[在线教程](https://albert-li-sz.github.io/NXOPA-RegSYS/) · [下载 v0.7.0](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/tag/v0.7.0) · [部署文档](deploy/README.md)**
 
 [快速开始](#快速开始) · [报名流程](#报名流程) · [功能概览](#功能概览)<br />[界面预览](#界面预览) · [文档导航](#文档导航) · [常见问题](#常见问题)
 
@@ -29,7 +29,7 @@ bash install.sh
 
 NXOPA-RegSYS 是面向校园活动、培训和程序设计竞赛的中文自托管报名平台。组织者按活动配置表单和规则，参与者使用同一账号管理个人或团队报名；老师代填、资料补正、线下财务、准考证及外接评测平台围绕同一份报名协作。
 
-通用活动可以只保留简单报名与审核；竞赛可以按需启用指导老师、费用、多考场和 Hydro / DOMjudge 联动。业务服务与数据部署在自己的服务器上。
+通用活动可以只保留简单报名与审核；竞赛可以按需启用指导老师、费用、多考场和 Hydro / DOMjudge 导入文件导出。业务服务与数据部署在自己的服务器上。
 
 > [!IMPORTANT]
 > 收费活动采用**线下收款、人工核账、退款记录及发票上传**，未接入在线支付。界面金额单位为元，接口与数据库使用整数分。正式安装通过向导创建管理员，开发演示账号不会自动进入生产环境。
@@ -61,7 +61,7 @@ curl --fail http://127.0.0.1:8080/api/v1/health
 
 默认内部 Caddy 只绑定 `127.0.0.1:8080`。公网部署参照 [Nginx 示例](deploy/nginx.conf.example) 配置 HTTPS，并传递 `Host` 与 `X-Forwarded-Proto`。配置邮件服务、完成验证邮件测试后，再开放邮箱注册。首次管理员使用向导填写的邮箱或用户名登录。
 
-也可下载 [v0.6.7 安装包](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/download/v0.6.7/nxopa-regsys-v0.6.7-install.tar.gz)，比对同一 Release 的 `SHA256SUMS` 后解压，在解压目录运行 `bash install.sh`。完整配置见 [安装说明](deploy/README.md)。
+也可下载 [v0.7.0 安装包](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/download/v0.7.0/nxopa-regsys-v0.7.0-install.tar.gz)，比对同一 Release 的 `SHA256SUMS` 后解压，在解压目录运行 `bash install.sh`。完整配置见 [安装说明](deploy/README.md)。
 
 ### 3. 更新、备份与维护
 
@@ -76,22 +76,22 @@ bash install.sh restore /secure/backups/your-backup.ccbak
 bash install.sh logs api worker
 ```
 
-交互更新选择目标版本，先加密备份，再更新安装材料、迁移数据库并等待健康检查。`update --yes` 按已保存的版本执行；需要指定新版时使用 `NXOPA_UPDATE_TAG=v0.6.7 bash install.sh update --yes`。卸载入口为 `bash install.sh uninstall`，默认保留数据。
+交互更新选择目标版本，先加密备份，再更新安装材料、迁移数据库并等待健康检查。`update --yes` 按已保存的版本执行；需要指定新版时使用 `NXOPA_UPDATE_TAG=v0.7.0 bash install.sh update --yes`。卸载入口为 `bash install.sh uninstall`，默认保留数据。
 
 > [!WARNING]
 > 保留原 `ENCRYPTION_KEY`、项目名及升级前的加密备份。旧版本报名流程迁移会永久清理历史取消报名，财务记录独立保留；回退这类迁移需要恢复备份。切换旧根目录 Compose 与新安装入口时，也须保留原项目名、数据库密码和密钥。[升级与恢复说明](docs/DEPLOYMENT.md#加密备份与恢复)
 
 ### 镜像与服务
 
-安装使用完整固定版本标签，例如 `ghcr.io/albert-li-sz/nxopa-regsys-api:v0.6.7`，不使用 `latest` 或 `@sha256` 引用。新入口兼容旧包及遗留的自动哈希覆盖，下载包校验与发布镜像核验继续保留。
+安装使用完整固定版本标签，例如 `ghcr.io/albert-li-sz/nxopa-regsys-api:v0.7.0`，不使用 `latest` 或 `@sha256` 引用。新入口兼容旧包及遗留的自动哈希覆盖，下载包校验与发布镜像核验继续保留。
 
 | 服务        | 安装镜像 / 职责                                                          |
 | ----------- | ------------------------------------------------------------------------ |
-| API、初始化 | `nxopa-regsys-api:v0.6.7` · 账号、报名、权限及数据库迁移                 |
-| Worker      | `nxopa-regsys-worker:v0.6.7` · 邮件、通知、制证、同步及清理任务          |
-| Web         | `nxopa-regsys-web:v0.6.7` · 官网与管理界面                               |
-| LaTeX       | `nxopa-regsys-latex:v0.6.7` · 隔离编译准考证                             |
-| 对象存储    | `nxopa-regsys-minio:v0.6.7` · 内置 MinIO；也可选择第三方 S3 或本地存储   |
+| API、初始化 | `nxopa-regsys-api:v0.7.0` · 账号、报名、权限及数据库迁移                 |
+| Worker      | `nxopa-regsys-worker:v0.7.0` · 邮件、通知、制证及清理任务                |
+| Web         | `nxopa-regsys-web:v0.7.0` · 官网与管理界面                               |
+| LaTeX       | `nxopa-regsys-latex:v0.7.0` · 隔离编译准考证                             |
+| 对象存储    | `nxopa-regsys-minio:v0.7.0` · 内置 MinIO；也可选择第三方 S3 或本地存储   |
 | 基础服务    | 官方 `postgres:17.6-alpine`、`redis:7.4.5-alpine`、`caddy:2.10.2-alpine` |
 
 五类业务镜像均位于 `ghcr.io/albert-li-sz/`，支持 `linux/amd64`、`linux/arm64`。PostgreSQL、Redis、Caddy 与应用独立运行，持久数据使用单独卷。
@@ -104,7 +104,7 @@ flowchart TD
     B --> C[个人或团队报名]
     C --> D[按活动策略完成审核与缴费]
     D --> E[确认参加资格]
-    E --> F[按需排考、制证及平台同步]
+    E --> F[按需排考、制证及平台导出]
 ```
 
 审核与缴费顺序、老师要求及参加资格按活动策略计算；普通活动可关闭考场、准考证和评测平台。个人报名一人一张准考证，团队成员共用一张；按成员排考时列出各成员座位。
@@ -123,7 +123,7 @@ flowchart TD
 | 费用与单据   | 以元配置费用，线下凭证核账、交易参考号去重、退款审批、普通 / 专用发票申请，报名删除后保留财务账户            |
 | 考场与准考证 | 选手选择考点、考场关联考点，多考场容量，个人或团队排座、自动分配预览、手动调整、CSV 导入，LaTeX 模板及 PDF   |
 | 日常管理     | 活动总览、统计、按字段展开的 CSV 名单、可调分页、PDF 附件预览、工单、公示排名、邮件模板与顺序备用 SMTP       |
-| 平台与接入   | Hydro / DOMjudge 绑定及账号同步，联合注册 API、签名 Webhook、只读 MCP，任务与审计日志                        |
+| 平台与接入   | Hydro Onsite Toolkit / DOMjudge 9.x 导入文件导出，只读资格 API、签名 Webhook、只读 MCP，任务与审计日志       |
 
 权限按系统、活动及具体管理能力授权。系统管理员维护用户与全局设置，活动管理员仅管理获得授权的活动；报名、审核、财务等接口仍分别检查权限。指导老师在有效关联范围内代填和提交，取消报名由创建者操作，管理员删除需要原因。
 
@@ -155,11 +155,11 @@ flowchart TD
 | 按页面配置系统             | [在线图文教程](https://albert-li-sz.github.io/NXOPA-RegSYS/) · [PDF 下载](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/latest/download/configuration-guide.pdf) · [LaTeX 源码](docs/CONFIGURATION_GUIDE.tex) |
 | 设置存储、SMTP、用户及权限 | [平台功能说明](docs/PLATFORM_GUIDE.md) · [链接授权与邀请](docs/AUTHORIZATION_INVITATIONS.md)                                                                                                                          |
 | 部署代理、备份及恢复       | [部署与运维](docs/DEPLOYMENT.md)                                                                                                                                                                                      |
-| 接入 Hydro / DOMjudge      | [外部平台集成](docs/INTEGRATIONS.md) · [Hydro 插件下载](https://albert-li-sz.github.io/NXOPA-RegSYS/#hydro-plugin)                                                                                                    |
+| 接入 Hydro / DOMjudge      | [外部平台集成](docs/INTEGRATIONS.md) · [导入教程](https://albert-li-sz.github.io/NXOPA-RegSYS/#hydro)                                                                                                                 |
 | 使用 API、Webhook 或 MCP   | [接口与接入说明](docs/API.md)                                                                                                                                                                                         |
 | 配置 LaTeX 和准考证        | [准考证与模板](docs/ADMISSIONS.md)                                                                                                                                                                                    |
 | 了解模块和业务规则         | [架构设计](docs/ARCHITECTURE.md) · [业务计划](PROJECT_PLAN.md)                                                                                                                                                        |
-| 查看版本、验证及安全范围   | [v0.6.7 更新说明](docs/releases/v0.6.7.md) · [历史验收记录](docs/ACCEPTANCE.md) · [历史增强验收](docs/ENHANCEMENT_ACCEPTANCE.md) · [安全说明](SECURITY.md)                                                            |
+| 查看版本、验证及安全范围   | [v0.7.0 更新说明](docs/releases/v0.7.0.md) · [历史验收记录](docs/ACCEPTANCE.md) · [历史增强验收](docs/ENHANCEMENT_ACCEPTANCE.md) · [安全说明](SECURITY.md)                                                            |
 
 ## 开发与验证
 
@@ -209,7 +209,7 @@ pnpm test:full
 | 专项检查                 | 命令                                                                                        |
 | ------------------------ | ------------------------------------------------------------------------------------------- |
 | 安装、旧包兼容与镜像配置 | `pnpm test:install-cli` · `pnpm test:install-bootstrap` · `pnpm test:install-images`        |
-| 真实镜像安装与备份恢复   | `INSTALL_TEST_MODE=images IMAGE_TAG=v0.6.7 pnpm test:install`                               |
+| 真实镜像安装与备份恢复   | `INSTALL_TEST_MODE=images IMAGE_TAG=v0.7.0 pnpm test:install`                               |
 | 全项目审计回归           | `pnpm test:whole-audit` · `pnpm exec playwright test tests/e2e/whole-project-audit.spec.ts` |
 | 安全与恶意归档           | `pnpm test:security` · `pnpm test:backup-security` · `pnpm audit:runtime`                   |
 | 活动流程与旧版迁移       | `pnpm test:activity-workflows` · `pnpm test:workflow-upgrade`                               |
@@ -225,8 +225,6 @@ apps/web                      Vue 3 / Element Plus 官网、参与者与管理�
 apps/server                   NestJS API、Worker、Prisma 7 及数据库迁移
 apps/mcp-adapter               只读 stdio MCP
 packages/contracts            表单、计费、资格及联合注册共享契约
-packages/connectors           Hydro / DOMjudge 适配器
-plugins/hydro-contest-center   Hydro 桥接插件，独立版本发布
 deploy                        正式安装 Compose、配置示例与运维说明
 infra                         Caddy、隔离 LaTeX Runner 及独立 OJ 实例
 scripts                       安装辅助、开发、文档、备份恢复及发布工具
@@ -253,9 +251,9 @@ docs                          图文教程、架构、API 及版本说明
 <details>
 <summary><strong>能把本站密码同步到评测平台吗？</strong></summary>
 
-本站与 Hydro / DOMjudge 使用独立凭据。实例连接、比赛绑定和同步由管理员在外接平台中心配置；本地取消同步与远端撤权分别处理，不将本地删除视为远端账号已撤销。
+本站与 Hydro / DOMjudge 使用独立凭据。活动取得资格的报名可导出为平台导入包，管理员在 Hydro 的 Onsite Toolkit 或 DOMjudge 9.x 后台导入。账号与密码重复导出保持稳定，本站不会连接 OJ 或自动派发账号。详见[平台导入教程](docs/INTEGRATIONS.md)。
 
-活动可先开放报名，后期再启用平台联动并绑定目标比赛。新建或启用自动同步绑定时，会补同步已有符合资格的报名；关闭自动同步时，可在绑定列表点击“同步已有报名”批量同步及重试，也可在报名详情逐条操作。未取得资格的报名会等审核和缴费完成后按自动同步规则处理，原有报名和财务记录保留。
+活动可先开放报名，后期开启“平台文件导出”。取消、删除或撤销资格后，请在目标平台手动处理已导入账号。v0.7.0 移除旧同步功能并停用实例、绑定和待执行任务；升级前备份，正在比赛时不要切换账号体系。
 
 </details>
 
@@ -277,4 +275,4 @@ GitHub Pages 仅托管静态教程与下载入口。报名服务需要运行 API
 
 欢迎通过 [Issues](https://github.com/Albert-Li-Sz/NXOPA-RegSYS/issues) 反馈可复现问题，或提交说明变更与验证结果的 Pull Request。报告问题时提供版本、部署方式、操作步骤和脱敏日志；安全问题请按 [SECURITY.md](SECURITY.md) 的渠道反馈。
 
-代码以 [MIT License](LICENSE) 发布。项目服务于南晓开放原子社与南京晓庄学院程序设计竞赛集训队，使用 Vue、Element Plus、NestJS、Prisma、PostgreSQL、Redis、BullMQ 和 XeLaTeX 等开源组件。Hydro 插件的发布与许可说明见[插件目录](plugins/hydro-contest-center)。README 的布局与阅读顺序参考 [REA](https://github.com/morluto/rea)，内容与界面来自本项目。
+代码以 [MIT License](LICENSE) 发布。项目服务于南晓开放原子社与南京晓庄学院程序设计竞赛集训队，使用 Vue、Element Plus、NestJS、Prisma、PostgreSQL、Redis、BullMQ 和 XeLaTeX 等开源组件。README 的布局与阅读顺序参考 [REA](https://github.com/morluto/rea)，内容与界面来自本项目。

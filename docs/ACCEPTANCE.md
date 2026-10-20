@@ -1,3 +1,7 @@
+# 当前版本验收
+
+v0.7.0 已将 Hydro / DOMjudge 同步替换为平台导入文件导出。以下旧版本的同步、桥接插件与任务记录仅为历史证据；当前安装和导入操作以 [INTEGRATIONS.md](INTEGRATIONS.md) 为准。
+
 # MVP 验收报告
 
 ## 2026-10-15 追加流程与交互审查
@@ -137,14 +141,14 @@
 
 本机 Node.js 24.18.0、pnpm 11.25.0、Docker Engine 29.8.2；Docker Desktop 分配 8 CPU、约 8 GiB 内存。生产镜像使用 Node.js 24.12.0、PostgreSQL 17.6、Redis 7.4.5、Caddy 2.10.2；Prisma 固定 7.10.0。官网使用 Vue 3 / TypeScript / Element Plus，API 与 Worker 独立运行。开发、正式 Compose 和两个 OJ 的数据库卷独立。
 
-| 交付物                               | 位置                                                                               |
-| ------------------------------------ | ---------------------------------------------------------------------------------- |
-| 启动入口与开发账号                   | [README](../README.md)                                                             |
-| 正式部署、初始化、更新及加密备份恢复 | [部署说明](DEPLOYMENT.md)                                                          |
-| OpenAPI、共享契约、Webhook 与 MCP    | [接口说明](API.md)、[OpenAPI JSON](api/openapi.json)                               |
-| Hydro 插件与 DOMjudge 适配器         | [接入说明](INTEGRATIONS.md)、[插件源码](../plugins/hydro-contest-center/README.md) |
-| 准考证配置与隔离规则                 | [准考证说明](ADMISSIONS.md)                                                        |
-| 原始验收结果、截图与 PDF             | [证据目录](acceptance/manifest.json)                                               |
+| 交付物                               | 位置                                                        |
+| ------------------------------------ | ----------------------------------------------------------- |
+| 启动入口与开发账号                   | [README](../README.md)                                      |
+| 正式部署、初始化、更新及加密备份恢复 | [部署说明](DEPLOYMENT.md)                                   |
+| OpenAPI、共享契约、Webhook 与 MCP    | [接口说明](API.md)、[OpenAPI JSON](api/openapi.json)        |
+| Hydro 插件与 DOMjudge 适配器         | [接入说明](INTEGRATIONS.md)、已移除的旧桥接插件（历史记录） |
+| 准考证配置与隔离规则                 | [准考证说明](ADMISSIONS.md)                                 |
+| 原始验收结果、截图与 PDF             | [证据目录](acceptance/manifest.json)                        |
 
 Hydro 可安装包由 `pnpm package:hydro` 生成，当前为 `dist/hydro-contest-center-0.1.0.tgz`，仅包含正式插件的源码、清单与说明。证据目录不包含环境密钥、会话、API Token、OJ 密码或真实个人资料；所有报名与附件使用虚构验收数据。
 

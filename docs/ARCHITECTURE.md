@@ -16,11 +16,11 @@ flowchart TB
     PG[(PostgreSQL\n报名 财务 权限 Outbox)]
     Redis[(Redis 与 BullMQ\n会话与任务队列)]
     Files[(私有附件卷\n凭证 发票 PDF)]
-    Worker[Worker\n平台同步 邮件 PDF 导出]
+    Worker[Worker\n邮件 PDF 清理]
     Spool[(LaTeX 专用任务卷)]
     LaTeX[LaTeX Runner\n无网络 每任务沙箱]
-    Hydro[Hydro 桥接插件]
-    DJ[DOMjudge 版本化 API]
+    Hydro[Hydro Onsite Toolkit 文件导入]
+    DJ[DOMjudge 9.x 文件导入]
     Partner[后续竞赛平台]
     Mail[SMTP 邮箱服务]
 
@@ -37,9 +37,10 @@ flowchart TB
     Worker <--> Files
     Worker <--> Spool
     Spool <--> LaTeX
-    Worker --> Hydro
-    Worker --> DJ
-    Worker --> Partner
+    API -->|下载导入包| ImportFiles[平台导入文件]
+    ImportFiles -->|管理员导入| Hydro
+    ImportFiles -->|管理员导入| DJ
+    Worker -->|签名 Webhook| Partner
     Worker --> Mail
 ```
 
@@ -59,7 +60,7 @@ LaTeX Runner 通过专用任务卷交付结果，容器无网络。每次编译�
 | seating       | 多考场、容量、按报名或成员排考、预览与版本提交       | 报名资格、准考证               |
 | admissions    | 模板库、预览、生成、版本、发放与下载                 | 报名快照、字段库、LaTeX Runner |
 | support       | 系统及竞赛工单、回复、附件与处理                     | 用户与竞赛权限                 |
-| integrations  | 平台实例、字段映射、连接探测、比赛账号和同步任务     | Connector 契约、报名资格       |
+| integrations  | 平台文件导出、字段模板、历史撤权待办                 | 平台导入格式、报名资格         |
 | automation    | 联合注册 API、Webhook、MCP 查询与服务 Token          | 同一套应用服务和权限           |
 | shared        | 审计、Outbox、任务、通知、文件与配置                 | PostgreSQL、Redis、持久卷      |
 
@@ -133,7 +134,7 @@ flowchart TD
     Sync --> Retry[失败记录与重试]
 ```
 
-审核拒绝和退回补正可发生在对应审核节点，流程图的统一资格节点只作集中展示。图中财务“核账”要求确认真实到账；上传凭证不能直接使报名合格。平台同步失败保留本站资格，准考证发布仍遵循竞赛规则。
+审核拒绝和退回补正可发生在对应审核节点，流程图的统一资格节点只作集中展示。图中财务“核账”要求确认真实到账；上传凭证不能直接使报名合格。平台文件导出失败保留本站资格，准考证发布仍遵循竞赛规则。
 
 ## 拟定项目目录
 
@@ -157,16 +158,13 @@ Contest_Center/
 │   │       └── styles/             色彩 布局 与可访问性规范
 │   ├── server/                     NestJS API 与 Worker 共用代码库
 │   │   ├── src/modules/            业务模块
-│   │   ├── src/jobs/               通知 平台同步 PDF 与导出处理
+│   │   ├── src/jobs/               通知 PDF 与清理处理
 │   │   ├── src/main.ts             API 入口
 │   │   ├── src/worker.ts           Worker 入口
 │   │   └── prisma/                 数据模型与版本化迁移
 │   └── mcp-adapter/                stdio 只读 MCP 适配器
 ├── packages/
-│   ├── contracts/                  类型 字段与协议契约
-│   └── connectors/                 Hydro DOMjudge 通用平台与支付接口
-├── plugins/
-│   └── hydro-contest-center/       Hydro 桥接插件
+│   └── contracts/                  类型 字段与协议契约
 ├── templates/
 │   └── admissions/                 中文个人与团队 LaTeX 默认模板
 ├── infra/

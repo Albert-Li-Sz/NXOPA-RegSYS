@@ -217,16 +217,12 @@ const article = chapters
   )
   .join('\n');
 const template = await readFile(join(root, 'docs/site/index.html'), 'utf8');
-const plugin = JSON.parse(
-  await readFile(join(root, 'plugins/hydro-contest-center/package.json'), 'utf8'),
-);
 const html = template
   .replace('@@NAV@@', nav)
   .replace('@@CHAPTERS@@', article)
   .replaceAll('@@CHAPTER_COUNT@@', String(chapters.length))
-  .replaceAll('@@SCREENSHOT_COUNT@@', String(images.size))
-  .replaceAll('@@PLUGIN_VERSION@@', plugin.version);
-assert(!html.replace('@@PLUGIN_SHA@@', '').includes('@@'), 'Unfilled documentation placeholder');
+  .replaceAll('@@SCREENSHOT_COUNT@@', String(images.size));
+assert(!html.includes('@@'), 'Unfilled documentation placeholder');
 for (const name of images) await stat(join(root, 'docs/configuration-screenshots', name + '.png'));
 for (const path of ['configuration-guide.pdf', 'configuration-guide-source.zip'])
   await stat(join(root, 'output/pdf', path));
@@ -285,34 +281,7 @@ await copyFile(
   join(root, 'output/pdf/configuration-guide-manifest.json'),
   join(output, 'downloads/configuration-guide-manifest.json'),
 );
-const packed = JSON.parse(
-  execFileSync(
-    'npm',
-    ['pack', '--ignore-scripts', '--json', '--pack-destination', join(output, 'downloads')],
-    { cwd: join(root, 'plugins/hydro-contest-center'), encoding: 'utf8' },
-  ),
-)[0];
-const allowed = new Set(['index.ts', 'README.md', 'LICENSE', 'package.json']);
-assert(
-  packed.files.every((f) => allowed.has(f.path)),
-  'Plugin package contains an unexpected file',
-);
-const pluginHash = createHash('sha256')
-  .update(await readFile(join(output, 'downloads', packed.filename)))
-  .digest('hex');
-await copyFile(
-  join(output, 'downloads', packed.filename),
-  join(output, 'downloads/hydro-contest-center-latest.tgz'),
-);
-await writeFile(
-  join(output, 'downloads', packed.filename + '.sha256'),
-  `${pluginHash}  ${packed.filename}\n`,
-);
-await writeFile(
-  join(output, 'downloads/hydro-contest-center-latest.tgz.sha256'),
-  `${pluginHash}  hydro-contest-center-latest.tgz\n`,
-);
-await writeFile(join(output, 'index.html'), html.replace('@@PLUGIN_SHA@@', pluginHash));
+await writeFile(join(output, 'index.html'), html);
 await writeFile(
   join(output, 'build-info.json'),
   JSON.stringify(
@@ -323,13 +292,6 @@ await writeFile(
       commit:
         process.env.GITHUB_SHA ??
         execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
-      plugin: {
-        version: plugin.version,
-        filename: packed.filename,
-        sha256: pluginHash,
-        hydroVersion: plugin.peerDependencies.hydrooj,
-        files: packed.files.map((f) => f.path),
-      },
       sourceSha256: createHash('sha256').update(source).digest('hex'),
       pdfSha256: createHash('sha256')
         .update(await readFile(join(output, 'downloads/configuration-guide.pdf')))

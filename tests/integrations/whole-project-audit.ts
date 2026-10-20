@@ -10,11 +10,7 @@ import { db, lock } from '../../apps/server/src/db.js';
 import { redis } from '../../apps/server/src/auth.js';
 import { config } from '../../apps/server/src/config.js';
 import { encrypt } from '../../apps/server/src/security.js';
-import { organizationKey } from '../../apps/server/src/integrations.js';
-import {
-  recordRemoteRevocation,
-  supersedeRemoteRevocations,
-} from '../../apps/server/src/registration-removal.js';
+import { recordRemoteRevocation } from '../../apps/server/src/registration-removal.js';
 import { policySchema } from '../../packages/contracts/src/index.js';
 import { pdfText } from './pdf-text.js';
 
@@ -422,193 +418,25 @@ try {
     },
   );
   await check(
-    'shared school mappings require SYSTEM approval and revoked platform grants stop delivery',
+    'platform export requires the current activity permission and never contacts a platform',
     async () => {
-      let requests = 0;
-      const remote = createServer((_req, res) => {
-        requests++;
-        res.setHeader('content-type', 'application/json');
-        res.end(
-          JSON.stringify([
-            { id: 'school-audit', name: '审计大学', shortname: 'AUDIT', country: 'CHN' },
-          ]),
-        );
+      const c = await contest(),
+        r = await registration(owner, c);
+      await db.registration.update({
+        where: { id: r.id },
+        data: {
+          organization: { name: '审计大学', shortName: 'AUDIT', country: 'CHN', icpcId: '' },
+        },
       });
-      await new Promise<void>((resolve) => remote.listen(0, '127.0.0.1', resolve));
-      const address = remote.address();
-      assert.ok(address && typeof address !== 'string');
-      try {
-        const cs = [await contest(), await contest()];
-        const organization = { name: '审计大学', shortName: 'AUDIT', country: 'CHN', icpcId: '' };
-        const rs = [];
-        for (const c of cs) {
-          let r = await registration(owner, c, false);
-          r = await owner.api(`/registrations/${r.id}`, 'PUT', { ...r, organization });
-          rs.push(await owner.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version }));
-        }
-        const instance = await admin.api('/integrations/instances', 'POST', {
-          name: '审计 DOMjudge',
-          type: 'DOMJUDGE',
-          baseUrl: `http://127.0.0.1:${address.port}`,
-          credentials: { username: 'fixture', password: 'fixture' },
-          allowedContestIds: cs.map((c) => c.id),
-        });
-        const bindings = [];
-        for (const c of cs)
-          bindings.push(
-            await admin.api('/integrations/bindings', 'POST', {
-              contestId: c.id,
-              instanceId: instance.id,
-              remoteContestId: `audit-${c.id}`,
-              automatic: false,
-            }),
-          );
-        await grant(viewer, cs[0]!.id, ['INTEGRATIONS']);
-        const school = await db.organizationMapping.create({
-          data: {
-            instanceId: instance.id,
-            nameKey: organizationKey(organization),
-            ...organization,
-          },
-        });
-        const input = { ...organization, version: school.version, remoteId: 'school-audit' };
-        const schoolPath = `/integrations/bindings/${bindings[0].id}/schools/${school.id}`;
-        await expectStatus(viewer, schoolPath, 'PUT', input, 403);
-        assert.equal(requests, 0, 'Scope denial must precede remote writes or reads');
-        const senior = await admin.api('/admin/grants', 'POST', {
-          userId: viewer.user.id,
-          level: 'SENIOR',
-        });
-        await expectStatus(viewer, schoolPath, 'PUT', input, 403);
-        await admin.api(`/admin/grants/${senior.id}`, 'DELETE');
-        await admin.api(schoolPath, 'PUT', input);
-        assert.ok(requests > 0);
-        const r = await owner.api(`/registrations/${rs[0].id}`);
-        let mapping = await db.accountMapping.create({
-          data: {
-            registrationId: r.id,
-            bindingId: bindings[0].id,
-            username: `audit-${run}`,
-            credential: encrypt('audit-fixture-password'),
-            remoteUserId: 'remote-user',
-            remoteTeamId: 'remote-team',
-            state: 'VERIFIED',
-            details: { registrationVersion: r.version },
-          },
-        });
-        assert.equal(
-          (await owner.api(`/integrations/registrations/${r.id}/credentials`)).length,
-          1,
-        );
-        const currentInstance = await db.platformInstance.findUniqueOrThrow({
-          where: { id: instance.id },
-        });
-        let entered!: () => void, release!: () => void;
-        const locked = new Promise<void>((resolve) => (entered = resolve)),
-          unlock = new Promise<void>((resolve) => (release = resolve));
-        const syncKey = `sync:${mapping.id}`;
-        const checkpoint = db.$transaction(
-          async (tx) => {
-            await lock(tx, syncKey);
-            entered();
-            await unlock;
-            await tx.accountMapping.update({
-              where: { id: mapping.id },
-              data: { remoteUserId: 'latest-remote-user', remoteTeamId: 'latest-remote-team' },
-            });
-          },
-          { timeout: 30000 },
-        );
-        await locked;
-        const withdrawing = admin.api(`/integrations/instances/${instance.id}`, 'PUT', {
-          ...currentInstance,
-          credentials: {},
-          allowedContestIds: [cs[1]!.id],
-        });
-        try {
-          await until(
-            async () => {
-              const [row] = await db.$queryRaw<
-                { waiting: boolean }[]
-              >`SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted AND objid=(hashtext(${syncKey})::bigint & 4294967295)::oid) AS waiting`;
-              return row!.waiting;
-            },
-            Boolean,
-            10000,
-          );
-        } finally {
-          release();
-          await checkpoint;
-        }
-        await withdrawing;
-        mapping = await db.accountMapping.findUniqueOrThrow({ where: { id: mapping.id } });
-        assert.equal(
-          (await db.platformBinding.findUniqueOrThrow({ where: { id: bindings[0].id } })).enabled,
-          false,
-        );
-        assert.deepEqual(await owner.api(`/integrations/registrations/${r.id}/credentials`), []);
-        await expectStatus(
-          admin,
-          `/integrations/bindings/${bindings[0].id}/probe`,
-          'POST',
-          {},
-          400,
-        );
-        await expectStatus(
-          viewer,
-          '/integrations/bindings',
-          'POST',
-          { ...bindings[0], enabled: true, version: bindings[0].version + 1 },
-          403,
-        );
-        await expectStatus(
-          admin,
-          `/integrations/registrations/${r.id}/sync`,
-          'POST',
-          { bindingId: bindings[0].id },
-          400,
-        );
-        assert.equal(
-          (await db.accountMapping.findUniqueOrThrow({ where: { id: mapping.id } })).state,
-          'REVOKED_LOCALLY',
-        );
-        const task = await db.remoteRevocation.findFirstOrThrow({
-          where: { bindingId: bindings[0].id, state: 'PENDING' },
-        });
-        assert.equal(
-          task.remoteUserId,
-          'latest-remote-user',
-          'Revocation must include the remote ID committed while the configuration change waited',
-        );
-        assert.equal((task.target as any).remoteContestId, bindings[0].remoteContestId);
-        // A stale result from a previous target must retain its own revocation task.
-        await db.$transaction(async (tx) => {
-          await recordRemoteRevocation(tx, mapping, cs[0]!.id, {
-            baseUrl: 'https://old-platform.example.test',
-            remoteContestId: 'old-contest',
-          });
-          await supersedeRemoteRevocations(tx, {
-            ...mapping,
-            remoteUserId: mapping.remoteUserId!,
-            remoteTeamId: mapping.remoteTeamId!,
-          });
-        });
-        assert.equal(
-          (await db.remoteRevocation.findUniqueOrThrow({ where: { id: task.id } })).state,
-          'SUPERSEDED',
-        );
-        assert.equal(
-          await db.remoteRevocation.count({
-            where: { bindingId: bindings[0].id, state: 'PENDING' },
-          }),
-          1,
-        );
-        await expectStatus(admin, `/integrations/revocations/${task.id}/complete`, 'POST', {}, 400);
-        await db.platformInstance.update({ where: { id: instance.id }, data: { enabled: false } });
-      } finally {
-        remote.closeAllConnections();
-        await new Promise<void>((resolve) => remote.close(() => resolve()));
-      }
+      const route = `/contests/${c.id}/platform-exports`;
+      await expectStatus(viewer, route, 'POST', { platform: 'HYDRO' }, 403);
+      await grant(viewer, c.id, ['INTEGRATIONS']);
+      const result = await viewer.raw(`/api/v1${route}`, 'POST', { platform: 'HYDRO' });
+      assert.equal(result.status, 201);
+      assert.equal(result.headers.get('cache-control'), 'no-store');
+      await result.arrayBuffer();
+      assert.equal(await db.platformExportAccount.count({ where: { registrationId: r.id } }), 1);
+      await expectStatus(admin, '/integrations/instances', 'POST', {}, 404);
     },
   );
   await check(

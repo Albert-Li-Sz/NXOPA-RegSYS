@@ -29,6 +29,7 @@ export class Idempotency implements NestInterceptor {
       !key ||
       req.path.includes('/auth/') ||
       req.path.endsWith('/admissions/batch') ||
+      req.path.endsWith('/platform-exports') ||
       req.path.endsWith('/files')
     )
       return next.handle();

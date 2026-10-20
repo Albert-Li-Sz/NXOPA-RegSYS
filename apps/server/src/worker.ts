@@ -1,15 +1,12 @@
-import { synchronizePlatform } from './platform-sync.js';
 import { postWebhook } from './webhook-http.js';
 import { Queue, Worker } from 'bullmq';
 import { mkdir, writeFile, readFile, rename, rm, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
-import { connector } from '@contest-center/connectors';
 import { db, json, event, lock, enqueue, registrationInclude, type Registration } from './db.js';
 import { claimJob, renewJobLease, recoverExpiredJobs } from './job-lease.js';
 import { config } from './config.js';
 import { decrypt, hmac, safeUrl, sha } from './security.js';
-import { platformConfig, envelope, scheduleSync } from './integrations.js';
 import { admissionMaterial, activeTemplate } from './admissions.js';
 import { modulesFor } from './workflow.js';
 import { migrateCancelledRegistrations, recordRemoteRevocation } from './registration-removal.js';
@@ -95,7 +92,7 @@ const worker = new Worker(
         (j.kind === 'MAIL' &&
           String(p.actionPath ?? '').startsWith('/registrations/') &&
           p.finance !== true) ||
-        ['ADMISSION', 'SYNC'].includes(j.kind)
+        j.kind === 'ADMISSION'
       ) {
         if (!(await db.registration.count({ where: { id: j.resourceId } }))) {
           await db.job.updateMany({
@@ -105,6 +102,7 @@ const worker = new Worker(
           return;
         }
       }
+      if (j.kind === 'SYNC') throw new Error('平台同步已移除');
       if (j.kind === 'MAIL') {
         if (p.templateTest === true) {
           const template = await db.mailTemplate.findUnique({ where: { key: String(p.category) } });
@@ -248,8 +246,6 @@ const worker = new Worker(
         });
         producedBlob = undefined;
         result = { documentId: document.id };
-      } else if (j.kind === 'SYNC') {
-        result = await synchronizePlatform(j);
       } else if (j.kind === 'WEBHOOK') {
         const hook = await db.webhook.findUniqueOrThrow({ where: { id: String(p.webhookId) } });
         if (!hook.enabled) throw new Error('Webhook disabled');
@@ -290,26 +286,6 @@ const worker = new Worker(
           },
           data: { state: 'FAILED', error: message },
         });
-      if (j.kind === 'SYNC') {
-        const m = await db.accountMapping.findUnique({
-          where: { id: String((j.payload as Record<string, unknown>).mappingId) },
-        });
-        const payload = j.payload as Record<string, unknown>;
-        const r = m && (await db.registration.findUnique({ where: { id: m.registrationId } }));
-        const b = m && (await db.platformBinding.findUnique({ where: { id: m.bindingId } }));
-        if (m && r?.version === payload.version && b?.version === payload.bindingVersion)
-          await db.accountMapping.updateMany({
-            where: {
-              id: m.id,
-              registration: { version: Number(payload.version) },
-              binding: {
-                version: Number(payload.bindingVersion),
-                instance: { version: Number(payload.instanceVersion) },
-              },
-            },
-            data: { state: 'FAILED', details: json({ ...(m.details as object), error: message }) },
-          });
-      }
       throw new Error(message);
     } finally {
       clearInterval(heartbeat);
@@ -387,15 +363,7 @@ async function dispatch() {
             where: { id: String(p.jobId), state: 'OUTBOX' },
             data: { state: 'PENDING' },
           });
-        else if (e.type === 'SYNC_REQUEST') {
-          const registration = await tx.registration.findUnique({ where: { id: e.resourceId } });
-          const binding = await tx.platformBinding.findUnique({
-            where: { id: String(p.bindingId) },
-            include: { instance: true },
-          });
-          if (registration?.eligible && binding?.enabled && binding.instance.enabled)
-            await scheduleSync(tx, registration.id, binding.id, p.restart === true);
-        } else if (e.type === 'MAIL')
+        else if (e.type === 'MAIL')
           await tx.job.upsert({
             where: { dedupeKey: `event:${e.id}` },
             create: {
@@ -492,17 +460,7 @@ async function dispatch() {
             });
             return;
           }
-          if (r.eligible) {
-            const bindings = await tx.platformBinding.findMany({
-              where: {
-                contestId: r.contestId,
-                automatic: true,
-                enabled: true,
-                instance: { enabled: true },
-              },
-            });
-            for (const b of bindings) await scheduleSync(tx, r.id, b.id);
-          } else {
+          if (!r.eligible) {
             const mappings = await tx.accountMapping.findMany({ where: { registrationId: r.id } });
             for (const mapping of mappings)
               await recordRemoteRevocation(tx, mapping, r.contestId, {
@@ -560,6 +518,7 @@ async function dispatch() {
   await recoverExpiredJobs();
   const pending = await db.job.findMany({
     where: {
+      kind: { not: 'SYNC' },
       OR: [
         { state: 'PENDING' },
         { state: 'FAILED', attempts: { lt: 4 }, updatedAt: { lt: new Date(Date.now() - 30000) } },

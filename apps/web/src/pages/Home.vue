@@ -23,7 +23,7 @@ import { auth } from '../api';
           >
         </div>
         <div class="hero-supported">
-          <span>Hydro · DOMjudge 账号同步</span>
+          <span>Hydro · DOMjudge 导入文件导出</span>
         </div>
       </div>
       <div class="hero-brands" aria-label="社团与集训队">

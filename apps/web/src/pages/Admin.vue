@@ -14,7 +14,7 @@ import {
 import type { Data, ContestView } from '../types';
 import { useEditSession, mayLeaveEdits } from '../composables/useEditSession';
 import EditActions from '../components/EditActions.vue';
-import PlatformBindings from '../components/PlatformBindings.vue';
+import PlatformExports from '../components/PlatformExports.vue';
 import MailSettings from '../components/MailSettings.vue';
 import GithubSettings from '../components/GithubSettings.vue';
 import FeishuSettings from '../components/FeishuSettings.vue';
@@ -97,7 +97,8 @@ const operationNames: Record<string, string> = {
   TICKET_CREATE: '提交工单',
   TICKET_REPLY: '回复工单',
   CREDENTIAL_VIEW: '查看比赛账号',
-  PLATFORM_BINDING_SAVE: '保存平台绑定',
+  PLATFORM_EXPORT: '导出平台导入包',
+  PLATFORM_BINDING_SAVE: '历史平台绑定',
   PLATFORM_BINDING_SYNC: '同步已有报名',
   ORGANIZATION_MAP_CONFIRM: '确认学校映射',
   AUTHORIZATION_INVITE_CREATE: '生成授权链接',
@@ -118,13 +119,10 @@ const tab = ref(allowedTabs.includes(requestedTab) ? requestedTab : allowedTabs[
   jobs = jobsPage.items,
   users = usersPage.items,
   tokens = ref<Data[]>([]),
-  instances = ref<Data[]>([]),
   logs = logsPage.items,
   site = ref<Data>({}),
-  instanceDialog = ref(false),
   tokenDialog = ref(false),
   secret = ref(''),
-  instance = ref<Data>({}),
   token = ref<Data>({}),
   templates = ref<Data[]>([]),
   templateSource = ref(defaultTemplate),
@@ -150,7 +148,7 @@ const invitationStates: Record<string, string> = {
 };
 const jobKinds: Record<string, string> = {
   MAIL: '邮件通知',
-  SYNC: '比赛账号同步',
+  SYNC: '历史平台同步（已停用）',
   ADMISSION: '准考证生成',
   PDF_PREVIEW: '模板预览',
   WEBHOOK: '事件推送',
@@ -166,7 +164,6 @@ async function refresh() {
       await jobsPage.load();
       if (auth.user?.isAdmin) metrics.value = await api('/admin/metrics');
     }
-    if (tab.value === 'instances') instances.value = await api('/integrations/instances');
     if (tab.value === 'users')
       await Promise.all([
         usersPage.load(),
@@ -221,29 +218,6 @@ async function revokeToken(id: string) {
     return;
   }
   await api(`/admin/tokens/${id}`, 'DELETE');
-  await refresh();
-}
-function editInstance(i?: Data) {
-  instance.value = i
-    ? { ...i, credentials: {} }
-    : {
-        name: '',
-        type: 'HYDRO',
-        baseUrl: '',
-        enabled: true,
-        credentials: {},
-        allowedContestIds: [],
-      };
-  instanceDialog.value = true;
-}
-async function saveInstance() {
-  await api(
-    instance.value.id ? `/integrations/instances/${instance.value.id}` : '/integrations/instances',
-    instance.value.id ? 'PUT' : 'POST',
-    instance.value,
-  );
-  instanceDialog.value = false;
-  ElMessage.success('评测平台配置已保存');
   await refresh();
 }
 function newToken() {
@@ -331,19 +305,11 @@ async function revokeInvitation(id: string) {
 function contestName(id: string) {
   return contests.value.find((c) => c.id === id)?.title ?? id.slice(0, 8);
 }
-const instanceEdit = useEditSession(instance),
-  fieldEdit = useEditSession(field);
-watch(instanceDialog, (open) => {
-  if (open) instanceEdit.begin();
-  else instanceEdit.finish();
-});
+const fieldEdit = useEditSession(field);
 watch(fieldDialog, (open) => {
   if (open) fieldEdit.begin();
   else fieldEdit.finish();
 });
-async function closeInstance(done: () => void) {
-  if (await instanceEdit.mayLeave()) done();
-}
 async function closeField(done: () => void) {
   if (await fieldEdit.mayLeave()) done();
 }
@@ -806,29 +772,9 @@ async function webhook() {
   </div>
   <div class="panel" v-if="tab === 'instances'">
     <div class="notice">
-      系统管理员维护平台地址与接入凭据，竞赛管理员可为获授权的竞赛配置比赛绑定。本站账号与比赛账号分别管理。
+      管理员可为获授权的活动导出合格报名，在目标评测平台手动导入。本站账号与比赛账号分别管理。
     </div>
-    <div class="actions" v-if="isSystemAdmin()">
-      <el-button type="primary" @click="editInstance()">添加 Hydro / DOMjudge 实例</el-button>
-    </div>
-    <div class="card">
-      <h3>平台实例</h3>
-      <PaginatedTable page-key="admin-instances" :data="instances"
-        ><el-table-column label="名称" prop="name" /><el-table-column label="类型"
-          ><template #default="{ row }">{{
-            row.type === 'HYDRO' ? 'Hydro 评测平台' : 'DOMjudge 评测平台'
-          }}</template></el-table-column
-        ><el-table-column label="地址" prop="baseUrl" min-width="250" /><el-table-column
-          label="操作"
-          ><template #default="{ row }"
-            ><el-button text v-if="isSystemAdmin()" @click="editInstance(row)"
-              >编辑实例</el-button
-            ></template
-          ></el-table-column
-        ></PaginatedTable
-      >
-    </div>
-    <PlatformBindings :contests="managedContests()" :instances="instances" />
+    <PlatformExports :contests="managedContests()" />
   </div>
   <div class="panel" v-if="tab === 'tokens'">
     <div class="actions">
@@ -1032,66 +978,6 @@ async function webhook() {
     <pre class="record-detail">{{ JSON.stringify(detail, null, 2) }}</pre>
   </el-dialog>
   <el-dialog
-    :before-close="closeInstance"
-    v-model="instanceDialog"
-    title="Hydro / DOMjudge 接入配置"
-    width="580px"
-  >
-    <el-form label-position="top">
-      <el-form-item label="名称" for="platform-name"
-        ><el-input id="platform-name" v-model="instance.name"
-      /></el-form-item>
-      <el-form-item label="类型"
-        ><el-select v-model="instance.type" @change="instance.credentials = {}" filterable
-          ><el-option value="HYDRO" label="Hydro 5.0.7" /><el-option
-            value="DOMJUDGE"
-            label="DOMjudge 9.0.1" /></el-select
-      ></el-form-item>
-      <el-form-item label="实例地址" for="platform-url"
-        ><el-input
-          id="platform-url"
-          v-model="instance.baseUrl"
-          placeholder="https://judge.example.org"
-      /></el-form-item>
-      <el-form-item v-if="instance.type === 'HYDRO'" label="插件 Token" for="platform-token"
-        ><el-input
-          id="platform-token"
-          v-model="instance.credentials.token"
-          type="password"
-          show-password
-          :placeholder="
-            instance.id ? '留空保留已保存的 Token' : 'Hydro 桥接插件 Token，至少 32 位'
-          "
-      /></el-form-item>
-      <template v-else
-        ><el-form-item label="API 用户名" for="platform-username"
-          ><el-input
-            id="platform-username"
-            v-model="instance.credentials.username"
-            :placeholder="
-              instance.id ? '留空保留已保存的用户名' : '具有 api_reader / api_writer 权限的账号'
-            " /></el-form-item
-        ><el-form-item label="API 密码" for="platform-password"
-          ><el-input
-            id="platform-password"
-            v-model="instance.credentials.password"
-            type="password"
-            show-password
-            :placeholder="
-              instance.id ? '留空保留已保存的密码' : '填写 API 账号密码'
-            " /></el-form-item
-      ></template>
-      <el-form-item label="允许使用的竞赛"
-        ><el-select v-model="instance.allowedContestIds" multiple filterable style="width: 100%"
-          ><el-option v-for="c in contests" :key="c.id" :value="c.id" :label="c.title" /></el-select
-      ></el-form-item>
-      <el-switch v-model="instance.enabled" active-text="启用平台实例" />
-    </el-form>
-    <template #footer
-      ><el-button type="primary" @click="saveInstance">保存实例</el-button></template
-    >
-  </el-dialog>
-  <el-dialog
     v-model="authorizationDialog"
     title="生成账号 / 授权邀请"
     width="580px"
@@ -1213,7 +1099,6 @@ async function webhook() {
               'finance:read',
               'support:read',
               'integration:read',
-              'integration:write',
             ]"
             :key="s"
             :value="s" /></el-select></el-form-item

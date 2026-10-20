@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 export const fullRegressionSuites = [
   'test:integration',
+  'test:platform-exports',
   'test:auth',
   'test:accounts',
   'test:feishu',

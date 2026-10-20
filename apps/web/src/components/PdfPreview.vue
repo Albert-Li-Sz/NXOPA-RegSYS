@@ -3,6 +3,7 @@ import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import {
   getDocument,
+  version as pdfVersion,
   GlobalWorkerOptions,
   PasswordResponses,
   type PDFDocumentProxy,
@@ -87,7 +88,8 @@ async function load() {
   try {
     await previous?.destroy().catch(() => {});
     if (sequence !== loadSequence) return;
-    const assets = new URL(`${import.meta.env.BASE_URL}pdfjs/`, window.location.href).href;
+    const assets = new URL(`${import.meta.env.BASE_URL}pdfjs/${pdfVersion}/`, window.location.href)
+      .href;
     const task = getDocument({
       url: props.src,
       cMapUrl: assets + 'cmaps/',

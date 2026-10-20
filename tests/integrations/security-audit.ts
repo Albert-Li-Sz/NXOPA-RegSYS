@@ -531,32 +531,11 @@ try {
       await redis.del(...keys);
     }
   });
-  await check('slow-platform-does-not-lock-registration-removal', async () => {
-    let started = false,
-      release!: () => void;
-    const proceed = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const server = createServer(async (req, res) => {
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) chunks.push(Buffer.from(chunk));
-      const request = JSON.parse(Buffer.concat(chunks).toString() || '{}');
-      res.setHeader('Content-Type', 'application/json');
-      if (req.url?.endsWith('/probe'))
-        return res.end(
-          JSON.stringify({ capabilities: ['nickname', 'unofficial', 'contest_linkage'] }),
-        );
-      started = true;
-      await proceed;
-      res.end(
-        JSON.stringify({
-          schemaVersion: 1,
-          registrationId: request.envelope.registrationId,
-          state: 'VERIFIED',
-          remoteUserId: `late-user-${run}`,
-          remoteTeamId: `late-team-${run}`,
-        }),
-      );
+  await check('retired-platform-sync-never-contacts-remote-or-blocks-removal', async () => {
+    let requests = 0;
+    const server = createServer((_req, res) => {
+      requests++;
+      res.writeHead(503).end();
     });
     server.listen(0, '127.0.0.1');
     await once(server, 'listening');
@@ -596,7 +575,17 @@ try {
       },
     });
     try {
-      await until(async () => started, Boolean, 15000);
+      const before = Date.now();
+      await until(
+        async () => {
+          const heartbeat = await db.setting.findUnique({ where: { key: 'workerHeartbeat' } });
+          return new Date(String((heartbeat?.value as any)?.at)).getTime() > before;
+        },
+        Boolean,
+        10000,
+      );
+      assert.equal(requests, 0, 'Retired jobs must never contact the judging platform');
+      assert.equal((await admin.raw(`/api/v1/admin/jobs/${job.id}/retry`, 'POST')).status, 400);
       const deletion = alice.raw(`/api/v1/registrations/${r.id}/cancel`, 'POST', {
         version: r.version,
       });
@@ -604,21 +593,11 @@ try {
         deletion.then(() => true),
         new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1000)),
       ]);
-      release();
       assert.equal((await deletion).status, 201);
       assert.equal(free, true, 'Remote I/O must not hold the registration transaction lock');
-      await until(
-        () =>
-          db.remoteRevocation.count({
-            where: { registrationId: r.id, remoteUserId: `late-user-${run}`, state: 'PENDING' },
-          }),
-        (n) => n > 0,
-        10000,
-      );
       assert.equal(await db.accountMapping.count({ where: { registrationId: r.id } }), 0);
       assert.notEqual((await db.job.findUniqueOrThrow({ where: { id: job.id } })).state, 'SUCCESS');
     } finally {
-      release();
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await db.platformInstance.update({ where: { id: instance.id }, data: { enabled: false } });

@@ -280,23 +280,19 @@ try {
         ['compose', '-p', name, '-f', file, 'up', '-d', ...(mode === 'hydro' ? ['--build'] : [])],
         { cwd: root, timeout: 600000, maxBuffer: 5 * 1024 * 1024 },
       );
+      await runSuite('test:oj', {
+        ...env,
+        OJ_TYPE: mode.toUpperCase(),
+        DOMJUDGE_TEST_PROJECT: `${project}-domjudge`,
+        HYDRO_TEST_PROJECT: `${project}-hydro`,
+      });
+      await exec('docker', ['compose', '-p', name, '-f', file, 'stop'], {
+        cwd: root,
+        timeout: 120000,
+      });
     }
   }
   for (const suite of suites) {
-    if (suite === 'test:e2e' && process.env.FULL_REGRESSION_OJ === '1') {
-      for (const mode of ['HYDRO', 'DOMJUDGE'])
-        for (const ojSuite of [
-          'test:oj',
-          'test:oj-enhancements',
-          'test:oj-recovery',
-          'test:boundaries',
-        ])
-          await runSuite(ojSuite, {
-            ...env,
-            OJ_TYPE: mode,
-            DOMJUDGE_TEST_PROJECT: `${project}-domjudge`,
-          });
-    }
     await runSuite(suite);
   }
 } finally {

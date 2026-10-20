@@ -24,7 +24,7 @@ import ExamSiteConfig from '../components/ExamSiteConfig.vue';
 import FinanceList from '../components/FinanceList.vue';
 import { useEditSession, mayLeaveEdits, confirmLeaveEdits } from '../composables/useEditSession';
 import MarkdownEditor from '../components/MarkdownEditor.vue';
-import PlatformBindings from '../components/PlatformBindings.vue';
+import PlatformExports from '../components/PlatformExports.vue';
 import FileLibrary from '../components/FileLibrary.vue';
 import { canManage } from '../permissions';
 import ListPagination from '../components/ListPagination.vue';
@@ -42,7 +42,6 @@ const route = useRoute(),
   moduleError = ref(''),
   rows = roster.items,
   templates = ref<Data[]>([]),
-  instances = ref<Data[]>([]),
   registry = ref<Data[]>([]),
   preview = ref<Data>();
 const form = ref<Data>({
@@ -136,15 +135,6 @@ async function removeRegistration(row: Data) {
   );
   await api(`/registrations/${row.id}`, 'DELETE', { version: row.version, reason: value });
   await refreshModules();
-}
-function bindingSaved(value: Data) {
-  if (edit.editing.value && edit.dirty.value) {
-    moduleError.value = '平台绑定已保存；活动设置草稿保留，请在保存设置前核对最新配置。';
-    return;
-  }
-  form.value = value;
-  savedTitle.value = value.title;
-  savedModules.value = JSON.stringify(value.modules);
 }
 async function applyPreset() {
   await ElMessageBox.confirm(
@@ -246,7 +236,6 @@ async function refreshModules() {
             templates.value.find((t) => t.contestId === route.params.id && t.active)?.version ?? 0,
         };
     }
-    if (tab.value === 'integrations') instances.value = await api('/integrations/instances');
   } catch (e) {
     moduleError.value = e instanceof Error ? e.message : '管理数据加载失败';
   }
@@ -308,7 +297,7 @@ async function save() {
     );
     if (!isNew.value && disabled.length)
       await ElMessageBox.confirm(
-        '关闭功能会停止相应操作，使相关准考证或本地平台权限失效。已有配置与财务资料保留；外接平台权限需另行处理。确认保存？',
+        '关闭功能会停止相应操作，使相关准考证失效或停止平台文件导出。远端已导入的账号需在目标平台手动处理。确认保存？',
         '确认关闭功能',
         { type: 'warning' },
       );
@@ -508,7 +497,7 @@ function insertVariable(v: string) {
     <div class="page-heading" style="margin-top: 24px">
       <div>
         <h1>{{ isNew ? '创建活动及竞赛' : form.title }}</h1>
-        <p class="subtitle">配置报名规则，处理审核、准考证和平台联动</p>
+        <p class="subtitle">配置报名规则，处理审核、准考证和平台文件导出</p>
       </div>
       <div v-if="!isNew" class="button-group">
         <el-button @click="router.push(`/contests/${route.params.id}`)">查看公开页面</el-button>
@@ -541,7 +530,7 @@ function insertVariable(v: string) {
         label="准考证模板"
         name="templates" /><el-tab-pane
         v-if="!isNew && permission('INTEGRATIONS') && form.modules.integrations"
-        label="平台联动"
+        label="平台文件导出"
         name="integrations" /><el-tab-pane
         v-if="!isNew && permission('FILES')"
         label="活动附件"
@@ -596,10 +585,10 @@ function insertVariable(v: string) {
             <div class="toolbar">
               <el-checkbox v-model="form.modules.admissions">启用准考证</el-checkbox
               ><el-checkbox v-model="form.modules.rooms">启用考场与座位</el-checkbox
-              ><el-checkbox v-model="form.modules.integrations">启用评测平台联动</el-checkbox>
+              ><el-checkbox v-model="form.modules.integrations">启用平台文件导出</el-checkbox>
             </div>
             <p class="form-help">
-              可先开放报名，后续再启用评测平台联动、绑定目标比赛并同步已有合格报名。
+              可先开放报名，后续启用平台文件导出，下载合格报名的 Hydro 或 DOMjudge 导入文件。
             </p>
             <el-form-item v-if="form.modules.rooms" label="排考单位"
               ><el-select v-model="form.seatingMode" filterable
@@ -1125,13 +1114,11 @@ function insertVariable(v: string) {
         </aside>
       </div>
     </div>
-    <div class="panel" v-if="tab === 'integrations'">
-      <PlatformBindings
-        :contests="[form as any]"
-        :instances="instances"
-        :initial-contest-id="String(route.params.id)"
-        @saved="bindingSaved"
-      />
+    <div
+      class="panel"
+      v-if="tab === 'integrations' && permission('INTEGRATIONS') && form.modules.integrations"
+    >
+      <PlatformExports :contests="[form as any]" :initial-contest-id="String(route.params.id)" />
     </div>
     <el-dialog v-model="fieldDialog" title="编辑报名字段" width="600px"
       ><el-form label-position="top"

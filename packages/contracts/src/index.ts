@@ -65,7 +65,7 @@ export const adminPermissionLabels: Record<AdminPermission, string> = {
   FILES: '附件分发与删除',
   SUPPORT: '工单处理',
   STUDENTS: '学生与教师视图',
-  INTEGRATIONS: '竞赛平台联动',
+  INTEGRATIONS: '平台文件导出',
 };
 export const adminLevelLabels = {
   SYSTEM: '系统管理员',
@@ -494,51 +494,6 @@ export interface RegistrationEnvelopeV1 {
   coaches?: { id: string; name?: string; email?: string; answers: Answers }[];
   qualification?: { eligible: boolean; review: string; feeCents?: number; netPaidCents?: number };
 }
-export interface ProvisioningResultV1 {
-  schemaVersion: 1;
-  registrationId: string;
-  state: 'VERIFIED' | 'FAILED' | 'ACCOUNT_CREATED' | 'TEAM_CREATED';
-  remoteUserId?: string;
-  remoteTeamId?: string;
-  username?: string;
-  error?: string;
-  verification?: Record<string, unknown>;
-}
-export interface ConnectorConfiguration {
-  /** Server-owned transport; validates and pins DNS for every outgoing request. */
-  request?: (url: string, init: RequestInit) => Promise<Response>;
-  /** Internal absolute deadline for one provisioning attempt. */
-  requestDeadline?: number;
-  baseUrl: string;
-  credentials: { username?: string; password?: string; token?: string };
-  remoteContestId: string;
-  domainId: string;
-  groupIds: string[];
-  organizationId?: string;
-  importMode?: 'FOLLOW' | 'FORCE_UNOFFICIAL';
-  includeUnofficial?: boolean;
-  unofficialGroupId?: string;
-  nickname?: boolean;
-}
-export interface ProvisioningInput {
-  envelope: RegistrationEnvelopeV1;
-  username: string;
-  password: string;
-  remoteTeamId?: string;
-  remoteUserId?: string;
-  allowSharedTeamUpdate?: boolean;
-  onProgress?: (result: ProvisioningResultV1) => Promise<void>;
-}
-export const provisioningResultSchema = z.object({
-  schemaVersion: z.literal(1),
-  registrationId: uuid,
-  state: z.enum(['VERIFIED', 'FAILED', 'ACCOUNT_CREATED', 'TEAM_CREATED']),
-  remoteUserId: z.string().max(100).optional(),
-  remoteTeamId: z.string().max(100).optional(),
-  username: z.string().max(100).optional(),
-  error: z.string().max(1500).optional(),
-  verification: z.record(z.string(), z.json()).optional(),
-});
 export const registrationEnvelopeSchema = z.object({
   schemaVersion: z.literal(1),
   sourceInstance: uuid,
@@ -580,17 +535,6 @@ export const registrationEnvelopeSchema = z.object({
     })
     .optional(),
 });
-export interface ContestPlatformConnector {
-  probe(config: ConnectorConfiguration): Promise<{ version: string; capabilities: string[] }>;
-  provisionRegistration(
-    config: ConnectorConfiguration,
-    input: ProvisioningInput,
-  ): Promise<ProvisioningResultV1>;
-  getProvisioningResult(
-    config: ConnectorConfiguration,
-    input: ProvisioningInput,
-  ): Promise<ProvisioningResultV1>;
-}
 export interface PaymentProvider {
   createPayment(order: { id: string; amountCents: number }): Promise<{ url: string }>;
   verifyCallback(payload: unknown, signature: string): Promise<boolean>;

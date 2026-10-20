@@ -98,7 +98,7 @@ try {
   const denied = await fetch(`${base}/api/integration/v1/jobs/${job.id}`, {
     headers: { Authorization: `Bearer ${token.token}` },
   });
-  assert.equal(denied.status, 403);
+  assert.equal(denied.status, 404);
   await admin.api(`/admin/tokens/${token.id}`, 'DELETE');
   report.push('Integration read token cannot retrieve private PDF job results or compiler logs');
   const contest = await admin.api('/contests', 'POST', {

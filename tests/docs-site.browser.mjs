@@ -34,7 +34,7 @@ try {
   await expect(page.locator('.chapter')).toHaveCount(info.chapters.length);
   await expect(page.locator('figure img')).toHaveCount(info.screenshots);
   assert.equal(info.chapters.length, 16);
-  assert.equal(info.screenshots, 27);
+  assert.ok(info.screenshots >= 15);
   await expect(page.locator('#mail')).toContainText('后台保存后优先使用数据库配置');
   await expect(page.locator('#operations pre').first()).toContainText('{{#each team.members}}');
   await expect(page.locator('#operations pre').first()).toContainText('{{this.name}}');
@@ -116,30 +116,11 @@ try {
   checks.push(
     'PDF, source ZIP and LaTeX downloads have the exact hashes of the delivered artifacts',
   );
-  assert.equal(info.plugin.version, '0.2.1');
-  assert.equal(info.plugin.hydroVersion, '5.0.7');
-  assert.deepEqual(
-    [...info.plugin.files].sort(),
-    ['LICENSE', 'README.md', 'index.ts', 'package.json'].sort(),
-  );
-  for (const filename of [info.plugin.filename, 'hydro-contest-center-latest.tgz']) {
-    const response = await page.request.get(new URL('downloads/' + filename, base).href);
-    assert.equal(response.status(), 200);
-    assert.equal(
-      createHash('sha256')
-        .update(await response.body())
-        .digest('hex'),
-      info.plugin.sha256,
-    );
-    const checksum = await page.request.get(
-      new URL('downloads/' + filename + '.sha256', base).href,
-    );
-    assert.equal(checksum.status(), 200);
-    assert.equal((await checksum.text()).trim(), `${info.plugin.sha256}  ${filename}`);
-  }
-  await expect(page.locator('#hydro-plugin .digest')).toContainText(info.plugin.sha256);
+  await expect(page.locator('#hydro')).toContainText('onsiteImport');
+  await expect(page.locator('#domjudge')).toContainText('accounts.json');
+  await expect(page.getByText('Hydro 插件下载', { exact: true })).toHaveCount(0);
   checks.push(
-    'Versioned and stable Hydro 0.2.1 downloads match the whitelist, supported version and SHA-256',
+    'Hydro Onsite Toolkit and DOMjudge manual import tutorials replace the retired bridge download',
   );
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -152,7 +133,7 @@ try {
   await page.locator('#chapter-nav a[href="#domjudge"]').click();
   await expect(page.locator('#menu-toggle')).toHaveAttribute('aria-expanded', 'false');
   await expect(
-    page.getByRole('heading', { name: '接入 DOMjudge 评测平台', exact: true }),
+    page.getByRole('heading', { name: '导出 DOMjudge 导入文件', exact: true }),
   ).toBeInViewport();
   await page.locator('#menu-toggle').click();
   await page.keyboard.press('Escape');

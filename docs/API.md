@@ -19,7 +19,7 @@ pnpm generate:client
 | `/api/v1/finance`       | 凭证、核账、冲正、退款、发票                          |
 | `/api/v1/support`       | 系统 / 竞赛工单、附件与回复                           |
 | `/api/v1/admissions`    | 模板、预览、生成、发放、PDF 与批量 ZIP                |
-| `/api/v1/integrations`  | 平台配置、绑定、探测、同步与账号交付                  |
+| `/api/v1/integrations`  | 平台字段模板与历史撤权待办                            |
 | `/api/v1/admin`         | 用户权限、字段库、站点设置、Token、任务与审计         |
 
 浏览器会话 Cookie 为 `cc_session`。从 `GET /api/v1/auth/me` 获取 CSRF，写操作发送 `X-CSRF-Token`。写入版本化资源时传 `version`；旧版本返回 409。写请求可传 `Idempotency-Key`，同一用户对相同 URL、方法、正文的重试返回原结果；幂等结果和业务写入在一个 PostgreSQL 事务提交，结果静态加密。
@@ -103,22 +103,17 @@ GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
 
 开票申请包含 `invoiceType`、`titleType: PERSON|ENTERPRISE|ORGANIZATION`、`title`、`taxId`、`amountCents`、`email`、`contactName`、`phone`、`address`、`bankName`、`bankAccount`、`remarks`。企业税号必填、专票只接受单位与税号，额外必填项使用当前竞赛配置；保存申请 `snapshot`。金额受净收款及保留开票金额约束；拒绝须说明原因，实际发票附件受报名权限保护。历史缺项保持历史展示。
 
-### 平台模板与学校映射
+### 平台文件导出
 
-| 接口                                                               | 行为                                                                                              |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| GET `/api/v1/integrations/field-templates`                         | 登录后读取 Hydro 5.0.7／DOMjudge 9.0.1 基础字段及填写／生成／管理来源                             |
-| GET `/api/v1/integrations/bindings/:id/metadata`                   | 获授权管理员查询目标组织与分组                                                                    |
-| GET `/api/v1/integrations/bindings/:id/schools?page=1&pageSize=20` | 按实例、竞赛权限查询待确认／已确认学校                                                            |
-| PUT `/api/v1/integrations/bindings/:id/schools/:schoolId`          | `version` 加 `remoteId` 选择已有组织，或 `create:true` 确认新组织；保留全称、简称、国家和 ICPC ID |
+POST `/api/v1/contests/:id/platform-exports`，正文 `{platform:"HYDRO"|"DOMJUDGE",includeUnofficial?:boolean,importMode?:"FOLLOW"|"FORCE_UNOFFICIAL",officialGroupId?:string,unofficialGroupId?:string}`。要求当前活动 `INTEGRATIONS` 权限且已启用 `modules.integrations`。响应为 `application/zip`，`Cache-Control:no-store`，不进入幂等结果缓存。
 
-绑定新增 `version`、`importMode: FOLLOW|FORCE_UNOFFICIAL`、`includeUnofficial`、`unofficialGroupId`、`nickname`。保存时自动合并所需模板字段。学校未确认返回 `WAITING_ORGANIZATION`；关闭非正式导入返回 `SKIPPED`；缺少非正式分组返回配置待处理状态。新任务固定报名、绑定、实例和学校版本，过期任务不得覆盖最新映射。
+仅导出取得资格的当前报名，两个平台分别保存加密密码；重复、并发导出保持账号密码稳定。默认组 ID 与座位使用活动前缀，正式／非正式组不得同名。缺项、重复座位、多个成员座位会拒绝导出。单次最多 10000 条报名及 50 MB 资料。包内文件及导入步骤见 [INTEGRATIONS.md](INTEGRATIONS.md)。
 
-## 账号与页面入口
+GET `/api/v1/integrations/field-templates` 保留平台表单模板；内部旧模板 ID 保留以读取历史活动，界面名称为 Hydro 最新版 / DOMjudge 9.x。旧实例、绑定、学校映射、同步、凭据交付和回调接口已移除，返回 404。历史撤权待办可继续处理。
 
-首页 `/` 为独立介绍页，竞赛列表为 `/contests`。竞赛列表和详情页面要求登录，未登录时跳转 `/login?next=原页面`，登录后保留原路径与参数；公开只读竞赛元数据接口保持可读。支持本站邮箱密码与 GitHub 登录，历史通用 OAuth2/OIDC 配置继续停用。GitHub 使用专用接口；旧身份记录保留，旧账号可通过邮箱找回密码恢复，再主动绑定 GitHub。
+## 首页与登录
 
-Hydro / DOMjudge 的联动是报名资格生效后创建独立比赛账号，与本站登录分开。管理员在 `/admin` 的“评测平台”页签配置实例和比赛绑定。修改同类型实例时留空凭据保留原值；新建或更换平台类型必须提供相应凭据，旧版本修改返回 409。
+首页 `/` 为独立介绍页，竞赛列表为 `/contests`。竞赛列表和详情要求登录，登录后回到原路径。GitHub 专用登录继续可用，旧 OIDC 记录保留但不启用。
 
 ## 系统邮件配置
 
@@ -171,23 +166,13 @@ Hydro / DOMjudge 的联动是报名资格生效后创建独立比赛账号，与
 
 在后台创建 Token 时指定竞赛 UUID、到期时间、scope 与字段；密钥只返回一次，数据库保存 SHA-256 摘要。撤销或过期后立即返回 401。未获授权的竞赛或操作返回 403。
 
-Scopes：`contests:read`、`registrations:read`、`finance:read`、`support:read`、`integration:read`、`integration:write`。
+Scopes：`contests:read`、`registrations:read`、`finance:read`、`support:read`、`integration:read`。
 
 字段示例：`PERSON.name`、`PERSON.email`、`PERSON.school`、`COACH.name`、`COACH.email`、`TEAM.<字段键>`、`REGISTRATION.<字段键>`、`REGISTRATION.organization`、`REGISTRATION.participationType`、`SUPPORT.text`、`SUPPORT.attachments`、`FINANCE.summary`。缺省仅允许 `PERSON.name`；报名的状态、版本和资格始终作为业务元数据返回，组织、参赛性质及自定义资料按明确字段权限过滤；HTTP 查询与 MCP 使用相同权限。
 
-## 联合注册接口 v1
+## 只读资格接口 v1
 
-| 方法与路径                                                   | 结果                                                                          |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| GET `/api/integration/v1/contests`                           | Token 获授权竞赛                                                              |
-| GET `/api/integration/v1/registrations?contestId=…&cursor=…` | 已取得资格、按字段权限过滤的 RegistrationEnvelopeV1                           |
-| POST `/api/integration/v1/registrations/:id/provision`       | 正文 bindingId，返回持久映射 ID / Job ID                                      |
-| GET `/api/integration/v1/jobs/:id`                           | 当前状态与 ProvisioningResultV1                                               |
-| POST `/api/integration/v1/registrations/:id/result`          | 正文 bindingId、registrationVersion、result；读取远端核验身份及参赛关联后保存 |
-
-Envelope 包含 schemaVersion、源实例 UUID、报名 UUID / 版本、竞赛、队名、参赛者、老师、表单快照与资格，向后兼容增加可选 `participationType` 和 `organization`。结果包含远端用户 / 队伍 ID、用户名、可选 `verification` 读回详情，以及 TEAM_CREATED、ACCOUNT_CREATED、VERIFIED、FAILED 状态。普通查询不返回 OJ 密码；授权的浏览器账号交付接口单独记录审计。
-
-新适配器实现 `ContestPlatformConnector` 的 probe、provisionRegistration、getProvisioningResult，声明能力；可用 onProgress 持久化阶段结果。callback 不接受客户端单方面声称已验证，必须以本站保存的凭据对远端再次核验；不认识的适配器类型会拒绝执行。
+`integration:read` Token 可读取 `/api/integration/v1/contests` 与 `/api/integration/v1/registrations?contestId=…&cursor=…`，后者仅包含合格报名并按字段授权裁剪。保留 RegistrationEnvelopeV1 的源实例、报名、竞赛、人员与资格信息；远端 provision、result、jobs 写入／查询接口随同步功能移除。
 
 ## 签名 Webhook
 
@@ -267,4 +252,4 @@ GET `/contests/:id/public-teams` 与 `/export` 不要求登录，按竞赛 publi
 
 ## v0.6.7 权限与流程补充
 
-报名详情返回 `canReadFinanceDetails`。财务明细、附件及历史需财务授权或本人参与关系，普通查看与报名审核授权只保留费用及净到账摘要。停用实例、绑定或撤销竞赛对实例的使用授权，会停止账号交付并登记人工远端撤权待办。`RemoteRevocation.state` 的 `SUPERSEDED` 表示相同远端目标与账号重新同步验证成功，旧待办已失效，不能再标记完成。共享学校映射涉及其他竞赛时只允许系统管理员确认。
+报名详情返回 `canReadFinanceDetails`。财务明细、附件及历史需财务授权或本人参与关系，普通查看与报名审核授权只保留费用及净到账摘要。平台文件只描述当前名单，远端账号需手动撤权；历史 RemoteRevocation 待办保留，SUPERSEDED 的历史记录不能重复标记完成。

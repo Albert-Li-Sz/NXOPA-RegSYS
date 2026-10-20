@@ -101,7 +101,7 @@ test('administrator saves SMTP in Chinese, tests delivery, and sees saved values
   await page.screenshot({ path: '.runtime/reports/settings-mail-mobile.png', fullPage: true });
   expect(errors).toEqual([]);
 });
-test('contest administrators cannot open system mail configuration; sync action is Chinese', async ({
+test('contest administrators cannot open system mail configuration and platform exports are available in Chinese', async ({
   page,
 }) => {
   await page.goto('/admin?tab=mail');
@@ -111,32 +111,8 @@ test('contest administrators cannot open system mail configuration; sync action 
   ).toBeVisible();
   await expect(page.getByRole('tab', { name: '邮件设置', exact: true })).toHaveCount(0);
   await expect(page.locator('#mail-host')).toHaveCount(0);
-  await page.getByRole('link', { name: '外接平台中心', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '比赛绑定与报名同步' })).toBeVisible();
-  const registration = await db.registration.findFirstOrThrow({
-    where: { status: 'SUBMITTED', contest: { modules: { path: ['integrations'], equals: true } } },
-  });
-  const admin = await new Client().login('admin');
-  const instance = await admin.api('/integrations/instances', 'POST', {
-    name: '中文同步按钮回归',
-    type: 'HYDRO',
-    baseUrl: 'http://127.0.0.1:9',
-    credentials: { token: 'ui-fixture-no-remote-call-32-characters' },
-    allowedContestIds: [registration.contestId],
-  });
-  const binding = await admin.api('/integrations/bindings', 'POST', {
-    contestId: registration.contestId,
-    instanceId: instance.id,
-    remoteContestId: 'ui-label-fixture',
-    domainId: 'system',
-    automatic: false,
-  });
-  // Use a separate authenticated administrator session for the mapped registration.
-  await page.context().clearCookies();
-  await page.goto(`/registrations/${registration.id}?tab=accounts`);
-  await signIn(page, 'admin');
-  await expect(page.getByRole('button', { name: /^同步比赛账号/ }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /Local|acceptance/ })).toHaveCount(0);
-  await db.platformBinding.delete({ where: { id: binding.id } });
-  await db.platformInstance.delete({ where: { id: instance.id } });
+  await page.getByRole('link', { name: '平台导出中心', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '导出平台导入文件' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '导出平台导入包' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /同步|添加.*实例/ })).toHaveCount(0);
 });

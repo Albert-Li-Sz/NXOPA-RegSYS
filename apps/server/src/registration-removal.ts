@@ -78,47 +78,6 @@ export async function recordRemoteRevocation(
     },
   });
 }
-export async function supersedeRemoteRevocations(
-  tx: Tx,
-  mapping: {
-    bindingId: string;
-    registrationId: string;
-    remoteUserId?: string;
-    remoteTeamId?: string;
-  },
-) {
-  const binding = await tx.platformBinding.findUniqueOrThrow({
-    where: { id: mapping.bindingId },
-    include: { instance: true },
-  });
-  const rows = await tx.remoteRevocation.findMany({
-    where: {
-      bindingId: mapping.bindingId,
-      registrationId: mapping.registrationId,
-      state: 'PENDING',
-    },
-  });
-  const ids = rows
-    .filter((row) => {
-      const target = row.target as Record<string, unknown>;
-      return (
-        (!row.remoteUserId || row.remoteUserId === mapping.remoteUserId) &&
-        (!row.remoteTeamId || row.remoteTeamId === mapping.remoteTeamId) &&
-        target.baseUrl === binding.instance.baseUrl &&
-        target.remoteContestId === binding.remoteContestId
-      );
-    })
-    .map((row) => row.id);
-  if (ids.length) {
-    await tx.remoteRevocation.updateMany({
-      where: { id: { in: ids }, state: 'PENDING' },
-      data: { state: 'SUPERSEDED' },
-    });
-    await audit(tx, 'integration', 'REMOTE_REVOCATION_SUPERSEDE', mapping.registrationId, {
-      revocationIds: ids,
-    });
-  }
-}
 // Callers hold the registration lock. Only settlement data and minimal deletion metadata survive.
 export async function removeRegistration(
   tx: Tx,
