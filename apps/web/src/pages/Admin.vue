@@ -182,6 +182,7 @@ async function refresh() {
         api('/admin/fields'),
       ]);
       effectivePublicUrl.value = site.value.publicUrl;
+      site.value.trustedOriginsInput = (site.value.trustedOrigins ?? []).join('\n');
       const currentTemplate = templates.value.find((t) => t.active && !t.contestId);
       if (currentTemplate && !globalEdit.editing.value) {
         templateName.value = currentTemplate.name;
@@ -339,15 +340,6 @@ async function closeField(done: () => void) {
   if (await fieldEdit.mayLeave()) done();
 }
 const siteEdit = useEditSession(site);
-const trustedOriginsText = computed({
-  get: () => (site.value.trustedOrigins ?? []).join('\n'),
-  set: (value: string) => {
-    site.value.trustedOrigins = value
-      .split(/[\n,，]+/)
-      .map((origin) => origin.trim())
-      .filter(Boolean);
-  },
-});
 const globalTemplateModel = computed({
   get: () => ({
     name: templateName.value,
@@ -367,7 +359,14 @@ async function saveGlobalTemplate() {
   await refresh();
 }
 async function saveSite() {
-  await api('/admin/site', 'PUT', site.value);
+  const { trustedOriginsInput, ...settings } = site.value;
+  await api('/admin/site', 'PUT', {
+    ...settings,
+    trustedOrigins: String(trustedOriginsInput ?? '')
+      .split(/[\n,，]+/)
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  });
   siteEdit.finish();
   ElMessage.success('站点配置已保存');
   await refresh();
@@ -882,7 +881,7 @@ async function webhook() {
         <el-form-item label="信任的请求来源" for="site-trusted-origins">
           <el-input
             id="site-trusted-origins"
-            v-model="trustedOriginsText"
+            v-model="site.trustedOriginsInput"
             type="textarea"
             :rows="4"
             placeholder="https://reg.example.org&#10;http://192.168.1.10:8080"

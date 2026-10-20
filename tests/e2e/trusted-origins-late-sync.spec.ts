@@ -231,7 +231,13 @@ test('site origins require edit mode, cancel cleanly, and persist after save and
   await expect(input).toHaveValue('');
   await expect(input).toBeDisabled();
   await card.getByRole('button', { name: '编辑', exact: true }).click();
-  await input.fill('https://public-ui.example.test, http://192.168.1.10:8080');
+  await input.fill('https://public-ui.example.test, https://public-ui.example.test');
+  await input.press('End');
+  await input.press('Enter');
+  await input.pressSequentially('http://192.168.1.10:8080');
+  await expect(input).toHaveValue(
+    'https://public-ui.example.test, https://public-ui.example.test\nhttp://192.168.1.10:8080',
+  );
   await card.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByText('站点配置已保存', { exact: true })).toBeVisible();
   await expect(input).toBeDisabled();
@@ -371,6 +377,11 @@ test('existing approved registrations synchronize after a later binding, automat
   const job = await db.job.findFirstOrThrow({
     where: { kind: 'SYNC', payload: { path: ['mappingId'], equals: manualMapping!.id } },
   });
+  await until(
+    () => db.job.findUniqueOrThrow({ where: { id: job.id } }),
+    (current) => current.state === 'SUCCESS',
+    30000,
+  );
   await db.job.update({
     where: { id: job.id },
     data: { state: 'FAILED', attempts: 4, error: 'Simulated exhausted retry' },

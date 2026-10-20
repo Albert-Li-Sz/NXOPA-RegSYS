@@ -6,7 +6,7 @@ on:
       image_tag:
         description: 待验收的已有镜像版本
         required: true
-        default: v0.6.4
+        default: v0.6.5
         type: string
       proxy_only:
         description: 仅复验 HTTPS 代理与迁移流程
