@@ -6,6 +6,7 @@ export default defineConfig({
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? 'test-results',
   timeout: 60000,
   workers: 1,
+  forbidOnly: true,
   reporter: [
     ['list'],
     ['html', { open: 'never' }],
