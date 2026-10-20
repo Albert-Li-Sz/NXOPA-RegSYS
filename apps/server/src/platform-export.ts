@@ -1,26 +1,15 @@
 import { BadRequestException } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { z } from 'zod';
-import { organizationSchema, policySchema, type Principal } from '@contest-center/contracts';
+import {
+  organizationSchema,
+  policySchema,
+  platformExportSchema,
+  type Principal,
+} from '@contest-center/contracts';
 import { db, audit, lock } from './db.js';
 import { decrypt, encrypt, requireManager, sha } from './security.js';
 import { modulesFor } from './workflow.js';
 
-export const platformExportSchema = z.object({
-  platform: z.enum(['HYDRO', 'DOMJUDGE']),
-  includeUnofficial: z.boolean().default(true),
-  importMode: z.enum(['FOLLOW', 'FORCE_UNOFFICIAL']).default('FOLLOW'),
-  officialGroupId: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9_-]{1,64}$/)
-    .optional(),
-  unofficialGroupId: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9_-]{1,64}$/)
-    .optional(),
-});
 const jsonFile = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
 const csvCell = (value: unknown) => {
   let text = String(value ?? '');

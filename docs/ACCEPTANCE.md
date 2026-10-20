@@ -1,6 +1,6 @@
 # 当前版本验收
 
-v0.7.0 已将 Hydro / DOMjudge 同步替换为平台导入文件导出。以下旧版本的同步、桥接插件与任务记录仅为历史证据；当前安装和导入操作以 [INTEGRATIONS.md](INTEGRATIONS.md) 为准。
+v0.7.1 已将 Hydro / DOMjudge 同步替换为平台导入文件导出。以下旧版本的同步、桥接插件与任务记录仅为历史证据；当前安装和导入操作以 [INTEGRATIONS.md](INTEGRATIONS.md) 为准。
 
 # MVP 验收报告
 

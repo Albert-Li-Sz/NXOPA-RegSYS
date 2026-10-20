@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   contestSchema,
+  platformExportSchema,
   examSiteSchema,
   contestDeletionSchema,
   roomSchema,
@@ -25,7 +26,6 @@ import {
   adminPermissions,
   userTagsSchema,
 } from '@contest-center/contracts';
-import { platformExportSchema } from './platform-export.js';
 import type { OpenAPIObject } from '@nestjs/swagger';
 const id = z.string().uuid(),
   version = z.number().int(),

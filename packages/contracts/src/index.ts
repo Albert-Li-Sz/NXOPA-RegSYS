@@ -542,6 +542,21 @@ export interface PaymentProvider {
   refund(id: string, amountCents: number): Promise<string>;
 }
 
+export const platformExportSchema = z.object({
+  platform: z.enum(['HYDRO', 'DOMJUDGE']),
+  includeUnofficial: z.boolean().default(true),
+  importMode: z.enum(['FOLLOW', 'FORCE_UNOFFICIAL']).default('FOLLOW'),
+  officialGroupId: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_-]{1,64}$/)
+    .optional(),
+  unofficialGroupId: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_-]{1,64}$/)
+    .optional(),
+});
 export const defaultFields: FieldDefinition[] = fieldsSchema.parse([
   { key: 'school', label: '学校 / 单位', scope: 'PERSON', type: 'text' },
   {

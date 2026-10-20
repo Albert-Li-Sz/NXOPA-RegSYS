@@ -19,7 +19,7 @@ bash install.sh --dir /opt/my-registration
 
 菜单提供安装、更新、卸载与状态；也可执行 `bash install.sh install`。向导选择项目名、镜像版本、Caddy 的本机端口与邮件链接的站点地址，生成随机数据库密码和 32 字节加密密钥，保存为权限 `600` 的 `deploy/.env`，启动后交互创建管理员。密码输入不显示，正式实例不创建演示账号。
 
-从 Release 下载的 `nxopa-regsys-v0.7.0-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
+从 Release 下载的 `nxopa-regsys-v0.7.1-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
 
 ## 更新与卸载
 
@@ -79,7 +79,7 @@ bash install.sh compose ps
 
 多个实例用 `INSTALL_ENV_FILE=/absolute/path/.env` 选择配置。`init` 保留已有文件，`up` 按配置构建或拉取，`update --yes` 按已保存版本先备份再更新。不要公开 `.env` 或完整 `compose config`，其中包含密钥。
 
-业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v0.7.0`，支持 amd64/arm64。所有安装服务使用固定版本标签：PostgreSQL 为 `postgres:17.6-alpine`，Redis 为 `redis:7.4.5-alpine`，Caddy 为 `caddy:2.10.2-alpine`；按 Docker 服务端选择平台，不附加 `@sha256`。`IMAGE_TAG` 必须为完整版本号，不能填写 `latest` 或浮动小版本。
+业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v0.7.1`，支持 amd64/arm64。所有安装服务使用固定版本标签：PostgreSQL 为 `postgres:17.6-alpine`，Redis 为 `redis:7.4.5-alpine`，Caddy 为 `caddy:2.10.2-alpine`；按 Docker 服务端选择平台，不附加 `@sha256`。`IMAGE_TAG` 必须为完整版本号，不能填写 `latest` 或浮动小版本。
 
 从 `main` 获取的新 `install.sh` 会在校验下载包后转换旧包的哈希覆盖，也会处理已有安装目录中的旧材料。新版安装、更新、备份和恢复不再自动加载遗留的 `compose.digest.yaml`；发布记录 `images.json` 仍保留摘要供核验，安装包 SHA-256 校验继续执行。保持原数据库版本和卷名；`content descriptor ... not found` 时检查具体镜像及镜像代理，不能把拉取失败当成安装完成。
 

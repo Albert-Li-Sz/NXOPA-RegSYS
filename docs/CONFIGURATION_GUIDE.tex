@@ -28,7 +28,7 @@
 \fancyhf{}
 \fancyhead[L]{\small\color{muted}南晓开放原子社在线报名系统}
 \fancyhead[R]{\small\color{muted}配置教程}
-\fancyfoot[L]{\small\color{muted}v0.7.0 · 中文 · Asia/Shanghai}
+\fancyfoot[L]{\small\color{muted}v0.7.1 · 中文 · Asia/Shanghai}
 \fancyfoot[R]{\small\color{muted}\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
@@ -190,7 +190,7 @@ GitHub OAuth App 的真实凭据由部署管理员配置。本版本以独立模
 
 \newpage
 \section{导出 Hydro 导入文件}
-从 v0.7.0 起改用官方 Onsite Toolkit 的 JSON 导入，移除本站桥接插件、实例凭据与自动同步。活动开启“平台文件导出”，管理员选择 Hydro 最新版和报名范围，下载 ZIP 后解压。仅包含已取得资格的报名，密码与本站登录独立且重复导出保持不变。
+从 v0.7.1 起改用官方 Onsite Toolkit 的 JSON 导入，移除本站桥接插件、实例凭据与自动同步。活动开启“平台文件导出”，管理员选择 Hydro 最新版和报名范围，下载 ZIP 后解压。仅包含已取得资格的报名，密码与本站登录独立且重复导出保持不变。
 \shot[0.42\textheight]{07-platform-hydro-export}{平台导出中心：下载 Hydro Onsite Toolkit 导入包。}
 
 以实际运行 Hydro 的用户安装官方插件并重启实际服务：
@@ -244,7 +244,7 @@ hydrooj cli system setIpLogin /srv/import/seats.csv
 
 一个报名对应一个队伍与比赛账号。系统保存加密的独立密码，重复导出保持稳定。包内 credentials.csv 为明文密码表，不公开上传；其公式字符已转义。文件仅描述当前名单，资格撤销、取消／删除报名或停用模块不会删除远端账号，主办方必须在目标平台手动处理。
 
-升级前备份。v0.7.0 停用旧实例与自动绑定、移除旧服务凭据、取消未完成 SYNC 任务；历史映射和人工撤权待办保留。旧配置、同步和回调接口已移除，新导出账号不复用旧同步账号。进行中的比赛请勿直接切换账号体系。
+升级前备份。v0.7.1 停用旧实例与自动绑定、移除旧服务凭据、取消未完成 SYNC 任务；历史映射和人工撤权待办保留。旧配置、同步和回调接口已移除，新导出账号不复用旧同步账号。进行中的比赛请勿直接切换账号体系。
 
 \textbf{验收顺序。}完成报名、审核与费用条件 → 下载文件 → 在平台按教程导入 → 读回队伍、学校、性质和账号关联 → 实际登录目标比赛 → 重复导出／导入验证。导出成功仅表示文件生成完成，不能代替目标平台验收。更完整的步骤、字段与排查见项目 docs/INTEGRATIONS.md。
 
