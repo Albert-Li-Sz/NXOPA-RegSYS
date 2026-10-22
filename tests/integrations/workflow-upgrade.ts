@@ -120,7 +120,7 @@ try {
     ('${free}','${contest}','${owner}','CANCELLED',1,NOW(),2,0,0,'{}',NOW());
     INSERT INTO "RegistrationPerson" (id,"registrationId","contestId",name,answers) VALUES ('${person}','${paid}','${contest}','不保留的报名姓名','{"private":"remove-me"}');
     INSERT INTO "Attachment" (id,"ownerId","registrationId",name,mime,size,"storageKey",sha256) VALUES ('${receipt}','${owner}','${paid}','付款凭证.txt','text/plain',5,'upgrade-receipt',''),('${privateFile}','${owner}','${paid}','报名专属.txt','text/plain',5,'upgrade-private','');
-    INSERT INTO "PaymentVoucher" (id,"registrationId","amountCents",channel,payer,"paidAt","attachmentId",status) VALUES ('${randomUUID()}','${paid}',5000,'TEST','付款人',NOW(),'${receipt}','CONFIRMED');
+    INSERT INTO "PaymentVoucher" (id,"registrationId","amountCents",channel,payer,"paidAt","attachmentId",status) VALUES ('${randomUUID()}','${paid}',5000,'TEST','付款人',NOW(),'${receipt}','CONFIRMED'), ('${randomUUID()}','${paid}',5000,'TEST','重复在途',NOW(),'${receipt}','PENDING');
     INSERT INTO "LedgerEntry" (id,"registrationId","contestId",kind,"amountCents","sourceId","actorId",note) VALUES ('${randomUUID()}','${paid}','${contest}','PAYMENT',5000,'upgrade-payment','${owner}','实际到账');
     INSERT INTO "Refund" (id,"registrationId","amountCents",reason) VALUES ('${refund}','${paid}',1000,'待退款');
     INSERT INTO "InvoiceRequest" (id,"registrationId","amountCents",title,"taxId",email) VALUES ('${invoice}','${paid}',4000,'测试个人','','upgrade@example.test');
@@ -131,6 +131,8 @@ try {
     INSERT INTO "PlatformBinding" (id,"contestId","instanceId","remoteContestId") VALUES ('${binding}','${contest}','${instance}','upgrade');
     INSERT INTO "AccountMapping" (id,"registrationId","bindingId",username,credential,"remoteUserId","remoteTeamId",state,"updatedAt") VALUES ('${mapping}','${paid}','${binding}','upgrade','placeholder','remote-user','remote-team','VERIFIED',NOW());
     INSERT INTO "Job" (id,kind,"resourceId","dedupeKey",payload,"updatedAt") VALUES ('${randomUUID()}','ADMISSION','${paid}','upgrade-old-job','{"private":"remove-me","documentId":"${doc}"}',NOW());
+    INSERT INTO "Job" (id,kind,"resourceId","dedupeKey",payload,"updatedAt") VALUES ('${randomUUID()}','SYNC','${active}','upgrade-old-sync','{}',NOW());
+    INSERT INTO "OutboxEvent" (id,type,"resourceId",payload) VALUES ('${randomUUID()}','SYNC_REQUEST','${active}','{}');
     INSERT INTO "Invitation" (id,"tokenHash",kind,"registrationId","inviterId","expiresAt") VALUES ('${randomUUID()}','upgrade-token','MEMBER','${paid}','${owner}',NOW()+interval '1 day');
   `,
   );
@@ -168,6 +170,28 @@ try {
     const account = await db.financeAccount.findUniqueOrThrow({ where: { id: paid } });
     assert.equal(account.netPaidCents, 5000);
     assert.ok(account.cancelledAt);
+    assert.equal(account.reconciliationRequired, true);
+    const proof = await db.paymentProofClaim.findUniqueOrThrow({
+      where: { attachmentId: receipt },
+      include: { voucher: true },
+    });
+    assert.equal(proof.voucher.status, 'CONFIRMED');
+    assert.equal(
+      await db.auditEvent.count({
+        where: { resourceId: paid, action: 'VOUCHER_DUPLICATE_HISTORY' },
+      }),
+      1,
+    );
+    assert.equal(
+      (await db.platformInstance.findUniqueOrThrow({ where: { id: instance } })).enabled,
+      false,
+    );
+    assert.equal(
+      (await db.platformInstance.findUniqueOrThrow({ where: { id: instance } })).credentials,
+      '',
+    );
+    assert.equal(await db.job.count({ where: { kind: 'SYNC', state: 'CANCELLED' } }), 1);
+    assert.equal(await db.outboxEvent.count({ where: { type: 'SYNC_REQUEST' } }), 0);
     const after = sql(
       database,
       `SELECT json_build_object('balance',(SELECT SUM("netPaidCents") FROM "FinanceAccount"),'vouchers',(SELECT count(*) FROM "PaymentVoucher"),'ledger',(SELECT count(*) FROM "LedgerEntry"),'refunds',(SELECT count(*) FROM "Refund"),'invoices',(SELECT count(*) FROM "InvoiceRequest"))`,

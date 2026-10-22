@@ -182,6 +182,7 @@ await check('a support attachment cannot be moved to another ticket', async () =
   assert.equal(response.status, 400);
   assert.equal((await owner.raw(`/api/v1/files/${standaloneFile.id}`)).status, 200);
 });
+await admin.api(`/admin/grants/${grant.id}`, 'DELETE');
 const supportGrant = await admin.api('/admin/grants', 'POST', {
   userId: viewer.user.id,
   level: 'CONTEST',
@@ -230,7 +231,9 @@ await check('SUPPORT revocation also blocks idempotent reply replay', async () =
 await admin.api(`/admin/grants/${grant.id}`, 'DELETE');
 await writeFile(
   '.runtime/reports/permission-regressions.json',
-  JSON.stringify({ success: !failures.length, checks, failures }, null, 2),
+  JSON.stringify({ success: checks.length === 18 && !failures.length, checks, failures }, null, 2),
 );
 await db.$disconnect();
 assert.deepEqual(failures, []);
+
+assert.equal(checks.length, 18, 'Every declared check must execute');

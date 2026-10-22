@@ -5,8 +5,10 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   CreateBucketCommand,
+  ListObjectsV2Command,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
-import { mkdir, readFile, writeFile, rm, open } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm, open, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -22,6 +24,90 @@ export type StorageRef = {
   storageConfigId?: string | null;
   sha256?: string;
 };
+async function storageOwner() {
+  const row = await db.setting.upsert({
+    where: { key: 'storage-owner' },
+    create: { key: 'storage-owner', value: { id: randomUUID() } },
+    update: {},
+  });
+  const id = String((row.value as any).id ?? '');
+  if (!/^[a-f0-9-]{36}$/i.test(id)) throw new BadRequestException('存储归属标记无效');
+  return id;
+}
+const reconciliationCursors = new Map<string, string>();
+export async function reconcileStorage(now = Date.now()) {
+  const cutoff = now - 86400000;
+  const owner = await storageOwner(),
+    started = Date.now();
+  const referenced = async (key: string, backend: string, profileId: string | null) =>
+    (await db.attachment.count({
+      where: { storageKey: key, storageBackend: backend, purgedAt: null },
+    })) ||
+    (await db.admissionDocument.count({ where: { storageKey: key, storageBackend: backend } })) ||
+    (await db.job.count({
+      where: { kind: 'PDF_PREVIEW', result: { path: ['storageKey'], equals: key } },
+    }));
+  await mkdir(config.storage, { recursive: true, mode: 0o700 });
+  for (const entry of await readdir(config.storage, { withFileTypes: true })) {
+    if (!entry.isFile() || !/^[A-Za-z0-9_-]{1,200}$/.test(entry.name)) continue;
+    if (Date.now() - started > 30000) break;
+    if (
+      (await readFile(path.join(config.storage, `${entry.name}.nxopa-owner`), 'utf8').catch(
+        () => '',
+      )) !== owner
+    )
+      continue;
+    if (
+      (await stat(path.join(config.storage, entry.name))).mtimeMs >= cutoff ||
+      (await referenced(entry.name, 'LOCAL', null))
+    )
+      continue;
+    await removeBlob({ storageKey: entry.name, storageBackend: 'LOCAL' });
+  }
+  for (const profile of await db.storageConfiguration.findMany()) {
+    const s3 = client(profile),
+      prefix = profile.prefix ? `${profile.prefix.replace(/\/+$/, '')}/` : '';
+    if (Date.now() - started > 30000) break;
+    try {
+      const page = await s3.send(
+        new ListObjectsV2Command({
+          Bucket: profile.bucket,
+          Prefix: prefix,
+          ContinuationToken: reconciliationCursors.get(profile.id),
+          MaxKeys: 100,
+        }),
+      );
+      for (const object of page.Contents ?? []) {
+        const key = object.Key?.slice(prefix.length);
+        if (
+          !key ||
+          !/^[A-Za-z0-9_-]{1,200}$/.test(key) ||
+          !object.LastModified ||
+          object.LastModified.getTime() >= cutoff ||
+          (await referenced(key, 'S3', profile.id))
+        )
+          continue;
+        if (Date.now() - started > 30000) break;
+        const metadata = await s3.send(
+          new HeadObjectCommand({ Bucket: profile.bucket, Key: object.Key }),
+        );
+        if (metadata.Metadata?.['nxopa-owner'] !== owner) continue;
+        await removeBlob({ storageKey: key, storageBackend: 'S3', storageConfigId: profile.id });
+      }
+      if (page.IsTruncated && page.NextContinuationToken)
+        reconciliationCursors.set(profile.id, page.NextContinuationToken);
+      else reconciliationCursors.delete(profile.id);
+    } catch (error) {
+      console.warn(
+        'Storage profile reconciliation failed:',
+        profile.id,
+        error instanceof Error ? error.name : 'error',
+      );
+    } finally {
+      s3.destroy();
+    }
+  }
+}
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const storageSchema = z.object({
   version: z.number().int().min(0),
@@ -68,6 +154,7 @@ function client(profile: StorageConfiguration) {
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
     maxAttempts: 3,
+    requestHandler: { connectionTimeout: 5000, requestTimeout: 20000 },
   });
 }
 function objectKey(profile: StorageConfiguration, key: string) {
@@ -141,8 +228,10 @@ export async function putBlob(
 }> {
   safeKey(key);
   const target = profileId ? { mode: 'S3', profileId } : await active();
+  const owner = await storageOwner();
   if (target.mode === 'LOCAL') {
     await mkdir(config.storage, { recursive: true, mode: 0o700 });
+    await writeFile(path.join(config.storage, `${key}.nxopa-owner`), owner, { mode: 0o600 });
     await writeFile(path.join(config.storage, key), bytes, { mode: 0o600 });
     return { storageKey: key, storageBackend: 'LOCAL', storageConfigId: null, sha256: hash(bytes) };
   }
@@ -155,6 +244,7 @@ export async function putBlob(
         Key: objectKey(profile, key),
         Body: bytes,
         ContentType: mime,
+        Metadata: { 'nxopa-owner': owner },
       }),
     );
   try {
@@ -218,9 +308,10 @@ export async function readBlob(ref: StorageRef) {
 }
 export async function removeBlob(ref: StorageRef) {
   const key = safeKey(ref.storageKey);
-  if (!ref.storageBackend || ref.storageBackend === 'LOCAL')
+  if (!ref.storageBackend || ref.storageBackend === 'LOCAL') {
     await rm(path.join(config.storage, key), { force: true });
-  else {
+    await rm(path.join(config.storage, `${key}.nxopa-owner`), { force: true });
+  } else {
     const profile = await profileFor(ref.storageConfigId),
       s3 = client(profile);
     try {
@@ -323,8 +414,10 @@ export class StorageService {
       } finally {
         await removeBlob(ref);
       }
+      await audit(db, u.id, 'STORAGE_PROBE', 'storage', { ok: true });
       return { ok: true, message: '写入、读取和删除均通过' };
     } catch (error) {
+      await audit(db, u.id, 'STORAGE_PROBE', 'storage', { ok: false });
       const name = error instanceof Error ? error.name : 'StorageError';
       throw new BadRequestException(`存储测试失败（${name}），请检查端点、桶名与对象读写删除权限`);
     }
@@ -334,6 +427,7 @@ export class StorageService {
     const target = await active();
     if (target.mode !== 'S3' || !target.profileId)
       throw new BadRequestException('请先配置并测试 S3 存储');
+    await audit(db, u.id, 'STORAGE_MIGRATE', 'storage', { profileId: target.profileId });
     return db.$transaction((tx) =>
       enqueue(tx, 'STORAGE_MIGRATION', target.profileId!, `storage-migration:${randomUUID()}`, {
         profileId: target.profileId,

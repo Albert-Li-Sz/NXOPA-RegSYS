@@ -49,6 +49,14 @@ async function action(path: string, body: Data) {
     busy.value = false;
   }
 }
+async function reconcile() {
+  const { value } = await ElMessageBox.prompt(
+    '确认重复到账已冲正，并填写对账说明',
+    '完成历史对账',
+    { inputPattern: /\S+/, inputErrorMessage: '请填写对账说明' },
+  );
+  await action(`/finance/${account.value!.id}/reconciliation`, { reason: value });
+}
 async function refund() {
   const { value } = await ElMessageBox.prompt('输入退款金额（元）', '申请退款', {
     inputPattern: /^\d+(\.\d{1,2})?$/,
@@ -61,15 +69,21 @@ async function refund() {
   });
 }
 async function refundReview(row: Data, decision: string) {
-  let reference;
+  let reference, reason;
   if (decision === 'COMPLETED')
     reference = (await ElMessageBox.prompt('填写实际退款参考号', '记录退款')).value;
+  else if (decision === 'REJECTED')
+    reason = (
+      await ElMessageBox.prompt('填写拒绝退款原因', '退款审核', {
+        inputValidator: (v: string) => !!v.trim() || '请填写原因',
+      })
+    ).value;
   else
     await ElMessageBox.confirm(
       `确认${decision === 'APPROVED' ? '通过' : '拒绝'}退款申请？`,
       '退款审核',
     );
-  await action(`/finance/refunds/${row.id}/review`, { decision, reference });
+  await action(`/finance/refunds/${row.id}/review`, { decision, reference, reason });
 }
 async function voucherReview(row: Data, decision: string) {
   let reference = row.reference;
@@ -109,6 +123,13 @@ async function reverse(row: Data) {
 }
 </script>
 <template>
+  <el-alert
+    v-if="account?.reconciliationRequired"
+    title="此账户有历史重复到账记录，退款已暂停。请核对账簿、冲正重复款项后完成对账。"
+    type="warning"
+    :closable="false"
+    ><el-button v-if="account.canManage" @click="reconcile">完成对账</el-button></el-alert
+  >
   <div class="crumb">
     <router-link
       v-if="account?.canManage && !account.canEdit"
@@ -162,7 +183,10 @@ async function reverse(row: Data) {
       <div class="card">
         <h3>缴费凭证</h3>
         <PaginatedTable page-key="finance-account-vouchers" :data="account.vouchers"
-          ><el-table-column prop="payer" label="付款人" /><el-table-column label="金额"
+          ><el-table-column prop="channel" label="支付渠道" /><el-table-column
+            prop="reference"
+            label="交易参考号"
+          /><el-table-column prop="payer" label="付款人" /><el-table-column label="金额"
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
           ><el-table-column label="状态"
             ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
@@ -205,8 +229,9 @@ async function reverse(row: Data) {
           ><el-table-column prop="reason" label="原因" /><el-table-column label="状态"
             ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
           ><el-table-column prop="reference" label="退款参考号" /><el-table-column
-            label="操作"
-            min-width="180"
+            prop="rejectionReason"
+            label="拒绝原因"
+          /><el-table-column label="操作" min-width="180"
             ><template #default="{ row }"
               ><template
                 v-if="
@@ -286,7 +311,7 @@ async function reverse(row: Data) {
             ><template #default="{ row }"
               ><span v-if="row.reversed" class="muted">已冲正</span
               ><el-button
-                v-else-if="account.canManage && row.kind === 'PAYMENT'"
+                v-else-if="account.canManage && row.kind === 'PAYMENT' && !ownUser(row.actorId)"
                 text
                 type="danger"
                 @click="reverse(row)"

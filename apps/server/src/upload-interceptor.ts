@@ -20,7 +20,7 @@ export class BoundedUpload implements NestInterceptor {
     const actor = user(request);
     await rateLimit(`uploads:${actor.id}`, 60);
     const key = actor.id;
-    if ((active.get(key) ?? 0) >= 2 || (active.get('all') ?? 0) >= 8)
+    if ((active.get(key) ?? 0) >= 2 || (active.get('all') ?? 0) >= 2)
       throw new ForbiddenException('上传繁忙，请等待当前文件上传完成');
     active.set(key, (active.get(key) ?? 0) + 1);
     active.set('all', (active.get('all') ?? 0) + 1);

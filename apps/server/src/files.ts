@@ -52,6 +52,42 @@ async function fileRegistrations(tx: import('./db.js').Tx, id: string) {
     UNION SELECT "registrationId",true FROM "RegistrationPerson" WHERE answers::text ILIKE ${`%${id}%`}
     UNION SELECT "registrationId",true FROM "RegistrationCoach" WHERE answers::text ILIKE ${`%${id}%`}`;
 }
+const fileView = {
+  id: true,
+  ownerId: true,
+  contestId: true,
+  registrationId: true,
+  ticketId: true,
+  purpose: true,
+  name: true,
+  mime: true,
+  size: true,
+  public: true,
+  createdAt: true,
+} as const;
+async function assignedAccess(u: Principal, attachmentId: string) {
+  const ids = ownerIds(u);
+  const contests = u.contestIds.filter((id) =>
+    ['REGISTRATIONS', 'ADMISSIONS', 'FINANCE', 'FILES', 'SUPPORT'].some((p) =>
+      manages(u, id, p as any),
+    ),
+  );
+  return !!(await db.teamFile.count({
+    where: {
+      attachmentId,
+      registration: u.isAdmin
+        ? {}
+        : {
+            OR: [
+              { ownerId: { in: ids } },
+              { people: { some: { userId: { in: ids }, active: true } } },
+              { coaches: { some: { userId: { in: ids } } } },
+              { contestId: { in: contests } },
+            ],
+          },
+    },
+  }));
+}
 export class FileService {
   async upload(
     u: Principal,
@@ -226,43 +262,14 @@ export class FileService {
           try {
             await getRegistration(u, file.registrationId);
           } catch (error) {
-            const assigned = await db.teamFile.findMany({
-              where: { attachmentId: id },
-              select: { registrationId: true },
-            });
-            let allowed = owns(u, file.ownerId);
-            for (const a of assigned) {
-              try {
-                await getRegistration(u, a.registrationId);
-                allowed = true;
-                break;
-              } catch {}
-            }
+            const allowed = owns(u, file.ownerId) || (await assignedAccess(u, id));
             if (!allowed) throw error;
           }
         }
       } else if (file.contestId && !manages(u, file.contestId, 'FILES') && !owns(u, file.ownerId)) {
-        const assignments = await db.teamFile.findMany({ where: { attachmentId: id } });
-        let allowed = false;
-        for (const assignment of assignments) {
-          try {
-            await getRegistration(u, assignment.registrationId);
-            allowed = true;
-            break;
-          } catch {}
-        }
-        if (!allowed) throw new ForbiddenException();
+        if (!(await assignedAccess(u, id))) throw new ForbiddenException();
       } else if (!file.contestId && !owns(u, file.ownerId) && !u.isAdmin) {
-        const assignments = await db.teamFile.findMany({ where: { attachmentId: file.id } });
-        let allowed = false;
-        for (const assignment of assignments) {
-          try {
-            await getRegistration(u, assignment.registrationId);
-            allowed = true;
-            break;
-          } catch {}
-        }
-        if (!allowed) throw new ForbiddenException();
+        if (!(await assignedAccess(u, id))) throw new ForbiddenException();
       }
     }
     return {
@@ -286,7 +293,7 @@ export class FileService {
           await db.teamFile.findMany({
             where,
             ...options,
-            include: { attachment: true },
+            include: { attachment: { select: fileView } },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           })
         ).map((x) => ({ ...x.attachment, assignmentId: x.id, assignedAt: x.createdAt }));
@@ -304,6 +311,7 @@ export class FileService {
       };
       const find = (options: { skip?: number; take?: number } = {}) =>
         db.attachment.findMany({
+          select: fileView,
           where,
           ...options,
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -336,6 +344,7 @@ export class FileService {
       query,
       (options) =>
         db.attachment.findMany({
+          select: fileView,
           where,
           ...options,
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -382,6 +391,13 @@ export class FileService {
     );
   }
   async remove(u: Principal, id: string) {
+    const candidate = await db.attachment.findUniqueOrThrow({
+      where: { id: z.string().uuid().parse(id) },
+    });
+    if (!owns(u, candidate.ownerId) && !u.isAdmin) {
+      if (!candidate.contestId) throw new ForbiddenException('仅可删除本人上传的文件');
+      requireManager(u, candidate.contestId, 'FILES');
+    }
     const initial = await fileRegistrations(db, id),
       ids = [...new Set(initial.map((r) => r.id))].sort();
     return db.$transaction(async (tx) => {

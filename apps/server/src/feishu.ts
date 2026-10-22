@@ -1,11 +1,20 @@
-import { secureCookies } from './site-settings.js';
+import { secureCookies, publicUrl } from './site-settings.js';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { Response } from 'express';
 import type { Principal } from '@contest-center/contracts';
 import { db, lock, audit, json, type Tx } from './db.js';
-import { redis, session, user, rateLimit, type AuthRequest } from './auth.js';
+import {
+  redis,
+  session,
+  user,
+  rateLimit,
+  cookieName,
+  cookieValue,
+  requireReauthentication,
+  type AuthRequest,
+} from './auth.js';
 import {
   requireSystemAdmin,
   encrypt,
@@ -46,10 +55,10 @@ async function settings(database: Tx = db) {
 function fingerprint(value: Settings) {
   return sha(`${value.appId}:${decrypt(value.encryptedSecret)}`);
 }
-function callbackUrl(req: AuthRequest, configured: string) {
+async function callbackUrl(req: AuthRequest, configured: string) {
   let url: URL;
   try {
-    url = new URL(configured || `${req.protocol}://${req.get('host')}/api/v1/auth/feishu/callback`);
+    url = new URL(configured || '/api/v1/auth/feishu/callback', await publicUrl());
   } catch {
     throw new BadRequestException('飞书回调地址无效');
   }
@@ -79,7 +88,7 @@ async function feishuJson(url: string, options: RequestInit = {}) {
 }
 async function signup(req: AuthRequest, claim: unknown): Promise<Signup> {
   const token = z.string().min(30).max(100).parse(claim);
-  if (!same(token, String(req.cookies?.[signupCookie] ?? '')))
+  if (!same(token, String((await cookieValue(req, signupCookie)) ?? '')))
     throw new BadRequestException('飞书注册验证已过期，请重新授权');
   const raw = await redis.get(`feishu-signup:${sha(token)}`),
     s = await settings();
@@ -115,6 +124,7 @@ export async function clearFeishuSignup(res: Response, claim?: string) {
   if (claim) {
     await redis.del(`feishu-signup:${sha(claim)}`);
     res.clearCookie(signupCookie, { path: '/' });
+    res.clearCookie(`__Host-${signupCookie}`, { path: '/', secure: true });
   }
 }
 export class FeishuService {
@@ -125,7 +135,7 @@ export class FeishuService {
       enabled: s.value.enabled,
       appId: s.value.appId,
       callbackUrl: s.value.callbackUrl,
-      effectiveCallbackUrl: callbackUrl(req, s.value.callbackUrl),
+      effectiveCallbackUrl: await callbackUrl(req, s.value.callbackUrl),
       secretConfigured: !!s.value.encryptedSecret,
       version: s.version,
     };
@@ -141,7 +151,7 @@ export class FeishuService {
         callbackUrl: z.string().trim().max(2048).default(''),
       })
       .parse(body);
-    if (b.callbackUrl) callbackUrl(req, b.callbackUrl);
+    if (b.callbackUrl) await callbackUrl(req, b.callbackUrl);
     await db.$transaction(async (tx) => {
       await lock(tx, `setting:${settingKey}`);
       const previous = await settings(tx);
@@ -198,23 +208,25 @@ export class FeishuService {
     if (!s.value.enabled || !s.value.appId || !s.value.encryptedSecret)
       throw new BadRequestException('飞书登录尚未配置');
     const linking = req.query.mode === 'link';
+    if (linking) await requireReauthentication(req);
     if (linking && !user(req).verified) throw new BadRequestException('请先验证本站邮箱再绑定飞书');
     const state = opaqueToken(),
       verifier = opaqueToken();
     const record = {
-      redirectUri: callbackUrl(req, s.value.callbackUrl),
+      redirectUri: await callbackUrl(req, s.value.callbackUrl),
       verifier,
       fingerprint: fingerprint(s.value),
       next: githubReturnPath(req.query.next),
       userId: linking ? user(req).id : null,
+      sessionId: linking ? req.sessionId : null,
     };
     await redis.set(`feishu-state:${sha(state)}`, JSON.stringify(record), 'EX', 600);
-    res.cookie(stateCookie, state, {
+    res.cookie(cookieName(stateCookie, await secureCookies(req)), state, {
       httpOnly: true,
       secure: await secureCookies(req),
       sameSite: 'lax',
       maxAge: 600000,
-      path: '/api/v1/auth/feishu',
+      path: '/',
     });
     const url = new URL(
       '/open-apis/authen/v1/authorize',
@@ -234,9 +246,12 @@ export class FeishuService {
   }
   async callback(req: AuthRequest, res: Response) {
     res.clearCookie(stateCookie, { path: '/api/v1/auth/feishu' });
+    res.clearCookie(stateCookie, { path: '/' });
+    res.clearCookie(`__Host-${stateCookie}`, { path: '/', secure: true });
     try {
       const state = z.string().min(30).max(100).parse(req.query.state);
-      if (!same(state, String(req.cookies?.[stateCookie] ?? ''))) throw new FeishuError('state');
+      if (!same(state, String((await cookieValue(req, stateCookie)) ?? '')))
+        throw new FeishuError('state');
       const raw = await redis.getdel(`feishu-state:${sha(state)}`);
       if (!raw) throw new FeishuError('state');
       const record = JSON.parse(raw) as {
@@ -245,6 +260,7 @@ export class FeishuService {
         fingerprint: string;
         next: string;
         userId: string | null;
+        sessionId: string | null;
       };
       const s = await settings();
       if (
@@ -255,6 +271,10 @@ export class FeishuService {
         throw new FeishuError('state');
       if (req.query.error) throw new FeishuError('cancelled');
       if (record.userId && record.userId !== req.principal?.id) throw new FeishuError('state');
+      if (record.userId) {
+        if (record.sessionId !== req.sessionId) throw new FeishuError('state');
+        await requireReauthentication(req);
+      }
       const code = z.string().min(1).max(1000).parse(req.query.code);
       const token = await feishuJson(
         new URL(
@@ -316,6 +336,7 @@ export class FeishuService {
         }
         if (!record.userId) return null;
         await lock(tx, `auth:${record.userId}`);
+        await requireReauthentication(req, tx);
         const target = await tx.user.findUniqueOrThrow({ where: { id: record.userId } });
         if (target.deactivatedAt || target.bannedAt || !target.verified)
           throw new FeishuError('state');
@@ -350,7 +371,7 @@ export class FeishuService {
           'EX',
           600,
         );
-        res.cookie(signupCookie, claim, {
+        res.cookie(cookieName(signupCookie, await secureCookies(req)), claim, {
           httpOnly: true,
           secure: await secureCookies(req),
           sameSite: 'lax',
@@ -363,6 +384,11 @@ export class FeishuService {
         return;
       }
       const authenticated = await session(req, res, accountId);
+      await audit(db, accountId, 'OAUTH_LOGIN', accountId, {
+        provider: 'feishu',
+        ip: req.ip,
+        userAgent: String(req.headers['user-agent'] ?? '').slice(0, 300),
+      });
       res.redirect(
         record.userId
           ? '/me/profile?tab=settings'
@@ -375,11 +401,13 @@ export class FeishuService {
     }
   }
   async unlink(req: AuthRequest) {
+    await requireReauthentication(req);
     const u = user(req),
       provider = await db.oAuthProvider.findUnique({ where: { slug: 'feishu' } });
     if (!provider) return { ok: true };
     await db.$transaction(async (tx) => {
       await lock(tx, `auth:${u.id}`);
+      await requireReauthentication(req, tx);
       const target = await tx.user.findUniqueOrThrow({ where: { id: u.id } });
       if (
         !target.passwordHash &&

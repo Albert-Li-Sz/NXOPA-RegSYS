@@ -425,7 +425,7 @@ try {
     admin.api(`/registrations/${registration.id}`),
   );
   await admin.api(`/registrations/${registration.id}/cancel`, 'POST', { version: before.version });
-  await run(['restore', path.join(backups, backup)]);
+  await run(['restore', path.join(backups, backup), '--yes']);
   await until(healthy, (v) => v, 90000);
   const restored = await admin.api(`/registrations/${registration.id}`);
   assert.equal(restored.version, before.version);

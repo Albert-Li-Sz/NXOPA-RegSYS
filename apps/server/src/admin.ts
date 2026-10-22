@@ -12,7 +12,13 @@ import {
 } from './site-settings.js';
 import { paginated, dateFilter, type ListQuery } from './pagination.js';
 import { activeGrantWhere } from './authorization.js';
-import { requireAdmin, requireSystemAdmin, requireManager, checkVersion } from './security.js';
+import {
+  requireAdmin,
+  requireSystemAdmin,
+  requireManager,
+  checkVersion,
+  manages,
+} from './security.js';
 export class AdminService {
   async users(u: Principal, query: ListQuery = {}) {
     requireAdmin(u);
@@ -109,6 +115,11 @@ export class AdminService {
         trustedOrigins: z.array(z.string().max(2048)).max(50).optional(),
       })
       .parse(body);
+    const channels = [1, 3, 5]
+      .map((i) => parseInt(b.primaryColor.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    if (1.05 / (0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]! + 0.05) < 4.5)
+      throw new BadRequestException('主题色与白色文字的对比度须至少为 4.5:1，请选择更深的颜色');
     return db.$transaction(async (tx) => {
       await lock(tx, 'setting:site');
       const row = await tx.setting.findUnique({ where: { key: 'site' } });
@@ -174,6 +185,53 @@ export class AdminService {
       : undefined;
     const where = {
       ...(ids ? { resourceId: { in: ids } } : {}),
+      AND: [
+        ...(!u.isSystemAdmin
+          ? [
+              {
+                NOT: {
+                  OR: [
+                    'MAIL_',
+                    'STORAGE_',
+                    'SITE_',
+                    'GITHUB_SETTINGS',
+                    'FEISHU_SETTINGS',
+                    'API_TOKEN_',
+                    'LOGIN_',
+                    'LOGOUT',
+                    'SESSION_',
+                    'EMAIL_CHANGE',
+                    'REAUTH',
+                    'OAUTH_LOGIN',
+                    'RESET',
+                  ].map((prefix) => ({ action: { startsWith: prefix } })),
+                },
+              },
+            ]
+          : []),
+        ...(contestId && !manages(u, contestId, 'FINANCE')
+          ? [
+              {
+                NOT: {
+                  OR: ['VOUCHER_', 'PAYMENT_', 'REFUND_', 'INVOICE_', 'FINANCE_'].map((prefix) => ({
+                    action: { startsWith: prefix },
+                  })),
+                },
+              },
+            ]
+          : []),
+        ...(contestId && !manages(u, contestId, 'ADMISSIONS')
+          ? [
+              {
+                NOT: {
+                  OR: ['ADMISSION_', 'SEATING_', 'ROOM_'].map((prefix) => ({
+                    action: { startsWith: prefix },
+                  })),
+                },
+              },
+            ]
+          : []),
+      ],
       ...(query.status ? { action: query.status } : {}),
       ...(query.search
         ? {

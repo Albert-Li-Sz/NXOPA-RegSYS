@@ -16,7 +16,11 @@ import {
 } from '@contest-center/contracts';
 import { db, audit, lock, type Tx } from './db.js';
 import { opaqueToken, requireAdmin, requireSystemAdmin, sha } from './security.js';
-import { effectiveAuthorization, ensurePermanentAdministrator } from './authorization.js';
+import {
+  effectiveAuthorization,
+  ensurePermanentAdministrator,
+  activeGrantWhere,
+} from './authorization.js';
 import { publicLink } from './site-settings.js';
 import { pageOptions, dateFilter, type ListQuery } from './pagination.js';
 import { RegistrationService, dirty, loaded } from './registrations.js';
@@ -254,7 +258,15 @@ export class InvitationService {
         throw new BadRequestException('邀请人的授权权限已失效');
       if (i.grantExpiresAt && i.grantExpiresAt <= new Date())
         throw new BadRequestException('此授权已经到期');
-      if (['SYSTEM_ADMIN', 'SENIOR_ADMIN', 'CONTEST_ADMIN'].includes(i.kind))
+      if (['SYSTEM_ADMIN', 'SENIOR_ADMIN', 'CONTEST_ADMIN'].includes(i.kind)) {
+        const level =
+          i.kind === 'SYSTEM_ADMIN' ? 'SYSTEM' : i.kind === 'SENIOR_ADMIN' ? 'SENIOR' : 'CONTEST';
+        if (
+          await tx.adminGrant.findFirst({
+            where: { userId: u.id, level, contestId: i.contestId, ...activeGrantWhere() },
+          })
+        )
+          throw new ConflictException('已有同一范围的有效授权，请撤销原授权后重新确认');
         await tx.adminGrant.create({
           data: {
             userId: u.id,
@@ -270,6 +282,7 @@ export class InvitationService {
             permissions: [...new Set(['VIEW', ...i.permissions])],
           },
         });
+      }
       if (i.kind === 'SYSTEM_ADMIN')
         await tx.user.update({
           where: { id: u.id },
@@ -292,7 +305,7 @@ export class InvitationService {
       }
       await tx.invitation.update({
         where: { id: i.id },
-        data: { acceptedBy: u.id, acceptedAt: new Date() },
+        data: { acceptedBy: u.id, acceptedAt: new Date(), targetUserId: u.id },
       });
       await audit(tx, u.id, 'AUTHORIZATION_INVITE_ACCEPT', i.id, {
         kind: i.kind,

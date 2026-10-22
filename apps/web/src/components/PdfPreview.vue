@@ -91,6 +91,8 @@ async function load() {
     const assets = new URL(`${import.meta.env.BASE_URL}pdfjs/${pdfVersion}/`, window.location.href)
       .href;
     const task = getDocument({
+      maxImageSize: 16_000_000,
+      canvasMaxAreaInBytes: 64_000_000,
       url: props.src,
       cMapUrl: assets + 'cmaps/',
       standardFontDataUrl: assets + 'standard_fonts/',

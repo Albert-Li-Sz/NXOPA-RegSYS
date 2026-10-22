@@ -34,6 +34,17 @@ const id = z.string().uuid(),
   date = z.iso.datetime({ offset: true });
 const object = (shape: z.ZodRawShape) => z.object(shape);
 export function describeApi(document: OpenAPIObject) {
+  document.components ??= {};
+  document.components.securitySchemes ??= {};
+  document.components.securitySchemes.hostCookie = {
+    type: 'apiKey',
+    in: 'cookie',
+    name: '__Host-cc_session',
+    description: 'HTTPS host-only browser session; cc_session is used only on HTTP entrances',
+  };
+  for (const scheme of Object.values(document.components?.securitySchemes ?? {}))
+    if ('type' in scheme && scheme.type === 'http' && scheme.scheme === 'bearer')
+      scheme.bearerFormat = 'Opaque';
   let schemaSequence = 0;
   const schema = (s: z.ZodType) => {
     const data = z.toJSONSchema(s, { target: 'openapi-3.0', unrepresentable: 'any' }) as any;
@@ -101,6 +112,27 @@ export function describeApi(document: OpenAPIObject) {
   for (const [name, s] of Object.entries(named))
     document.components.schemas[name] = schema(s) as never;
   const bodies: Record<string, z.ZodType | string> = {
+    'post /api/v1/auth/reauth': object({
+      password: text.max(128).optional(),
+      code: z
+        .string()
+        .regex(/^\d{6}$/)
+        .optional(),
+    }),
+    'put /api/v1/admin/webhooks/{id}': object({
+      version,
+      enabled: z.boolean().optional(),
+      rotateSecret: z.boolean().optional(),
+      revokePrivate: z.boolean().optional(),
+    }),
+    'delete /api/v1/admin/webhooks/{id}': object({ version }),
+    'post /api/v1/finance/{id}/reconciliation': object({ reason: text.min(1).max(3000) }),
+    'post /api/v1/finance/{id}/attribution': object({
+      kind: z.enum(['vouchers', 'refunds', 'invoices']),
+      recordId: id,
+      createdBy: id,
+      reason: text.min(1).max(3000),
+    }),
     'put /api/v1/admin/storage': object({
       version,
       mode: z.enum(['LOCAL', 'S3']),
@@ -271,6 +303,7 @@ export function describeApi(document: OpenAPIObject) {
       decision: z.enum(['APPROVED', 'REJECTED', 'COMPLETED']),
       reference: text.optional(),
       attachmentId: id.optional(),
+      reason: text.max(3000).optional(),
     }),
     'post /api/v1/finance/{id}/invoices': invoiceSchema,
     'post /api/v1/finance/invoices/{id}/review': object({
@@ -384,6 +417,7 @@ export function describeApi(document: OpenAPIObject) {
         (url.startsWith('/api/v1/auth/feishu') && method === 'get') ||
         ([
           '/api/v1/health',
+          '/api/v1/live',
           '/api/v1/site',
           '/api/v1/contests',
           '/api/v1/contests/{id}',
@@ -397,7 +431,52 @@ export function describeApi(document: OpenAPIObject) {
           '/api/v1/auth/github/callback',
         ].includes(url) &&
           method === 'get');
-      op.security = external ? [{ bearer: [] }] : publicPath ? [] : [{ cookie: [] }];
+      op.responses ??= {};
+      op.security = external
+        ? [{ bearer: [] }]
+        : publicPath
+          ? []
+          : [{ cookie: [] }, { hostCookie: [] }];
+      if (
+        external &&
+        [
+          '/api/automation/v1/registrations',
+          '/api/automation/v1/finance',
+          '/api/integration/v1/registrations',
+        ].includes(url)
+      ) {
+        const queries = ['contestId', ...(url.endsWith('/registrations') ? ['cursor'] : [])];
+        op.parameters = [
+          ...(op.parameters ?? []).filter((p: any) => !queries.includes(p.name)),
+          ...queries.map((name) => ({
+            name,
+            in: 'query',
+            required: name === 'contestId' && url !== '/api/automation/v1/registrations',
+            schema: { type: 'string', format: 'uuid' },
+          })),
+        ];
+      }
+      if (method === 'post' && ['/api/v1/admin/tokens', '/api/v1/admin/webhooks'].includes(url)) {
+        const secret = url.endsWith('/tokens') ? 'token' : 'secret';
+        op.responses['201'] = {
+          description: 'Created; secret is returned only once',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['id', secret],
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  [secret]: { type: 'string' },
+                  ...(secret === 'token'
+                    ? { expiresAt: { type: 'string', format: 'date-time' } }
+                    : {}),
+                },
+              },
+            },
+          },
+        };
+      }
       op.tags = [external ? 'External API' : (url.split('/')[3] ?? 'System')];
       op.responses ??= {};
       for (const status of ['400', '401', '403', '404', '409', '429'])

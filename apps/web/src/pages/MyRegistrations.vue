@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { copyText } from '../copy-text';
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import FinanceList from '../components/FinanceList.vue';
@@ -44,7 +45,7 @@ onMounted(async () => {
   }
 });
 async function copyLink() {
-  await navigator.clipboard.writeText(link.value);
+  await copyText(link.value);
 }
 async function createLink() {
   link.value = (await api('/coach/links', 'POST', { kind: 'COACH_LINK' })).url;

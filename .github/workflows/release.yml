@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v0.7.2
+        description: 已存在的版本标签，例如 v0.8.0
         required: true
-        default: v0.7.2
+        default: v0.8.0
         type: string
 
 permissions:
@@ -43,6 +43,17 @@ jobs:
           test "$(node -p "require('./package.json').version")" = "${RELEASE_TAG#v}"
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "prefix=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: 禁止覆盖已公开版本
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > /tmp/release-state 2>/tmp/release-state-error || true
+          code="$(awk '/^HTTP\// {value=$2} END {print value}' /tmp/release-state)"
+          case "$code" in
+            200) test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')" = true || { echo '已公开的版本不可重建，请增加版本号。' >&2; exit 1; } ;;
+            404) ;;
+            *) cat /tmp/release-state-error >&2; echo '无法确认版本状态，停止发布。' >&2; exit 1 ;;
+          esac
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24.12.0'
@@ -196,6 +207,14 @@ jobs:
             sources+=("$IMAGE@$(jq -r .digest "digests/$arch.json")")
           done
           minor="${RELEASE_TAG%.*}"
+          if docker buildx imagetools inspect "$IMAGE:$RELEASE_TAG" >/tmp/existing-image 2>/tmp/existing-image-error; then
+            echo '完整版本镜像已存在，禁止覆盖；请发布新的版本号。' >&2
+            exit 1
+          elif ! grep -Eqi 'not found|manifest unknown|MANIFEST_UNKNOWN' /tmp/existing-image-error; then
+            cat /tmp/existing-image-error >&2
+            echo '无法确认镜像不存在，停止发布。' >&2
+            exit 1
+          fi
           docker buildx imagetools create --tag "$IMAGE:$RELEASE_TAG" --tag "$IMAGE:$minor" --tag "$IMAGE:latest" "${sources[@]}"
           docker buildx imagetools inspect "$IMAGE:$RELEASE_TAG" --raw > index.json
           jq -e '[.manifests[].platform | select(.os == "linux" and (.architecture == "amd64" or .architecture == "arm64")) | .architecture] | sort == ["amd64","arm64"]' index.json
@@ -307,5 +326,5 @@ jobs:
           if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "V${RELEASE_TAG#v}" --notes-file "docs/releases/$RELEASE_TAG.md"
           fi
-          gh release upload "$RELEASE_TAG" dist/release/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$RELEASE_TAG" dist/release/* --repo "$GITHUB_REPOSITORY"
           echo "镜像与附件就绪；核验公开拉取后发布 Release。" >> "$GITHUB_STEP_SUMMARY"

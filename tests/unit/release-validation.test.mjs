@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { fullRegressionSuites, validateFullRegression } from '../../scripts/release-validation.mjs';
+import {
+  fullRegressionSuites,
+  expectedChecks,
+  validateFullRegression,
+} from '../../scripts/release-validation.mjs';
 const fixture = () => ({
   success: true,
   fullRun: true,
+  ojRun: true,
   startCommit: 'abc',
   commit: 'abc',
   startWorkingTreeDirty: false,
@@ -10,6 +15,7 @@ const fixture = () => ({
   results: fullRegressionSuites.map((suite) => ({
     suite,
     success: true,
+    checkCount: expectedChecks[suite],
     command: ['pnpm', suite],
     ...(suite === 'test:e2e'
       ? { browser: { expected: 100, unexpected: 0, skipped: 0, flaky: 0 } }

@@ -6,7 +6,7 @@ HTTP 接口说明由实际 NestJS 路由与共享 Zod 契约生成。开发环�
 pnpm generate:client
 ```
 
-此命令生成 `apps/web/src/generated/api.d.ts`。`generated-client.ts` 提供使用 openapi-fetch 的类型化浏览器客户端，附加 CSRF 与幂等键；前端页面的请求服务统一处理用户提示。
+此命令生成 `apps/web/src/generated/api.d.ts`。浏览器统一通过 `apps/web/src/api.ts` 处理 CSRF、幂等键、请求合并、身份变化和用户提示；生成类型供契约检查及外部客户端使用。
 
 ## 业务接口
 
@@ -22,9 +22,9 @@ pnpm generate:client
 | `/api/v1/integrations`  | 平台字段模板与历史撤权待办                            |
 | `/api/v1/admin`         | 用户权限、字段库、站点设置、Token、任务与审计         |
 
-浏览器会话 Cookie 为 `cc_session`。从 `GET /api/v1/auth/me` 获取 CSRF，写操作发送 `X-CSRF-Token`。写入版本化资源时传 `version`；旧版本返回 409。写请求可传 `Idempotency-Key`，同一用户对相同 URL、方法、正文的重试返回原结果；幂等结果和业务写入在一个 PostgreSQL 事务提交，结果静态加密。
+HTTPS 浏览器会话 Cookie 为 `__Host-cc_session`；显式 HTTP 入口使用 `cc_session`。拒绝同名重复 Cookie，HTTPS 不接受旧名字回退。从 `GET /api/v1/auth/me` 获取 CSRF，写操作发送 `X-CSRF-Token`。写入版本化资源时传 `version`；旧版本返回 409。写请求可传 `Idempotency-Key`，同一用户对相同 URL、方法、正文的重试返回原结果；幂等结果和业务写入在一个 PostgreSQL 事务提交，结果静态加密。
 
-所有金额接口继续使用整数分，例如 `feeCents: 12345` 对应界面 123.45 元。核账不能修改凭证申报金额，兼容参数 `amountCents` 若传入必须与申报值一致；确认到账必须有交易参考号，渠道与参考号组合不可重复入账。凭证附件只能用于一张凭证，申请人和上传者不能核账自己的凭证；超过应收费用的退款须由不同管理员批准和完成。
+所有金额接口继续使用整数分，例如 `feeCents: 12345` 对应界面 123.45 元。核账不能修改凭证申报金额，兼容参数 `amountCents` 若传入必须与申报值一致；确认到账必须有交易参考号，参考号经 NFKC、首尾空白、内部空白及大小写规范化后在活动内不可重复入账，支付渠道不参与去重。同一财务账户的附件内容摘要只能用于一张有效凭证（拒绝后可重新提交），申请人和上传者不能核账自己的凭证；累计退款超过应收费用的后续退款须由不同管理员批准和完成，并记录第二复核人；拒绝退款须填 `reason`。冲正须由原核账人之外的管理员操作。
 
 JSON 请求上限 5 MiB；头像、凭证、普通附件分别在缓冲前限制为 5／10／50 MiB。上传最多每账号并行 2 个、全局 8 个、每账号每分钟 60 次；累计存储默认普通账号 1 GiB、管理员 10 GiB，可通过 `UPLOAD_QUOTA_MB` 覆盖。竞赛后台统计与导出使用完整权限和筛选条件，不随当前页变化。准考证批量下载使用 POST /api/v1/admissions/batch，正文选择 ids 或 registrationIds，单次最多 1000 张；模板预览每账号每分钟最多 10 次。
 
@@ -60,7 +60,7 @@ GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
 
 工单写请求的幂等重放使用与普通工单详情相同的访问校验；撤销 SUPPORT 权限后，即使仍保留 VIEW 等其他活动权限，也不能借相同幂等键读取旧工单响应。
 
-报名详情补充 `displayState`、`actions`、审核历史和最近提交修订。`actions` 包含编辑、本人资料、提交、撤回、取消、管理员删除、首次审核 `review`、修改已有审核 `amendReview`、报名方财务申请 `requestFinance`、查看平台凭据 `credentials`，另有 `editReason`；写接口仍重新检查版本与权限。管理编辑不授予代提交、撤回提交或代申请财务的权限；管理员同时是该报名创建者或关联老师时，按其报名方身份保留相应操作。撤回仅用于待审核且未到账报名。个人入口查询显式使用 `role=mine`，不会因管理员身份扩大范围。`review=DRAFT|CORRECTION` 分别筛选草稿与补正，`review=PENDING` 仅包含已提交待审报名。搜索包含活动标题、队名和姓名。
+报名详情补充 `displayState`、`actions`、审核历史和最近提交修订。`actions` 包含编辑、本人资料、提交、撤回、取消、管理员删除、首次审核 `review`、修改已有审核 `amendReview`、报名方财务申请 `requestFinance`、查看平台凭据 `credentials`（兼容字段，恒为 false；平台同步已移除），另有 `editReason`；写接口仍重新检查版本与权限。管理编辑不授予代提交、撤回提交或代申请财务的权限；管理员同时是该报名创建者或关联老师时，按其报名方身份保留相应操作。撤回仅用于待审核且未到账报名。个人入口查询显式使用 `role=mine`，不会因管理员身份扩大范围。`review=DRAFT|CORRECTION` 分别筛选草稿与补正，`review=PENDING` 仅包含已提交待审报名。搜索包含活动标题、队名和姓名。
 
 `GET /registrations/review-queue?contestId=…` 沿用当前列表筛选并返回全部匹配已提交报名的 `{ids}`，不受分页限制，默认待审核；仅 REGISTRATIONS 管理员可用。首次审核支持连续处理，已经审核的记录使用独立“修改审核”入口，不进入连续审核操作。审核正文仍为 `{version,decision,reason,participationType?}`，退回、拒绝及修改已有审核必须有原因，PAYMENT_FIRST 只阻止未付清时通过。尚未修改资料的补正记录可直接改为通过或拒绝；报名方已修改但尚未重新提交的资料不能被审核。版本冲突返回 409；客户端保留意见供刷新核对。
 
@@ -253,3 +253,14 @@ GET `/contests/:id/public-teams` 与 `/export` 不要求登录，按竞赛 publi
 ## v0.6.7 权限与流程补充
 
 报名详情返回 `canReadFinanceDetails`。财务明细、附件及历史需财务授权或本人参与关系，普通查看与报名审核授权只保留费用及净到账摘要。平台文件只描述当前名单，远端账号需手动撤权；历史 RemoteRevocation 待办保留，SUPERSEDED 的历史记录不能重复标记完成。
+
+## v0.8.0 审计修复接口
+
+- `POST /auth/reauth/code` 向当前已验证邮箱发送验证码；`POST /auth/reauth` 接受当前 `password` 或六位 `code`，在当前会话建立五分钟的敏感操作验证。
+- `PUT /auth/profile` 的新邮箱写入 `pendingEmail`，经原有 `/auth/verify` 或 `/auth/verify-code` 验证后才切换登录邮箱；`forgot` 和两种密码重置入口只接受已验证的当前邮箱。
+- `GET /admin/webhooks?contestId=...` 返回不含 secret 的列表；`PUT /admin/webhooks/:id` 接受 `version`、`enabled`、`rotateSecret`、`revokePrivate`；`DELETE` 同样要求版本。新 secret 只在创建或轮换响应返回。
+- API Token 返回 `createdBy`；签发人失去有效 SYSTEM 授权后 Token 不可使用，Token 到期时间不晚于签发人的当前授权到期时间。升级前无法追溯签发人的 Token 自动撤销。私网 Webhook 的审批人须持续具有 SYSTEM 授权，关闭活动外部联动后停止投递。
+- `GET /finance/:id/reconciliation` 提供历史疑似重复到账与账簿；完成必要冲正后，通过 `POST` 同路径提交 `reason` 完成对账。仅系统管理员可通过 `POST /finance/:id/attribution` 为缺失来源的历史单据登记 `kind`（vouchers/refunds/invoices）、`recordId`、`createdBy` 和核实说明 `reason`，不能改写已有归属。
+- 排考上限 200 份报名；生成上限 100 份，每活动最多 200 个待处理编译任务。批量排考、生成、ZIP、平台导出、认证、上传、邀请、通知及任务重试使用自身状态机处理重试，排除在通用幂等缓存之外。其余已缓存写请求在重放前重新鉴权。
+- 外部查询契约声明 `contestId` 和 `cursor`；finance 与 integration 注册列表要求 contestId。令牌为不透明随机值，限流返回真实 HTTP 429。
+- VIEW 只允许活动概要；报名个人资料与附件按业务权限或参与关系授权。审计列表及总数使用同一权限过滤，财务、准考证和系统配置事件分别受相应权限约束。

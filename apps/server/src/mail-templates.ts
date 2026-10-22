@@ -164,7 +164,13 @@ export class MailTemplateService {
         create: { key, ...data },
         update: { ...data, version: { increment: 1 } },
       });
-      await audit(tx, u.id, 'MAIL_TEMPLATE_SAVE', key);
+      await audit(tx, u.id, 'MAIL_TEMPLATE_SAVE', key, {
+        subjectHash: (await import('./security.js')).sha(data.subject),
+        textHash: (await import('./security.js')).sha(data.text),
+        htmlHash: (await import('./security.js')).sha(data.html),
+        textLength: data.text.length,
+        htmlLength: data.html.length,
+      });
       return result;
     });
   }

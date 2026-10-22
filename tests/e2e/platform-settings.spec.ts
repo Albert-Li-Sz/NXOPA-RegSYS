@@ -111,7 +111,7 @@ test('activity administrators export qualified entries after registration withou
     data: { permissions: ['VIEW'] },
   });
   await page.reload();
-  await expect(page.getByRole('tab', { name: '报名管理', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '报名管理', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '导出平台导入文件' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '导出平台导入包' })).toHaveCount(0);
 });

@@ -18,6 +18,7 @@ for (const [running, restartFails] of [
       await mkdir(path.join(root, 'bin'));
       for (const name of ['backup.sh', 'compose-lib.sh'])
         await cp(new URL(`../scripts/${name}`, import.meta.url), path.join(root, 'scripts', name));
+      await writeFile(path.join(root, 'compose.yaml'), 'services: {}\n');
       await writeFile(path.join(root, '.env'), 'STORAGE_MODE=LOCAL\n');
       await writeFile(
         path.join(root, 'bin/docker'),

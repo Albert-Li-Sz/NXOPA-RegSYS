@@ -112,7 +112,11 @@ async function file(e: Event, key: string) {
             :disabled="disabled"
           />
           <template v-else
-            ><a v-if="answers[f.key]" :href="`/api/v1/files/${answers[f.key]}`" target="_blank"
+            ><a
+              v-if="answers[f.key]"
+              :href="`/api/v1/files/${answers[f.key]}`"
+              target="_blank"
+              rel="noopener"
               >查看已上传文件</a
             ><input
               :id="`${prefix || scope}-${f.key}`"

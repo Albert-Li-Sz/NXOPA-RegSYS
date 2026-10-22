@@ -64,6 +64,16 @@ export async function ensurePermanentAdministrator(
 }
 export async function revokeIssuedAuthorizationInvitations(tx: Tx, userId: string) {
   const authority = await effectiveAuthorization(userId, tx);
+  if (!authority.isSystemAdmin) {
+    await tx.apiToken.updateMany({
+      where: { createdBy: userId, revoked: false },
+      data: { revoked: true },
+    });
+    await tx.webhook.updateMany({
+      where: { privateApprovedBy: userId },
+      data: { enabled: false, privateApprovedBy: null, version: { increment: 1 } },
+    });
+  }
   const kinds = !authority.isAdmin
     ? ['ACCOUNT', 'SYSTEM_ADMIN', 'SENIOR_ADMIN', 'CONTEST_ADMIN', 'COACH_ROLE']
     : !authority.isSystemAdmin
@@ -75,6 +85,21 @@ export async function revokeIssuedAuthorizationInvitations(tx: Tx, userId: strin
       data: { revoked: true },
     });
 }
+export async function revokeRecipientInvitations(
+  tx: Tx,
+  userId: string,
+  extra: Record<string, unknown> = {},
+) {
+  const account = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+  await tx.invitation.updateMany({
+    where: {
+      ...extra,
+      OR: [{ targetUserId: userId }, { targetEmail: account.email.toLowerCase() }],
+      acceptedBy: null,
+    },
+    data: { revoked: true },
+  });
+}
 export class AuthorizationService {
   async resign(u: Principal, id: string) {
     return db.$transaction(async (tx) => {
@@ -84,9 +109,26 @@ export class AuthorizationService {
       });
       if (!grant) throw new ForbiddenException();
       if (grant.level === 'SYSTEM' && !grant.revokedAt)
-        await ensurePermanentAdministrator(tx, grant.id);
-      await tx.adminGrant.update({ where: { id }, data: { revokedAt: new Date() } });
+        await ensurePermanentAdministrator(tx, undefined, grant.userId);
+      await tx.adminGrant.updateMany({
+        where: {
+          userId: grant.userId,
+          level: grant.level,
+          contestId: grant.contestId,
+          revokedAt: null,
+        },
+        data: { revokedAt: new Date() },
+      });
       await tx.user.update({ where: { id: u.id }, data: { version: { increment: 1 } } });
+      await revokeRecipientInvitations(tx, u.id, {
+        kind:
+          grant.level === 'SYSTEM'
+            ? 'SYSTEM_ADMIN'
+            : grant.level === 'SENIOR'
+              ? 'SENIOR_ADMIN'
+              : 'CONTEST_ADMIN',
+        ...(grant.contestId ? { contestId: grant.contestId } : {}),
+      });
       await revokeIssuedAuthorizationInvitations(tx, u.id);
       await audit(tx, u.id, 'ADMIN_GRANT_RESIGN', id);
       return { ok: true };
@@ -125,6 +167,17 @@ export class AuthorizationService {
       if (target.deactivatedAt || target.bannedAt)
         throw new BadRequestException('已停用或封禁账号不能接受授权');
       if (b.contestId) await tx.contest.findUniqueOrThrow({ where: { id: b.contestId } });
+      if (
+        await tx.adminGrant.findFirst({
+          where: {
+            userId: b.userId,
+            level: b.level,
+            contestId: b.contestId ?? null,
+            ...activeGrantWhere(),
+          },
+        })
+      )
+        throw new BadRequestException('此账号已有同一范围的有效授权，请先撤销原授权');
       const result = await tx.adminGrant.create({
         data: {
           userId: b.userId,
@@ -160,23 +213,25 @@ export class AuthorizationService {
       if (!actor.isAdmin || (grant.level !== 'CONTEST' && !actor.isSystemAdmin))
         throw new ForbiddenException();
       if (grant.level === 'SYSTEM' && !grant.revokedAt)
-        await ensurePermanentAdministrator(tx, grant.id);
-      await tx.adminGrant.update({ where: { id }, data: { revokedAt: new Date() } });
-      await tx.user.update({ where: { id: grant.userId }, data: { version: { increment: 1 } } });
-      await tx.invitation.updateMany({
+        await ensurePermanentAdministrator(tx, undefined, grant.userId);
+      await tx.adminGrant.updateMany({
         where: {
-          targetUserId: grant.userId,
-          acceptedBy: null,
-          revoked: false,
-          kind:
-            grant.level === 'SYSTEM'
-              ? 'SYSTEM_ADMIN'
-              : grant.level === 'SENIOR'
-                ? 'SENIOR_ADMIN'
-                : 'CONTEST_ADMIN',
-          ...(grant.contestId ? { contestId: grant.contestId } : {}),
+          userId: grant.userId,
+          level: grant.level,
+          contestId: grant.contestId,
+          revokedAt: null,
         },
-        data: { revoked: true },
+        data: { revokedAt: new Date() },
+      });
+      await tx.user.update({ where: { id: grant.userId }, data: { version: { increment: 1 } } });
+      await revokeRecipientInvitations(tx, grant.userId, {
+        kind:
+          grant.level === 'SYSTEM'
+            ? 'SYSTEM_ADMIN'
+            : grant.level === 'SENIOR'
+              ? 'SENIOR_ADMIN'
+              : 'CONTEST_ADMIN',
+        ...(grant.contestId ? { contestId: grant.contestId } : {}),
       });
       await revokeIssuedAuthorizationInvitations(tx, grant.userId);
       await audit(tx, u.id, 'ADMIN_GRANT_REVOKE', id);

@@ -10,6 +10,7 @@ import { db, audit, json, lock, type Tx } from './db.js';
 import { requireManager, checkVersion } from './security.js';
 import { modulesFor } from './workflow.js';
 import { examSiteOrder } from './exam-sites.js';
+import { rateLimit } from './auth.js';
 async function contest(tx: Tx, u: Principal, id: string) {
   requireManager(u, id, 'ADMISSIONS');
   const c = await tx.contest.findUniqueOrThrow({
@@ -61,10 +62,13 @@ export class SeatingService {
     };
   }
   async save(u: Principal, id: string, roomId: string | undefined, body: unknown) {
+    requireManager(u, id, 'ADMISSIONS');
     const b = roomInput.parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, `seating:${id}`);
       const c = await contest(tx, u, id);
+      if (!roomId && (await tx.examRoom.count({ where: { contestId: id } })) >= 200)
+        throw new BadRequestException('每个活动最多设置 200 个考场');
       const old = roomId ? await tx.examRoom.findUniqueOrThrow({ where: { id: roomId } }) : null;
       const examSiteId = b.examSiteId === undefined ? (old?.examSiteId ?? null) : b.examSiteId;
       if (examSiteId && !c.examSites.some((s) => s.id === examSiteId))
@@ -106,6 +110,7 @@ export class SeatingService {
     });
   }
   async remove(u: Principal, id: string, roomId: string, body: unknown) {
+    requireManager(u, id, 'ADMISSIONS');
     const { version } = z.object({ version: z.number().int() }).parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, `seating:${id}`);
@@ -122,6 +127,7 @@ export class SeatingService {
     });
   }
   async clear(u: Principal, id: string, body: unknown) {
+    requireManager(u, id, 'ADMISSIONS');
     const b = seatingClearSchema.parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, `seating:${id}`);
@@ -140,8 +146,16 @@ export class SeatingService {
     });
   }
   async plan(u: Principal, id: string, body: unknown, commit = false) {
+    requireManager(u, id, 'ADMISSIONS');
     const b = planInput.parse(body),
       ids = [...new Set(b.registrationIds)].sort();
+    await rateLimit(`seating:${u.id}:${id}`, 20);
+    await rateLimit(`seating-global:${u.id}`, 100);
+    if (
+      commit &&
+      (await db.registration.count({ where: { id: { in: ids }, contestId: id } })) !== ids.length
+    )
+      throw new BadRequestException('报名不存在或不属于此活动');
     return db.$transaction(
       async (tx) => {
         if (commit) {
@@ -154,24 +168,47 @@ export class SeatingService {
         if (commit) checkVersion(c.seatingVersion, b.seatingVersion);
         const registrations = await tx.registration.findMany({
           where: { id: { in: ids }, contestId: id },
-          include: {
-            people: { where: { active: true }, orderBy: [{ captain: 'desc' }, { id: 'asc' }] },
+          select: {
+            id: true,
+            number: true,
+            version: true,
+            teamName: true,
+            examSiteId: true,
+            eligible: true,
+            people: {
+              where: { active: true },
+              select: { id: true, name: true, captain: true },
+              orderBy: [{ captain: 'desc' }, { id: 'asc' }],
+            },
           },
           orderBy: [{ number: 'asc' }, { id: 'asc' }],
         });
         if (registrations.length !== ids.length)
           throw new BadRequestException('报名不存在或不属于此活动');
+        if (commit) {
+          const versions = await tx.registration.findMany({
+            where: { id: { in: ids }, contestId: id },
+            select: { id: true, version: true },
+          });
+          if (
+            versions.length !== ids.length ||
+            versions.some((r) => b.registrationVersions![r.id] !== r.version)
+          )
+            throw new ConflictException('报名资料已更新，请重新预览');
+        }
         if (registrations.some((r) => !r.eligible))
           throw new BadRequestException('仅可为已取得参加资格的报名排考');
         if (commit && registrations.some((r) => b.registrationVersions![r.id] !== r.version))
           throw new ConflictException('报名资料已更新，请重新预览');
         const rooms = await tx.examRoom.findMany({
-          where: { contestId: id },
+          where: { contestId: id, enabled: true },
           orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
         });
         const old = await tx.seatAssignment.findMany({
-          where: { registration: { contestId: id } },
+          where: { roomId: { in: rooms.map((r) => r.id) } },
+          take: 30001,
         });
+        if (old.length > 30000) throw new BadRequestException('当前排考规模过大，请按考点分批处理');
         const occupied = new Set(
           old
             .filter((a) => !(b.replace && ids.includes(a.registrationId)))
@@ -187,9 +224,15 @@ export class SeatingService {
           rooms.map((room) => [
             room.id,
             {
-              seats: Array.from({ length: room.capacity }, (_, i) => i + 1).filter(
-                (seat) => !occupied.has(`${room.id}:${seat}`),
-              ),
+              seats: Array.from(
+                {
+                  length: Math.min(
+                    room.capacity,
+                    requestedUnits + old.filter((a) => a.roomId === room.id).length,
+                  ),
+                },
+                (_, i) => i + 1,
+              ).filter((seat) => !occupied.has(`${room.id}:${seat}`)),
               cursor: 0,
             },
           ]),

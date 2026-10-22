@@ -1,6 +1,6 @@
 # 南晓开放原子社在线报名系统结构设计
 
-采用 Vue 官网与 NestJS 模块化单体，API 和 Worker 分开运行。PostgreSQL 维护报名、财务与授权的权威数据，远端平台、邮件和 PDF 通过任务执行。完整业务约定见 [项目计划](../PROJECT_PLAN.md)。
+采用 Vue 官网与 NestJS 模块化单体，API 和 Worker 分开运行。PostgreSQL 维护报名、财务与授权的权威数据，平台采用本地文件导出，邮件、签名 Webhook 和 PDF 通过任务执行。完整业务约定见 [项目计划](../PROJECT_PLAN.md)。
 
 ## 系统总览
 
@@ -129,9 +129,9 @@ flowchart TD
     Correct --> Fill
     Eligible -->|审核拒绝| Rejected[拒绝并通知]
     Rejected -->|已有收款| Refund[申请并记录线下退款]
-    Ready --> Sync[创建评测账号并确认参赛资格]
+    Ready --> Export[生成平台导入文件，由管理员导入]
     Ready --> Admission[按发放条件生成准考证]
-    Sync --> Retry[失败记录与重试]
+    Export --> Manual[远端账号与资格由评测管理员核对]
 ```
 
 审核拒绝和退回补正可发生在对应审核节点，流程图的统一资格节点只作集中展示。图中财务“核账”要求确认真实到账；上传凭证不能直接使报名合格。平台文件导出失败保留本站资格，准考证发布仍遵循竞赛规则。
@@ -181,6 +181,8 @@ Contest_Center/
 
 ## 部署与扩展
 
-默认安装部署一套 Compose，内部官方 Caddy 提供 `127.0.0.1:8080` HTTP 统一入口，用户自己的反向代理负责公网 HTTPS 并将整个站点转发到该入口。旧根目录部署仍使用公网 Caddy。PostgreSQL、Redis、Caddy 分别直接使用官方镜像；前端、API、Worker 与 LaTeX Runner 独立构建和运行。内部 Caddy 在 `edge` 网络代理前端，在 `app` 网络代理 API；数据库和 Redis 位于仅后端可加入的 `data` 私有网络。API 与 Worker 经 `app` 访问 SMTP 和评测平台。前端不持有数据库或加密凭据，不挂载私有附件。Worker 与 LaTeX Runner 共享独立任务卷，Runner 使用无网络配置。
+默认安装部署一套 Compose，内部官方 Caddy 提供 `127.0.0.1:8080` HTTP 统一入口，用户自己的反向代理负责公网 HTTPS 并将整个站点转发到该入口。旧根目录部署仍使用公网 Caddy。PostgreSQL、Redis、Caddy 分别直接使用官方镜像；前端、API、Worker 与 LaTeX Runner 独立构建和运行。内部 Caddy 在 `edge` 网络代理前端，在 `app` 网络代理 API；数据库和 Redis 位于仅后端可加入的 `data` 私有网络。API 与 Worker 经 `app` 访问 SMTP、对象存储和已批准的 Webhook，不连接评测平台。前端不持有数据库或加密凭据，不挂载私有附件。Worker 与 LaTeX Runner 共享独立任务卷，Runner 使用无网络配置。
 
-后续增加在线支付只新增支付适配器与回调对账，继续使用原有账簿和资格规则；增加竞赛平台只新增 Connector 或采用联合注册协议；机器人读取同一套查询 API。需要增加服务器时，先扩展无状态 API 与 Worker，文件存储已经通过统一接口支持本地、MinIO 和第三方 S3，既有对象保留原配置引用，并支持迁移。
+后续增加在线支付只新增支付适配器与回调对账，继续使用原有账簿和资格规则；增加竞赛平台只新增文件导出格式或采用只读联合注册协议；机器人读取同一套查询 API。需要增加服务器时，先扩展无状态 API 与 Worker，文件存储已经通过统一接口支持本地、MinIO 和第三方 S3，既有对象保留原配置引用，并支持迁移。
+
+PDF 编译使用独立 BullMQ 队列，串行进入单线程 Runner；邮件和对象任务保留独立并发槽位。Worker 启动及定时核对编译目录租约，Runner 拒绝过期请求并在完成后删除源输入。统一 retention 清理预览、过期凭据、任务与 Outbox，并对存储引用做周期核对。

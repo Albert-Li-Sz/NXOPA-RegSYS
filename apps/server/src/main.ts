@@ -99,16 +99,29 @@ const app = await NestFactory.create<NestExpressApplication>(AppModule, {
 });
 app.useBodyParser('json', { limit: '5mb' });
 // The production API is private and receives one hop from Caddy.
-if (config.production) app.getHttpAdapter().getInstance().set('trust proxy', 1);
+if (config.production)
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .set(
+      'trust proxy',
+      process.env.API_TRUSTED_PROXY_CIDRS?.split(',')
+        .map((s) => s.trim())
+        .filter(Boolean) ?? 1,
+    );
 app.use(cookieParser());
 app.use(async (req: AuthRequest, res: import('express').Response, next: (e?: unknown) => void) => {
   try {
-    if (req.path.startsWith('/api/v1/') && !req.path.endsWith('/health'))
+    const pathname = req.path.toLowerCase().replace(/\/+$/, '');
+    if (pathname.startsWith('/api/') && !['/api/v1/live', '/api/v1/health'].includes(pathname))
       await rateLimit(
         `http-ip:${req.ip}:${['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? 'read' : 'write'}`,
         ['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? 3000 : 600,
       );
-    await attachPrincipal(req);
+    if (pathname === '/api/v1/health') {
+      await rateLimit(`health:${req.ip}`, 120);
+    }
+    if (!['/api/v1/live', '/api/v1/health'].includes(pathname)) await attachPrincipal(req);
     await checkCsrf(req);
     if (req.principal)
       await rateLimit(

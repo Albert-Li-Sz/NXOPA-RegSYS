@@ -68,6 +68,8 @@ test('multiple trusted origins take effect immediately and retain origin, role a
     trustedOrigins: [internal + '/', alternate.toUpperCase() + ':443/', alternate],
   });
   expect(saved.trustedOrigins).toEqual([internal, alternate]);
+  await admin.login('admin');
+  await alice.login('alice');
   expect((await admin.raw('/api/v1/admin/site', 'PUT', site)).status).toBe(409);
   for (const origin of [internal, alternate, publicUrl]) {
     expect((await originWrite(origin)).status).toBe(200);
@@ -162,6 +164,7 @@ test('site origins require edit mode, cancel cleanly, and persist after save and
     publicUrl: originalSite.publicUrl,
     trustedOrigins: [],
   });
+  await admin.login('admin');
   await login(page);
   await page.goto('/admin?tab=site');
   await expect(page).toHaveTitle(/南晓开放原子社/);

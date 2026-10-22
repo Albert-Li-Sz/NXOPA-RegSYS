@@ -215,7 +215,15 @@ test('finance applications belong to applicants while administrators process the
   await expect(page.getByRole('link', { name: '活动财务记录', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /^(申请退款|申请发票)$/ })).toHaveCount(0);
   const payment = account.ledger.find((row: any) => row.kind === 'PAYMENT');
-  await admin.api(`/finance/ledger/${payment.id}/reverse`, 'POST', { reason: '回归测试冲正' });
+  const reviewer = await new Client().login('bob');
+  const reviewerGrant = await admin.api('/admin/grants', 'POST', {
+    userId: reviewer.user.id,
+    level: 'CONTEST',
+    contestId: c.id,
+    permissions: ['FINANCE'],
+  });
+  await reviewer.api(`/finance/ledger/${payment.id}/reverse`, 'POST', { reason: '回归测试冲正' });
+  await admin.api(`/admin/grants/${reviewerGrant.id}`, 'DELETE');
   await page.getByRole('button', { name: '刷新', exact: true }).click();
   await expect(page.getByText('已冲正', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '冲正', exact: true })).toHaveCount(0);
@@ -428,33 +436,19 @@ test('view-only management grants do not expose applicant actions or contest cre
       },
     });
     expect((await bob.raw(`/api/v1/admissions/${document.id}/download`)).status).toBe(403);
-    const detail = await bob.api(`/registrations/${r.id}`);
-    for (const key of [
-      'edit',
-      'submit',
-      'withdraw',
-      'review',
-      'amendReview',
-      'requestFinance',
-      'credentials',
-      'delete',
-    ])
-      expect(detail.actions[key]).toBe(false);
+    expect((await bob.raw(`/api/v1/registrations/${r.id}`)).status).toBe(403);
     expect((await bob.raw(`/api/v1/integrations/registrations/${r.id}/credentials`)).status).toBe(
       404,
     );
     await login(page, 'bob');
     await page.goto(`/registrations/${r.id}?tab=accounts`);
     await expect(
-      page.getByText('比赛账号由主办方导入评测平台后另行发放。', { exact: true }),
+      page.getByRole('alert').filter({ hasText: '没有此报名的访问权限' }).first(),
     ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: '查看获授权的比赛账号', exact: true }),
-    ).toHaveCount(0);
-    await page.getByRole('tab', { name: '报名资料', exact: true }).click();
     await expect(
       page.getByRole('button', { name: /^(编辑报名资料|提交报名|审核报名|修改审核|删除报名)$/ }),
     ).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: '财务', exact: true })).toHaveCount(0);
   } finally {
     await db.admissionDocument.deleteMany({ where: { registrationId: r.id } });
     await admin.api(`/admin/grants/${grant.id}`, 'DELETE');

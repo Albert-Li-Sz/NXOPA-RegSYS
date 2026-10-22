@@ -14,6 +14,7 @@ proxy_mode=gateway
 platform_override=""
 proxy_platform_override=""
 proxy_override=""
+active_proxy_platform_override=""
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 
@@ -59,7 +60,7 @@ set_env_value() {
 use_saved_environment() {
   unset INSTALL_MODE IMAGE_TAG IMAGE_PREFIX COMPOSE_PROJECT_NAME PUBLIC_URL SITE_ADDRESS \
     HTTP_PORT HTTPS_PORT WEB_PORT API_PORT GATEWAY_PORT REVERSE_PROXY_MODE POSTGRES_PASSWORD ENCRYPTION_KEY \
-    API_BIND_ADDRESS WEB_BIND_ADDRESS GATEWAY_BIND_ADDRESS MINIO_BIND_ADDRESS \
+    API_BIND_ADDRESS WEB_BIND_ADDRESS GATEWAY_BIND_ADDRESS MINIO_BIND_ADDRESS TRUSTED_PROXY_CIDRS API_TRUSTED_PROXY_CIDRS \
     STORAGE_MODE MINIO_ROOT_USER MINIO_ROOT_PASSWORD MINIO_CONSOLE_PORT S3_ENDPOINT S3_REGION S3_BUCKET S3_PREFIX S3_ACCESS_KEY S3_SECRET_KEY S3_FORCE_PATH_STYLE
 }
 
@@ -153,7 +154,8 @@ compose() {
     compose_args+=(-f "$install_dir/compose.images.yaml")
     # Older bundles may leave compose.digest.yaml behind. Always use version tags.
   fi
-  if [[ -n "$proxy_override" ]]; then compose_args+=(-f "$proxy_override" -f "$proxy_platform_override"); fi
+  if [[ -n "$proxy_override" ]]; then compose_args+=(-f "$proxy_override"); fi
+  if [[ -n "$active_proxy_platform_override" ]]; then compose_args+=(-f "$active_proxy_platform_override"); fi
   if [[ "${1:-}" == pull ]]; then compose_args+=(--parallel 1); fi
   docker compose "${compose_args[@]}" "$@"
 }
@@ -233,9 +235,11 @@ require_config() {
   case "$proxy_mode" in
     gateway) proxy_override="$install_dir/compose.gateway.yaml" ;;
     caddy) proxy_override="$install_dir/compose.caddy.yaml" ;;
-    external) proxy_override="" ;;
+    external) proxy_override="$install_dir/compose.external.yaml" ;;
     *) fail 'REVERSE_PROXY_MODE 只能为 gateway、external 或 caddy。' ;;
   esac
+  active_proxy_platform_override="$proxy_platform_override"
+  if [[ "$proxy_mode" == external ]]; then active_proxy_platform_override=""; fi
   normalize_private_ports
   compose config --quiet
 }
@@ -254,7 +258,7 @@ backup() {
   CONTEST_COMPOSE_FILE="$install_dir/compose.yaml" CONTEST_ENV_FILE="$install_env" \
     CONTEST_COMPOSE_OVERRIDE="$override" CONTEST_COMPOSE_PROXY="$proxy_override" \
     CONTEST_COMPOSE_PLATFORM="$platform_override" \
-    CONTEST_COMPOSE_PROXY_PLATFORM="${proxy_override:+$proxy_platform_override}" \
+    CONTEST_COMPOSE_PROXY_PLATFORM="$active_proxy_platform_override" \
     bash "$repo_root/scripts/backup.sh" "$destination"
 }
 

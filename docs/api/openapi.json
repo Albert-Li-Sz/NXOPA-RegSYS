@@ -76,6 +76,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -172,6 +175,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -355,6 +361,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "按创建时间与 ID 降序分页，合并邮件任务和未派发事件。必须有对应账号、报名、财务或工单资源的访问权限；其他收件人邮箱保持脱敏，重发操作独立校验。旧调用最多返回 200 条。"
@@ -463,6 +472,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -561,6 +573,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -659,6 +674,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -738,6 +756,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -834,6 +855,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -1000,6 +1024,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -1166,6 +1193,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
@@ -1256,6 +1286,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -1422,6 +1455,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
@@ -1512,6 +1548,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -1601,6 +1640,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -1706,6 +1748,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -1858,6 +1903,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -1993,6 +2041,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -2100,6 +2151,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -2207,6 +2261,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -2312,6 +2369,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -2408,6 +2468,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -2555,6 +2618,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -2634,6 +2700,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -2732,6 +2801,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -2749,6 +2821,229 @@
                 "required": [
                   "code"
                 ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/reauth/code": {
+      "post": {
+        "operationId": "ApiController_reauthenticationCode",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "cookie": []
+          },
+          {
+            "hostCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/reauth": {
+      "post": {
+        "operationId": "ApiController_reauthenticate",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "cookie": []
+          },
+          {
+            "hostCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^\\d{6}$"
+                  }
+                },
                 "additionalProperties": false
               }
             }
@@ -2957,6 +3252,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -3055,6 +3353,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -3162,6 +3463,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -3268,6 +3572,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -3378,6 +3685,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -3484,6 +3794,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -3798,6 +4111,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -3971,6 +4287,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "按账号、报名关联或 FILES 管理权限筛选附件。支持分页与名称搜索，权限条件同时作用于列表和总数。旧调用返回数组，个人附件旧调用最多 500 条；分页可读取更早记录。"
@@ -4068,6 +4387,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -4194,6 +4516,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -4281,6 +4606,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -4388,6 +4716,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -4659,6 +4990,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -4830,6 +5164,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -5059,6 +5396,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -5155,6 +5495,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -5361,6 +5704,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -5515,6 +5861,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -5611,6 +5960,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -5725,6 +6077,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -5832,6 +6187,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -5954,8 +6312,86 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
+      }
+    },
+    "/api/v1/live": {
+      "get": {
+        "operationId": "ApiController_live",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "live"
+        ],
+        "security": []
       }
     },
     "/api/v1/health": {
@@ -6183,6 +6619,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -6279,6 +6718,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -6838,6 +7280,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -6979,6 +7424,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "仅返回当前账号尚未过期的会话，默认每页 20 条，可选择 20、50、100 条。显式传入 page 或 pageSize 返回分页结果；旧调用返回最多 20 条的数组。"
@@ -7087,6 +7535,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -7185,6 +7636,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -7588,6 +8042,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -7862,6 +8319,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -8062,6 +8522,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -8202,6 +8665,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "仅系统管理员或高级管理员可永久删除无报名、无财务账户的活动。必须提供当前 version；草稿同样阻止删除。保留上传者私有附件和独立工单，撤销活动授权并清理配置、考场及平台关联。",
@@ -8314,6 +8780,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -8419,6 +8888,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -8591,6 +9063,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -8761,6 +9236,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -8896,6 +9374,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. Rooms must belong to the registration selected exam site. Registrations without a site must be updated before allocation when exam sites are configured.",
@@ -8908,7 +9389,7 @@
                 "properties": {
                   "registrationIds": {
                     "minItems": 1,
-                    "maxItems": 10000,
+                    "maxItems": 200,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -9092,6 +9573,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. Rooms must belong to the registration selected exam site. Registrations without a site must be updated before allocation when exam sites are configured.",
@@ -9104,7 +9588,7 @@
                 "properties": {
                   "registrationIds": {
                     "minItems": 1,
-                    "maxItems": 10000,
+                    "maxItems": 200,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -9281,6 +9765,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -9396,6 +9883,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "指定活动需 INTEGRATIONS 权限；不指定活动仅系统管理员与高级管理员可查看全部待办，包含已删除活动。"
@@ -9504,6 +9994,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -9583,6 +10076,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. Account detail returns policy for historical fees/refunds and invoicePolicy for current invoice types, enabled status and required fields."
@@ -9673,9 +10169,385 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "Independent settlement account. Owners can access their own accounts; listing by contestId requires FINANCE permission unless role=mine. Source registration may be permanently deleted. Account detail returns policy for historical fees/refunds and invoicePolicy for current invoice types, enabled status and required fields."
+      }
+    },
+    "/api/v1/finance/{id}/attribution": {
+      "post": {
+        "operationId": "ApiController_attributeFinance",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "finance"
+        ],
+        "security": [
+          {
+            "cookie": []
+          },
+          {
+            "hostCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "vouchers",
+                      "refunds",
+                      "invoices"
+                    ]
+                  },
+                  "recordId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "kind",
+                  "recordId",
+                  "createdBy",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/finance/{id}/reconciliation": {
+      "get": {
+        "operationId": "ApiController_reconciliation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "finance"
+        ],
+        "security": [
+          {
+            "cookie": []
+          },
+          {
+            "hostCookie": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "ApiController_reconcile",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "finance"
+        ],
+        "security": [
+          {
+            "cookie": []
+          },
+          {
+            "hostCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/registrations/{id}": {
@@ -9788,6 +10660,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "Permanently removes registration data, releases seats and invalidates admissions. Settlement data survives in an independent finance account; cancellation does not automatically refund. Creator may cancel; scoped registration managers may delete with a reason.",
@@ -9904,6 +10779,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -10009,6 +10887,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -10195,6 +11076,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
@@ -10292,6 +11176,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -10424,6 +11311,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "Scoped REGISTRATIONS permission required. Returns all submitted IDs matching the current list filters in review order, independent of page size; defaults to pending review."
@@ -10515,6 +11405,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -10605,6 +11498,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "REGISTRATIONS permission required. CSV contains one active member per row, separate columns for every current or historical PERSON/TEAM/REGISTRATION/COACH field, and formula-safe escaped cells. FINANCE permission adds yuan totals on the first member row only. Maximum 10000 members, 500 columns and 25 MB per export; export filters and counts are audited."
@@ -10789,6 +11685,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
@@ -10897,6 +11796,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -11025,6 +11927,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -11179,6 +12084,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "Permanently removes registration data, releases seats and invalidates admissions. Settlement data survives in an independent finance account; cancellation does not automatically refund. Creator may cancel; scoped registration managers may delete with a reason.",
@@ -11315,6 +12223,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -11443,6 +12354,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -11569,6 +12483,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -11679,6 +12596,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "Preview an invitation for the authenticated recipient. Opening this URL never changes permissions."
@@ -11786,6 +12706,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "Explicitly accept a valid invitation as its verified recipient. Single-use, transactional and safe to retry. Replaying an accepted invitation never restores revoked permissions.",
@@ -11912,6 +12835,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -12027,6 +12953,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -12161,6 +13090,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -12303,6 +13235,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -12440,6 +13375,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -12592,6 +13530,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "FINANCE permission required. Confirmation cannot change the declared amount; optional amountCents must match it. A nonempty channel/reference pair is required and cannot be credited twice. Owners and proof uploaders cannot confirm their own vouchers.",
@@ -12735,6 +13676,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -12861,6 +13805,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -12994,6 +13941,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -13018,6 +13968,10 @@
                     "type": "string",
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 3000
                   }
                 },
                 "required": [
@@ -13133,6 +14087,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -13335,6 +14292,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -13533,6 +14493,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
@@ -13630,6 +14593,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -13764,6 +14730,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -13871,6 +14840,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -13993,6 +14965,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -14089,6 +15064,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -14220,6 +15198,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -14342,6 +15323,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -14524,6 +15508,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -14603,6 +15590,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -14699,6 +15689,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -14821,6 +15814,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -14917,6 +15913,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -15006,6 +16005,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -15111,6 +16113,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Same registration/platform keeps encrypted stable credentials. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay.",
@@ -15323,6 +16328,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
@@ -15431,6 +16439,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -15510,6 +16521,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -15537,7 +16551,31 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "Created; secret is returned only once",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "token"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "token": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation failed",
@@ -15606,6 +16644,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -15761,6 +16802,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -15790,6 +16834,136 @@
         ],
         "responses": {
           "201": {
+            "description": "Created; secret is returned only once",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "secret"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "secret": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "cookie": []
+          },
+          {
+            "hostCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contestId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "allowPrivate": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "url",
+                  "allowPrivate"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "ApiController_webhooks",
+        "parameters": [],
+        "responses": {
+          "200": {
             "description": ""
           },
           "400": {
@@ -15859,6 +17033,119 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/webhooks/{id}": {
+      "put": {
+        "operationId": "ApiController_changeWebhook",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -15868,23 +17155,152 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "contestId": {
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
                   },
-                  "url": {
-                    "type": "string",
-                    "format": "uri"
+                  "enabled": {
+                    "type": "boolean"
                   },
-                  "allowPrivate": {
-                    "default": false,
+                  "rotateSecret": {
+                    "type": "boolean"
+                  },
+                  "revokePrivate": {
                     "type": "boolean"
                   }
                 },
                 "required": [
-                  "url",
-                  "allowPrivate"
+                  "version"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "ApiController_deleteWebhook",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Same actor, method, URL and body replay the encrypted saved result."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "cookie": []
+          },
+          {
+            "hostCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "version"
                 ],
                 "additionalProperties": false
               }
@@ -16055,6 +17471,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
@@ -16154,6 +17573,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "Positive role grants generate a targeted invitation URL without granting permissions. The verified recipient must POST acceptance. Negative grants revoke permissions and pending invitations immediately. Choose exactly one of contestId, isAdmin or isCoach.",
@@ -16356,6 +17778,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
@@ -16460,6 +17885,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "Create an account or role invitation for an existing user or specified email. Raw invitation URLs are returned only at creation; list and audit responses contain no token.",
@@ -16557,6 +17985,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "System administrators only. Passwords are encrypted, never returned and preserved when left blank. Database settings override environment defaults for subsequent worker jobs."
@@ -16661,6 +18092,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "System administrators only. Passwords are encrypted, never returned and preserved when left blank. Database settings override environment defaults for subsequent worker jobs.",
@@ -16770,6 +18204,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -16916,6 +18353,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "Queue a persistent test email to the current administrator. Poll the returned job ID at /api/v1/admin/mail/tests/{id}. Never accepts an arbitrary recipient.",
@@ -17027,6 +18467,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -17106,6 +18549,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       },
@@ -17202,6 +18648,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "requestBody": {
@@ -17378,6 +18827,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ],
         "description": "显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。"
@@ -17458,6 +18910,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -17537,6 +18992,9 @@
         "security": [
           {
             "cookie": []
+          },
+          {
+            "hostCookie": []
           }
         ]
       }
@@ -17623,7 +19081,26 @@
     "/api/automation/v1/registrations": {
       "get": {
         "operationId": "ExternalController_registrations",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "contestId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -17791,7 +19268,17 @@
     "/api/automation/v1/finance": {
       "get": {
         "operationId": "ExternalController_finance",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "contestId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -18038,7 +19525,26 @@
     "/api/integration/v1/registrations": {
       "get": {
         "operationId": "ExternalController_eligible",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "contestId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Eligible registrations with field permissions applied",
@@ -18142,8 +19648,14 @@
       },
       "bearer": {
         "scheme": "bearer",
-        "bearerFormat": "JWT",
+        "bearerFormat": "Opaque",
         "type": "http"
+      },
+      "hostCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-cc_session",
+        "description": "HTTPS host-only browser session; cc_session is used only on HTTP entrances"
       }
     },
     "schemas": {
@@ -18791,7 +20303,7 @@
         "properties": {
           "registrationIds": {
             "minItems": 1,
-            "maxItems": 10000,
+            "maxItems": 200,
             "type": "array",
             "items": {
               "type": "string",

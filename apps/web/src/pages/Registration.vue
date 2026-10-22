@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { copyText } from '../copy-text';
 import PaginatedTable from '../components/PaginatedTable.vue';
 import PaginatedList from '../components/PaginatedList.vue';
 import { ref, shallowRef, computed, onMounted, watch } from 'vue';
@@ -266,7 +267,7 @@ async function invite(kind: string) {
   edit.begin();
 }
 async function copy() {
-  await navigator.clipboard.writeText(link.value);
+  await copyText(link.value);
   ElMessage.success('链接已复制');
 }
 async function removeCoach(id: string) {
@@ -882,7 +883,8 @@ async function memberSave(id: string, index: number) {
             ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
           ><el-table-column label="操作" min-width="180"
             ><template #default="{ row }"
-              ><a :href="`/api/v1/files/${row.attachmentId}`" target="_blank">查看凭证</a
+              ><a :href="`/api/v1/files/${row.attachmentId}`" target="_blank" rel="noopener"
+                >查看凭证</a
               ><template
                 v-if="financeReviewer && !ownUser(row.createdBy ?? '') && row.status === 'PENDING'"
                 ><el-button text type="primary" @click="confirmVoucher(row)">核账</el-button
@@ -1113,6 +1115,7 @@ async function memberSave(id: string, index: number) {
                 v-if="row.attachmentId"
                 :href="`/api/v1/files/${row.attachmentId}`"
                 target="_blank"
+                rel="noopener"
                 >下载发票</a
               ><el-button
                 v-if="financeManager && row.status === 'REQUESTED'"
@@ -1180,6 +1183,7 @@ async function memberSave(id: string, index: number) {
                 v-if="row.state === 'RELEASED' || (admissionManager && row.state === 'READY')"
                 :href="`/api/v1/admissions/${row.id}/download`"
                 target="_blank"
+                rel="noopener"
                 >下载 PDF</a
               ></template
             ></el-table-column

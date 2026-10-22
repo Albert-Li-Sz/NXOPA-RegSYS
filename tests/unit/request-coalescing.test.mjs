@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('element-plus', () => ({ ElMessage: { error: vi.fn() } }));
-vi.mock('../../apps/web/src/generated-client', () => ({ setClientCsrf: vi.fn() }));
 import { api } from '../../apps/web/src/api.ts';
 afterEach(() => {
   vi.unstubAllGlobals();

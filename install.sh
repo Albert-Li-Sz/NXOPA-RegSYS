@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
-NXOPA_INSTALLER_VERSION=v0.7.2
+NXOPA_INSTALLER_VERSION=v0.8.0
 
 usage() {
   cat <<'EOF'
@@ -22,9 +22,10 @@ EOF
 }
 github_url() {
   local prefix="${NXOPA_GITHUB_PREFIX:-}"
-  if [[ -n "$prefix" && ! "$prefix" =~ ^https?://[A-Za-z0-9._:-]+(/[A-Za-z0-9/_-]*)?/?$ ]]; then
-    echo 'GitHub 加速前缀格式无效，请填写不含账号、查询或片段的 HTTP(S) 前缀。' >&2; return 1
+  if [[ -n "$prefix" && ! "$prefix" =~ ^https://[A-Za-z0-9._:-]+(/[A-Za-z0-9/_-]*)?/?$ ]] && ! [[ "${NXOPA_ALLOW_INSECURE_MIRROR:-}" == 1 && "$prefix" =~ ^http://[A-Za-z0-9._:-]+(/[A-Za-z0-9/_-]*)?/?$ ]]; then
+    echo 'GitHub 加速前缀格式无效，请填写不含账号、查询或片段的 HTTPS 前缀。' >&2; return 1
   fi
+  if [[ "$prefix" == http://* ]]; then echo '警告：已显式允许明文安装镜像，请仅用于受控内网。' >&2; fi
   if [[ -n "$prefix" ]]; then printf '%s/%s\n' "${prefix%/}" "$1"; else printf '%s\n' "$1"; fi
 }
 
@@ -46,14 +47,20 @@ use_versioned_images() {
   done
 }
 
+release_curl() {
+  local protocols='=https'
+  if [[ "${NXOPA_ALLOW_INSECURE_MIRROR:-}" == 1 ]]; then protocols='=http,https'; fi
+  curl --proto "$protocols" --proto-redir "$protocols" "$@"
+}
 fetch_bundle() {
   local tag="$1" output="$2" repository="${NXOPA_REPOSITORY:-Albert-Li-Sz/NXOPA-RegSYS}"
   local base="${NXOPA_RELEASE_BASE_URL:-https://github.com/$repository/releases/download}" name="nxopa-regsys-$tag-install.tar.gz" expected actual entry
   [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '版本标签无效。' >&2; return 1; }
+  if [[ "$base" != https://* && "${NXOPA_ALLOW_INSECURE_MIRROR:-}" != 1 ]]; then echo '发布镜像必须使用 HTTPS；内网测试须显式设置 NXOPA_ALLOW_INSECURE_MIRROR=1。' >&2; return 1; fi
   command -v curl >/dev/null || { echo '缺少 curl。' >&2; return 1; }
   command -v openssl >/dev/null || { echo '缺少 openssl。' >&2; return 1; }
-  curl -fsSL --retry 3 --connect-timeout 15 --max-time 180 "$(github_url "$base/$tag/$name")" -o "$output/$name" || return
-  curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 "$(github_url "$base/$tag/SHA256SUMS")" -o "$output/SHA256SUMS" || return
+  release_curl -fsSL --retry 3 --connect-timeout 15 --max-time 180 "$(github_url "$base/$tag/$name")" -o "$output/$name" || return
+  release_curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 "$(github_url "$base/$tag/SHA256SUMS")" -o "$output/SHA256SUMS" || return
   expected="$(awk -v name="$name" '$2==name {print $1}' "$output/SHA256SUMS")"
   actual="$(openssl dgst -sha256 "$output/$name" | awk '{print $NF}')"
   [[ "$expected" =~ ^[a-f0-9]{64}$ && "$actual" == "$expected" ]] || { echo '安装包 SHA-256 校验失败。' >&2; return 1; }
@@ -119,10 +126,10 @@ installer_env_value() {
 
 latest_tag() {
   local repository="${NXOPA_REPOSITORY:-Albert-Li-Sz/NXOPA-RegSYS}" discovered location
-  discovered="$(curl -fsSL --connect-timeout 10 --max-time 15 "$(github_url "https://api.github.com/repos/$repository/releases/latest")" 2>/dev/null | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"(v[0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' | head -1)" || true
+  discovered="$(release_curl -fsSL --connect-timeout 10 --max-time 15 "$(github_url "https://api.github.com/repos/$repository/releases/latest")" 2>/dev/null | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"(v[0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' | head -1)" || true
   if [[ -n "$discovered" ]]; then printf '%s\n' "$discovered"; return; fi
   # Some release accelerators support github.com but do not proxy the API domain.
-  location="$(curl -fsSLI --connect-timeout 10 --max-time 15 -o /dev/null -w '%{url_effective}' "$(github_url "https://github.com/$repository/releases/latest")" 2>/dev/null)" || return
+  location="$(release_curl -fsSLI --connect-timeout 10 --max-time 15 -o /dev/null -w '%{url_effective}' "$(github_url "https://github.com/$repository/releases/latest")" 2>/dev/null)" || return
   if [[ "$location" =~ /releases/tag/(v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then printf '%s\n' "${BASH_REMATCH[1]}"; fi
 }
 
@@ -294,6 +301,8 @@ interactive_update() {
     local staged
     staged="$(mktemp -d "${TMPDIR:-/tmp}/nxopa-release.XXXXXX")"
     if ! fetch_bundle "$target_tag" "$staged"; then rm -rf "$staged"; fail '新版材料下载失败，原配置与服务保持可用。'; fi
+    tar -czf "$staged/materials-before-update.tgz" -C "$repo_root" install.sh deploy scripts infra
+    export NXOPA_MATERIALS_BACKUP="$staged/materials-before-update.tgz"
     copy_bundle "$staged/nxopa-regsys-$target_tag" "$repo_root"
     # Execute the immutable staged script, rather than overwrite a live Bash input stream.
     export NXOPA_ROOT="$repo_root" NXOPA_UPDATE_TAG="$target_tag" NXOPA_UPDATE_RESUME=1 NXOPA_BACKUP_DIR="$destination" NXOPA_TEMP_STAGE="$staged"
@@ -304,7 +313,8 @@ interactive_update() {
   if [[ "$install_mode" == images ]]; then set_env_value IMAGE_TAG "$target_tag"; fi
   if ! require_config || ! start_services; then
     cp "$previous_config" "$install_env"; chmod 600 "$install_env"; rm -f "$previous_config"
-    fail '更新未完成，原配置已保留。若迁移已执行，降级前请恢复升级前备份。'
+    if [[ -n "${NXOPA_MATERIALS_BACKUP:-}" && -f "$NXOPA_MATERIALS_BACKUP" ]]; then tar -xzf "$NXOPA_MATERIALS_BACKUP" -C "$repo_root"; fi
+    fail '更新未完成，原配置与安装材料已保留。若迁移已执行，降级前请恢复升级前备份。'
   fi
   rm -f "$previous_config"
   printf '更新完成。访问地址：%s\n备份目录：%s\n' "$(env_value PUBLIC_URL)" "$destination"
@@ -358,6 +368,8 @@ main() {
   use_versioned_images "$target_root"
   material_tag="$(awk -F= '$1=="IMAGE_TAG" {print $2; exit}' "$target_root/deploy/.env.example" 2>/dev/null || true)"
   if [[ ! -f "$target_root/deploy/lib.sh" || ( "$material_tag" != "$NXOPA_INSTALLER_VERSION" && "${NXOPA_SKIP_RELEASE_DOWNLOAD:-}" != 1 ) ]]; then
+    [[ "${NXOPA_BOOTSTRAP_REENTERED:-}" != 1 ]] || { echo '发布包版本与安装器不一致，已停止重复下载。' >&2; exit 1; }
+    export NXOPA_BOOTSTRAP_REENTERED=1
     target_root="${NXOPA_ROOT:-${NXOPA_INSTALL_DIR:-/opt/nxopa-regsys}}"
     if [[ -z "${NXOPA_GITHUB_PREFIX+x}" && -z "${NXOPA_RELEASE_BASE_URL:-}" ]]; then
       printf 'GitHub 加速前缀（如 https://gh-proxy.org/，留空直连）: ' >&2
@@ -432,8 +444,8 @@ case "$action" in
     CONTEST_COMPOSE_FILE="$install_dir/compose.yaml" CONTEST_ENV_FILE="$install_env" \
       CONTEST_COMPOSE_OVERRIDE="$override" CONTEST_COMPOSE_PROXY="$proxy_override" \
       CONTEST_COMPOSE_PLATFORM="$platform_override" \
-      CONTEST_COMPOSE_PROXY_PLATFORM="${proxy_override:+$proxy_platform_override}" \
-      bash "$repo_root/scripts/restore.sh" "$(absolute_path "$input")"
+      CONTEST_COMPOSE_PROXY_PLATFORM="$active_proxy_platform_override" \
+      bash "$repo_root/scripts/restore.sh" "$(absolute_path "$input")" "${2:-}"
     ;;
   restore-url)
     url="${1:?请提供 HTTPS 公网地址}"

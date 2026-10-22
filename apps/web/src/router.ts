@@ -55,6 +55,10 @@ export const router = createRouter({
   ],
 });
 router.beforeEach(async (to) => {
+  if (to.path === '/admin/contests/new') {
+    if (!auth.loaded) await loadAuth();
+    if (!auth.user?.isAdmin) return '/contests';
+  }
   if (!operationsSettled()) return false;
   if (!auth.loaded)
     try {

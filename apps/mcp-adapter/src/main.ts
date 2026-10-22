@@ -13,6 +13,11 @@ if (
   throw new Error(
     'CONTEST_CENTER_URL must be an HTTP(S) base URL without credentials, query or fragment',
   );
+if (
+  baseUrl.protocol !== 'https:' &&
+  !['localhost', '127.0.0.1', '[::1]'].includes(baseUrl.hostname)
+)
+  throw new Error('Non-loopback MCP connections require HTTPS');
 const token = process.env.CONTEST_CENTER_TOKEN;
 if (!token) throw new Error('CONTEST_CENTER_TOKEN is required');
 const server = new McpServer({ name: 'contest-center', version: '1.0.0' });
@@ -22,7 +27,17 @@ async function query(path: string) {
     signal: AbortSignal.timeout(15000),
     redirect: 'error',
   });
-  const content = await response.text();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  if (response.body)
+    for await (const chunk of response.body) {
+      length += chunk.length;
+      if (length > 5 * 1024 * 1024) {
+        throw new Error('API response exceeds 5 MB');
+      }
+      chunks.push(chunk);
+    }
+  const content = Buffer.concat(chunks).toString('utf8');
   let result: unknown;
   try {
     result = content ? JSON.parse(content) : null;

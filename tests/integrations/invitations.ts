@@ -313,16 +313,8 @@ try {
   signup.csrf = session.csrf;
   userIds.push(session.user.id);
   assert.equal(session.user.verified, true);
-  // Mailbox changes on existing accounts still require verification before accepting invitations.
-  for (const changed of [`temporary-${email}`, email]) {
-    const current = (await signup.api('/auth/me')).user;
-    await signup.api('/auth/profile', 'PUT', {
-      version: current.version,
-      name: current.name,
-      profile: current.profile,
-      email: changed,
-    });
-  }
+  // Legacy unverified accounts must verify the current mailbox before accepting roles.
+  await db.user.update({ where: { id: signup.user.id }, data: { verified: false } });
   await signup.api(invitationPath(accountInvitation));
   await status(signup, `${invitationPath(accountInvitation)}/accept`, 'POST', {}, 403);
   await status(signup, `${invitationPath(signupCoach)}/accept`, 'POST', {}, 403);

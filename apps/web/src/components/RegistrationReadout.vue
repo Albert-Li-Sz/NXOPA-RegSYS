@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, defineAsyncComponent, onBeforeUnmount } from 'vue';
 import { fieldVisible, policySchema } from '@contest-center/contracts';
-import { label, money } from '../api';
+import { label, money, handleAuthResponse } from '../api';
 import type { Data, FieldDefinition } from '../types';
 import PaginatedList from './PaginatedList.vue';
 const props = defineProps<{ registration: Data }>();
@@ -45,23 +45,27 @@ async function viewFile(id: string) {
   controller = new AbortController();
   open.value = true;
   loading.value = true;
+  const timer = setTimeout(() => controller?.abort(), 120000);
   try {
     const response = await fetch(`/api/v1/files/${id}`, {
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]),
+      signal: controller.signal,
     });
+    handleAuthResponse('/files', response.status);
     if (!response.ok) throw new Error('附件无法访问');
     const blob = await response.blob();
+    const contentType = blob.type.split(';')[0]!.trim();
     const content =
-      blob.type === 'text/plain' && blob.size <= 1024 * 1024 ? await blob.text() : undefined;
+      contentType === 'text/plain' && blob.size <= 1024 * 1024 ? await blob.text() : undefined;
     if (current !== sequence) return;
-    mime.value = blob.type;
-    if (blob.type === 'application/pdf' || blob.type.startsWith('image/'))
+    mime.value = contentType;
+    if (contentType === 'application/pdf' || blob.type.startsWith('image/'))
       preview.value = URL.createObjectURL(blob);
     else if (content !== undefined) text.value = content;
     else text.value = '此文件格式或大小暂不支持预览，请从附件列表下载查看。';
   } catch (e) {
     if (current === sequence) text.value = (e as Error).message;
   } finally {
+    clearTimeout(timer);
     if (current === sequence) loading.value = false;
   }
 }
@@ -218,6 +222,7 @@ onBeforeUnmount(close);
     @closed="close"
     ><div v-loading="loading">
       <PdfPreview v-if="preview && mime === 'application/pdf'" :src="preview" /><img
+        alt="报名附件图片预览"
         v-else-if="preview"
         :src="preview"
         style="max-width: 100%"

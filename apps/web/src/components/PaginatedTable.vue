@@ -12,7 +12,7 @@ const keys = new WeakMap<object, number>();
 let nextKey = 0;
 function rowKey(row: Data) {
   if (row.id !== undefined) return row.id;
-  if (row.unitKey !== undefined) return row.unitKey;
+  if (row.unitKey !== undefined) return `${row.registrationId ?? ''}:${row.unitKey}`;
   if (row.key !== undefined) return `${row.scope ?? ''}:${row.key}`;
   if (!keys.has(row)) keys.set(row, ++nextKey);
   return keys.get(row)!;

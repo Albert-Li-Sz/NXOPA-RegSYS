@@ -7,9 +7,15 @@ on:
         'apps/**',
         'packages/**',
         'scripts/**',
+        'tests/**',
+        'package.json',
+        'install.sh',
+        'deploy/**',
+        'compose.yaml',
+        'infra/**',
         'pnpm-lock.yaml',
         'pnpm-workspace.yaml',
-        '.github/workflows/security.yml',
+        '.github/workflows/**',
       ]
   pull_request:
     paths:
@@ -17,14 +23,34 @@ on:
         'apps/**',
         'packages/**',
         'scripts/**',
+        'tests/**',
+        'package.json',
+        'install.sh',
+        'deploy/**',
+        'compose.yaml',
+        'infra/**',
         'pnpm-lock.yaml',
         'pnpm-workspace.yaml',
-        '.github/workflows/security.yml',
+        '.github/workflows/**',
       ]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.12.0'
+      - run: npm install --global pnpm@11.25.0
+      - run: pnpm install --frozen-lockfile
+      - run: DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm db:generate
+      - run: pnpm typecheck && pnpm format:check && pnpm test
+      - run: pnpm test:install-cli && pnpm test:install-bootstrap && pnpm test:install-images && pnpm test:backup-security && pnpm test:web-static
+      - run: bash -n install.sh scripts/*.sh deploy/lib.sh
+      - run: shellcheck -S warning -e SC2154,SC2163 install.sh deploy/*.sh scripts/*.sh
   dependencies:
     runs-on: ubuntu-24.04
     steps:

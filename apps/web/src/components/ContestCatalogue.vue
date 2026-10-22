@@ -96,12 +96,15 @@ watch([filter, search, season], list.reset);
             : '独立参赛'
         }}</span>
       </div>
-      <router-link :to="`/contests/${c.id}`"
-        ><el-button type="primary" class="view-button"
-          >查看竞赛 <el-icon><ArrowRight /></el-icon></el-button
-      ></router-link>
-      <router-link v-if="c.publicRosterEnabled" :to="`/contests/${c.id}/public-teams`"
-        ><el-button class="view-button" style="margin-top: 10px">队伍公示</el-button></router-link
+      <router-link :to="`/contests/${c.id}`" class="el-button el-button--primary view-button"
+        >查看竞赛 <el-icon><ArrowRight /></el-icon> ></router-link
+      >
+      <router-link
+        v-if="c.publicRosterEnabled"
+        :to="`/contests/${c.id}/public-teams`"
+        class="el-button view-button"
+        style="margin-top: 10px"
+        >队伍公示</router-link
       >
     </article>
   </section>
@@ -155,7 +158,7 @@ watch([filter, search, season], list.reset);
   display: flex;
   align-items: center;
   gap: 11px;
-  color: #83868c;
+  color: #626b78;
   font-size: 15px;
   margin: 12px 0;
 }
@@ -163,7 +166,7 @@ watch([filter, search, season], list.reset);
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: #9b9fa6;
+  color: #626b78;
   margin: 20px 0 17px;
 }
 .view-button {

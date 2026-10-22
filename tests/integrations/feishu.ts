@@ -18,6 +18,7 @@ async function profile(open_id: string, email: string) {
   });
 }
 async function flow(actor: Client, mode = '') {
+  if (mode === 'link') await actor.api('/auth/reauth', 'POST', { password: 'DemoContest2026!' });
   const start = await actor.raw(
     '/api/v1/auth/feishu?next=%2Foverview' + (mode ? '&mode=' + mode : ''),
   );
@@ -117,6 +118,7 @@ try {
   });
   await finish(logged, await flow(logged));
   await hydrate(logged);
+  await logged.api('/auth/reauth', 'POST', { password: 'FeishuFixture2026!' });
   await logged.api('/auth/feishu', 'DELETE');
   assert.equal((await logged.api('/auth/providers')).feishu.linked, false);
   pass('飞书不能绑定其他账号或绕过封禁，解除绑定即时生效');
@@ -126,6 +128,7 @@ try {
   const bound = new Client();
   await finish(bound, await flow(bound));
   assert.equal((await hydrate(bound)).id, alice.user.id);
+  await alice.api('/auth/reauth', 'POST', { password: 'DemoContest2026!' });
   await alice.api('/auth/feishu', 'DELETE');
   pass('已有账号可主动绑定飞书，按 open_id 登录，不依赖飞书提供的未验证联系邮箱');
 } finally {

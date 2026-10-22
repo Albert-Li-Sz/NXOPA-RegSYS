@@ -55,14 +55,29 @@ try {
   const publicUrl = `https://reg-${run}.example.test`;
   const saved = await admin.api('/admin/site', 'PUT', { ...site, publicUrl });
   assert.equal(saved.publicUrl, publicUrl);
+  await admin.login('admin'); // The HTTPS cutover intentionally replaces legacy HTTP cookies.
+  await alice.login('alice');
+  await bob.login('bob');
   await rejected(admin, '/admin/site', 'PUT', { ...site, publicUrl }, 409);
   site = await admin.api('/site');
   for (const origin of [publicUrl, 'http://localhost:5173']) {
+    const login = await fetch(`${base}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: 'admin', password: 'DemoContest2026!' }),
+    });
+    assert.equal(login.status, 201);
+    const authentication = (await login.json()) as any;
+    const cookie = login.headers
+      .getSetCookie()
+      .filter((value) => !/expires=thu, 01 jan 1970|max-age=0/i.test(value))
+      .map((value) => value.split(';')[0])
+      .join('; ');
     const response = await fetch(`${base}/api/v1/admin/site`, {
       method: 'PUT',
       headers: {
-        Cookie: admin.cookie,
-        'X-CSRF-Token': admin.csrf,
+        Cookie: cookie,
+        'X-CSRF-Token': authentication.csrf,
         Origin: origin,
         'Content-Type': 'application/json',
       },
@@ -96,6 +111,7 @@ try {
   });
   newcomer.csrf = session.csrf;
   const changedEmail = `changed-${email}`;
+  await newcomer.api('/auth/reauth', 'POST', { password: 'Enhancement2026!' });
   await newcomer.api('/auth/profile', 'PUT', {
     version: session.user.version,
     name: session.user.name,

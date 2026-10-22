@@ -68,6 +68,16 @@ export class Client {
         reference:
           'attachmentId' in body ? `TEST:${body.attachmentId}` : globalThis.crypto.randomUUID(),
       };
+    if (
+      method === 'POST' &&
+      /^\/finance\/refunds\/[^/]+\/review$/.test(path) &&
+      body &&
+      typeof body === 'object' &&
+      'decision' in body &&
+      body.decision === 'REJECTED' &&
+      !('reason' in body)
+    )
+      body = { ...body, reason: '测试拒绝原因' };
     const response = await this.raw(`/api/v1${path}`, method, body, key);
     const content = await response.text();
     assert.ok(response.ok, `${method} ${path}: HTTP ${response.status} ${content.slice(0, 300)}`);
@@ -109,7 +119,11 @@ export class Client {
   }
   async upload(registrationId?: string) {
     const body = new FormData();
-    body.append('file', new Blob(['offline payment proof'], { type: 'text/plain' }), 'receipt.txt');
+    body.append(
+      'file',
+      new Blob([`offline payment proof ${globalThis.crypto.randomUUID()}`], { type: 'text/plain' }),
+      'receipt.txt',
+    );
     return this.api(
       `/files${registrationId ? `?registrationId=${registrationId}` : ''}`,
       'POST',

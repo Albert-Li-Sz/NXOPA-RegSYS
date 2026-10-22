@@ -33,9 +33,9 @@ import { adminCenters, centerTabs } from '../admin-centers';
 const route = useRoute();
 const router = useRouter();
 const center = adminCenters.find((item) => item.key === route.meta.adminCenter)!;
-const tabs = centerTabs(center.key, auth.user);
-const allowedTabs = tabs.map((item) => item.name);
-const requestedTab = typeof route.query.tab === 'string' ? route.query.tab : allowedTabs[0]!;
+const tabs = computed(() => centerTabs(center.key, auth.user));
+const allowedTabs = computed(() => tabs.value.map((item) => item.name));
+const requestedTab = typeof route.query.tab === 'string' ? route.query.tab : allowedTabs.value[0]!;
 const userDetailId = ref('');
 const revocationsView = ref<InstanceType<typeof RemoteRevocations>>();
 const peopleView = ref<InstanceType<typeof StudentsView>>();
@@ -114,7 +114,7 @@ const operationNames: Record<string, string> = {
   ADMISSION_RELEASE: '发放准考证',
   TEMPLATE_SAVE: '保存准考证模板',
 };
-const tab = ref(allowedTabs.includes(requestedTab) ? requestedTab : allowedTabs[0]!),
+const tab = ref(allowedTabs.value.includes(requestedTab) ? requestedTab : allowedTabs.value[0]!),
   contests = ref<ContestView[]>([]),
   jobs = jobsPage.items,
   users = usersPage.items,
@@ -573,10 +573,14 @@ async function webhook() {
         ><el-table-column label="操作" width="90"
           ><template #default="{ row }"
             ><el-button
-              v-if="row.state === 'FAILED'"
+              v-if="row.canRetry"
               text
               type="primary"
-              @click="api(`/admin/jobs/${row.id}/retry`, 'POST').then(refresh)"
+              @click="
+                api(`/admin/jobs/${row.id}/retry`, 'POST')
+                  .then(refresh)
+                  .catch(() => undefined)
+              "
               >重试</el-button
             ></template
           ></el-table-column

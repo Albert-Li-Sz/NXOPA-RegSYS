@@ -12,6 +12,18 @@ const tag = process.argv[2];
 assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/, 'Supply a stable tag, e.g. v0.7.2');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 assert.equal(pkg.version, tag.slice(1), 'Release tag must match package.json');
+assert.equal(
+  (await readFile(join(root, 'install.sh'), 'utf8')).match(
+    /^NXOPA_INSTALLER_VERSION=["']?(v[0-9.]+)/m,
+  )?.[1],
+  tag,
+  'Installer version must match release',
+);
+assert.equal(
+  (await readFile(join(root, 'deploy/.env.example'), 'utf8')).match(/^IMAGE_TAG=(.+)$/m)?.[1],
+  tag,
+  'Default image version must match release',
+);
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 const output = join(root, 'dist/release');
 const stage = join(root, '.runtime/release-package');
@@ -50,6 +62,7 @@ try {
     'deploy/compose.arm64.yaml',
     'deploy/compose.caddy.yaml',
     'deploy/compose.gateway.yaml',
+    'deploy/compose.external.yaml',
     'deploy/compose.proxy.amd64.yaml',
     'deploy/compose.proxy.arm64.yaml',
     'deploy/nginx.conf.example',
@@ -64,6 +77,7 @@ try {
     'scripts/backup.sh',
     'scripts/restore.sh',
     'scripts/verify-backup.mjs',
+    'scripts/verify-storage-backup.mjs',
     'scripts/compose-lib.sh',
   ]) {
     const destination = join(stage, folder, name);
@@ -111,7 +125,7 @@ try {
       ),
     );
   } catch (error) {
-    if (error.code !== 'ENOENT' || process.env.CI) throw error;
+    throw error;
   }
   if (records) {
     validateReleaseImages({ records, tag, commit, prefix });
@@ -132,7 +146,6 @@ try {
     try {
       report = JSON.parse(await readFile(name, 'utf8'));
     } catch (error) {
-      if (error.code === 'ENOENT' && !process.env.CI) continue;
       throw error;
     }
     assert.equal(report.success, true);
@@ -191,7 +204,7 @@ try {
     assert.ok(features.checks.length >= 6);
     await writeFile(join(output, 'release-features.json'), JSON.stringify(features, null, 2));
   } catch (error) {
-    if (error.code !== 'ENOENT' || process.env.CI) throw error;
+    throw error;
   }
   await cp(
     join(root, 'docs/PLATFORM_GUIDE.md'),
@@ -206,7 +219,7 @@ try {
     assert.ok(report.checks.length >= 10);
     await writeFile(join(output, 'platform-features.json'), JSON.stringify(report, null, 2));
   } catch (error) {
-    if (error.code !== 'ENOENT' || process.env.CI) throw error;
+    throw error;
   }
   try {
     const report = JSON.parse(
@@ -215,7 +228,7 @@ try {
     validateFullRegression(report, commit);
     await writeFile(join(output, 'full-regression.json'), JSON.stringify(report, null, 2));
   } catch (error) {
-    if (error.code !== 'ENOENT' || process.env.CI) throw error;
+    throw error;
   }
   for (const platform of ['hydro', 'domjudge']) {
     try {
@@ -235,7 +248,7 @@ try {
         JSON.stringify(report, null, 2),
       );
     } catch (error) {
-      if (error.code !== 'ENOENT' || process.env.CI) throw error;
+      throw error;
     }
   }
   const names = (await readdir(output)).sort();

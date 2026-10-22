@@ -23,6 +23,8 @@ try {
   client.csrf = session.csrf;
   assert.equal(session.user.verified, true);
   report.push('Mailbox code delivered and consumed before the account is created');
+  const originalEmail = email;
+  await client.api('/auth/reauth', 'POST', { password });
   email = `changed-${email}`;
   await client.api('/auth/profile', 'PUT', {
     version: session.user.version,
@@ -30,7 +32,10 @@ try {
     profile: session.user.profile,
     email,
   });
-  assert.equal((await client.api('/auth/me')).user.verified, false);
+  const pending = (await client.api('/auth/me')).user;
+  assert.equal(pending.email, originalEmail);
+  assert.equal(pending.pendingEmail, email);
+  assert.equal(pending.verified, true);
   async function mailToken() {
     return until(
       async () => {

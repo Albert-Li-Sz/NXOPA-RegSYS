@@ -164,6 +164,7 @@ process.exit(1);
             ...process.env,
             PATH: `${bin}:${process.env.PATH}`,
             NXOPA_VERSION: tag,
+            NXOPA_ALLOW_INSECURE_MIRROR: '1',
             NXOPA_RELEASE_BASE_URL: `http://127.0.0.1:${address.port}`,
             FAKE_LOG: log,
             ...options.env,
@@ -212,7 +213,7 @@ test('单文件启动下载并校验发布包，菜单安装后保留配置、�
     assert.equal(response.code, 0, response.output);
     const envFile = path.join(target, 'deploy/.env'),
       before = await readFile(envFile, 'utf8');
-    assert.match(before, /^ALLOW_PRIVATE_INTEGRATIONS=true$/m);
+    assert.match(before, /^ALLOW_PRIVATE_INTEGRATIONS=false$/m);
     assert.match(before, /^GATEWAY_PORT=8080$/m);
     assert.equal((await stat(envFile)).mode & 0o777, 0o600);
     assert.equal((await run(['install'], 'y\nn\n')).code, 0);
@@ -286,6 +287,7 @@ test('自定义 GitHub 加速前缀用于安装包和校验文件并保存在配
       'proxy-check\n\n1\n\n3\n\nhttp://proxy.example.test\ny\nn\n',
       {
         env: {
+          NXOPA_ALLOW_INSECURE_MIRROR: '1',
           NXOPA_RELEASE_BASE_URL: 'https://github.com/Albert-Li-Sz/NXOPA-RegSYS/releases/download',
         },
       },

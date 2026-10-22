@@ -22,7 +22,7 @@ afterEach(() => {
   }
 });
 it('normalizes the base URL and preserves HTTP errors even when the response is not JSON', async () => {
-  process.env.CONTEST_CENTER_URL = 'http://platform.example.test/';
+  process.env.CONTEST_CENTER_URL = 'https://platform.example.test/';
   process.env.CONTEST_CENTER_TOKEN = 'fixture-token';
   const fetch = vi
     .fn()
@@ -36,7 +36,7 @@ it('normalizes the base URL and preserves HTTP errors even when the response is 
   expect(error.isError).toBe(true);
   expect(error.content[0].text).toContain('HTTP 502');
   expect(fetch.mock.calls[0][0]).toBe(
-    'http://platform.example.test/api/automation/v1/finance?contestId=11111111-1111-4111-8111-111111111111',
+    'https://platform.example.test/api/automation/v1/finance?contestId=11111111-1111-4111-8111-111111111111',
   );
   expect(fetch.mock.calls[0][1].redirect).toBe('error');
   const empty = await handlers.get('list_contests')({});

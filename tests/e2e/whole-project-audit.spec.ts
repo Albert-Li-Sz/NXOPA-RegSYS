@@ -224,6 +224,9 @@ test('expired sessions recover with the original account while retaining the uns
     { times: 1 },
   );
   await page.getByRole('button', { name: '保存资料', exact: true }).click();
+  const identity = page.locator('.el-message-box');
+  await identity.locator('input[type=password]').fill('DemoContest2026!');
+  await identity.getByRole('button', { name: '确定', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '登录已失效', exact: true });
   await expect(dialog).toBeVisible();
   await expect(page.locator('main.page')).toHaveAttribute('inert', '');
@@ -311,9 +314,8 @@ test('a contest viewer cannot open the finance tab through a URL query', async (
   );
   await login(page, 'bob');
   await page.goto(`/registrations/${r.id}?tab=finance`);
-  await expect(page.getByRole('tab', { name: '报名资料', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(
+    page.getByRole('alert').filter({ hasText: '没有此报名的访问权限' }).first(),
+  ).toBeVisible();
   await expect(page.getByRole('tab', { name: '财务', exact: true })).toHaveCount(0);
 });

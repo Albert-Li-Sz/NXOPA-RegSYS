@@ -83,7 +83,7 @@ export const manages = (u: Principal, contestId: string, permission: AdminPermis
 export const ownerIds = (u: Principal) => (u.relatedUserIds?.length ? u.relatedUserIds : [u.id]);
 export const owns = (u: Principal, id: string) => ownerIds(u).includes(id);
 export function requireSystemAdmin(u: Principal) {
-  if (!(u.isSystemAdmin ?? u.isAdmin)) throw new ForbiddenException('核心配置需要系统管理员授权');
+  if (u.isSystemAdmin !== true) throw new ForbiddenException('核心配置需要系统管理员授权');
 }
 export function requireAdmin(u: Principal) {
   if (!u.isAdmin) throw new ForbiddenException('需要系统管理员权限');
@@ -95,8 +95,13 @@ export function requireManager(
 ) {
   if (!manages(u, contestId, permission)) throw new ForbiddenException('没有此竞赛的相应管理权限');
 }
+export function canManageRegistrationData(u: Principal, id: string) {
+  return ['REGISTRATIONS', 'ADMISSIONS', 'FINANCE', 'FILES', 'SUPPORT'].some((p) =>
+    manages(u, id, p as AdminPermission),
+  );
+}
 export function canRead(u: Principal, r: Registration) {
-  return manages(u, r.contestId) || participates(u, r);
+  return canManageRegistrationData(u, r.contestId) || participates(u, r);
 }
 export function participates(u: Principal, r: Registration) {
   return (
@@ -145,8 +150,4 @@ export function same(a: string, b: string) {
   const x = Buffer.from(a),
     y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
-}
-export async function safeUrl(raw: string) {
-  const { integrationTarget } = await import('./integration-http.js');
-  return (await integrationTarget(raw)).url;
 }

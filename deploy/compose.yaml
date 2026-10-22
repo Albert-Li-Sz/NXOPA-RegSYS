@@ -67,6 +67,9 @@ services:
     mem_limit: 600m
     logging: *logging
   postgres:
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
     image: postgres:17.6-alpine
     environment:
       POSTGRES_USER: contest
@@ -88,6 +91,9 @@ services:
     pids_limit: 256
 
   redis:
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
     image: redis:7.4.5-alpine
     command: [redis-server, --appendonly, 'yes']
     volumes:
@@ -120,10 +126,8 @@ services:
 
   api:
     <<: *app
-    ports:
-      - target: 3000
-        published: '${API_PORT:-3000}'
-        host_ip: '${API_BIND_ADDRESS:-127.0.0.1}'
+    # API is private; route browser traffic through the configured gateway.
+    ports: []
     depends_on:
       initialize:
         condition: service_completed_successfully

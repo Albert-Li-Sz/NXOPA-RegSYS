@@ -14,7 +14,16 @@ import {
   sha,
   same,
 } from './security.js';
-import { redis, session, user, type AuthRequest } from './auth.js';
+import {
+  redis,
+  session,
+  user,
+  rateLimit,
+  cookieName,
+  cookieValue,
+  requireReauthentication,
+  type AuthRequest,
+} from './auth.js';
 
 // GitHub's web OAuth flow and Auth.js's GitHub provider are the protocol references.
 // Tokens are used only to fetch /user and verified /user/emails; never persisted.
@@ -142,11 +151,12 @@ export class GithubService {
     };
   }
   async start(req: AuthRequest, res: Response) {
+    await rateLimit(`github-login:${req.ip}`, 20);
     const s = await settings();
     if (!s.value.enabled || !s.value.clientId || !s.value.encryptedSecret)
       throw new BadRequestException('GitHub 登录尚未配置');
     const linking = req.query.mode === 'link';
-    if (linking) user(req);
+    if (linking) await requireReauthentication(req);
     const state = opaqueToken(),
       verifier = opaqueToken();
     const record = {
@@ -155,14 +165,15 @@ export class GithubService {
       fingerprint: fingerprint(s.value),
       next: githubReturnPath(req.query.next),
       userId: linking ? req.principal!.id : null,
+      sessionId: linking ? req.sessionId : null,
     };
     await redis.set(`github-state:${sha(state)}`, JSON.stringify(record), 'EX', 600);
-    res.cookie(stateCookie, state, {
+    res.cookie(cookieName(stateCookie, await secureCookies(req)), state, {
       httpOnly: true,
       secure: await secureCookies(req),
       sameSite: 'lax',
       maxAge: 600000,
-      path: '/api/v1/auth/github',
+      path: '/',
     });
     const url = new URL(
       '/login/oauth/authorize',
@@ -181,9 +192,12 @@ export class GithubService {
   }
   async callback(req: AuthRequest, res: Response) {
     res.clearCookie(stateCookie, { path: '/api/v1/auth/github' });
+    res.clearCookie(stateCookie, { path: '/' });
+    res.clearCookie(`__Host-${stateCookie}`, { path: '/', secure: true });
     try {
       const state = z.string().min(30).max(100).parse(req.query.state);
-      if (!same(state, String(req.cookies?.[stateCookie] ?? ''))) throw new GithubError('state');
+      if (!same(state, String((await cookieValue(req, stateCookie)) ?? '')))
+        throw new GithubError('state');
       const raw = await redis.getdel(`github-state:${sha(state)}`);
       if (!raw) throw new GithubError('state');
       const record = JSON.parse(raw) as {
@@ -192,6 +206,7 @@ export class GithubService {
         fingerprint: string;
         next: string;
         userId: string | null;
+        sessionId: string | null;
       };
       const s = await settings();
       if (!s.value.enabled || record.fingerprint !== fingerprint(s.value))
@@ -237,6 +252,10 @@ export class GithubService {
       )?.email.toLowerCase();
       if (!email) throw new GithubError('email');
       if (record.userId && record.userId !== req.principal?.id) throw new GithubError('state');
+      if (record.userId) {
+        if (record.sessionId !== req.sessionId) throw new GithubError('state');
+        await requireReauthentication(req);
+      }
       const account = await db.$transaction(async (tx) => {
         await lock(tx, `github:${identity.id}`);
         await lock(tx, `github-email:${email}`);
@@ -272,8 +291,13 @@ export class GithubService {
             },
           });
           userId = account.id;
+          await tx.invitation.updateMany({
+            where: { targetUserId: null, targetEmail: email, acceptedBy: null, revoked: false },
+            data: { targetUserId: account.id },
+          });
         } else {
           await lock(tx, `auth:${userId}`);
+          await requireReauthentication(req, tx);
           const another = await tx.externalIdentity.findFirst({
             where: { providerId: provider.id, userId },
           });
@@ -292,6 +316,11 @@ export class GithubService {
         return userId;
       });
       const authenticated = await session(req, res, account);
+      await audit(db, account, 'OAUTH_LOGIN', account, {
+        provider: 'github',
+        ip: req.ip,
+        userAgent: String(req.headers['user-agent'] ?? '').slice(0, 300),
+      });
       const next = githubReturnPath(record.next);
       res.redirect(
         record.userId
@@ -309,8 +338,10 @@ export class GithubService {
   }
   async unlink(req: AuthRequest) {
     const u = user(req);
+    await requireReauthentication(req);
     return db.$transaction(async (tx) => {
       await lock(tx, `auth:${u.id}`);
+      await requireReauthentication(req, tx);
       const current = await tx.user.findUniqueOrThrow({ where: { id: u.id } });
       if (!current.passwordHash)
         throw new BadRequestException('请先通过邮箱找回流程设置密码，再解除 GitHub 绑定');

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 // @ts-expect-error Shared release validator is a native JavaScript module.
-import { fullRegressionSuites } from '../../scripts/release-validation.mjs';
+import { fullRegressionSuites, expectedChecks } from '../../scripts/release-validation.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const exec = promisify(execFile);
@@ -22,6 +22,7 @@ const results: {
   log: string;
   command: string[];
   browser?: Record<string, number>;
+  checkCount?: number;
 }[] = [];
 const startCommit = (await exec('git', ['rev-parse', 'HEAD'], { cwd: root })).stdout.trim();
 const startWorkingTreeDirty = !!(
@@ -42,6 +43,7 @@ const secret = randomBytes(24).toString('hex');
 const env = {
   ...process.env,
   NODE_ENV: 'development',
+  NXOPA_ISOLATED_TEST_DATABASE: '1',
   SEED_DEMO: '1',
   PORT: String(api),
   PUBLIC_URL: `http://127.0.0.1:${web}`,
@@ -172,12 +174,23 @@ let setup = false;
 const saveLogs: (() => Promise<void>)[] = [];
 const ojProjects: { project: string; file: string }[] = [];
 async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
+  // Each suite owns an independent rate-limit experiment within the disposable Redis.
+  await compose([
+    'exec',
+    '-T',
+    'redis',
+    'redis-cli',
+    'EVAL',
+    "for _,key in ipairs(redis.call('KEYS','rate:*')) do redis.call('DEL',key) end return 1",
+    '0',
+  ]);
   const started = Date.now();
   const name = `${suite}${variables.OJ_TYPE ? `-${variables.OJ_TYPE.toLowerCase()}` : ''}`;
   const log = `.runtime/reports/full-${name.replaceAll(':', '-')}.log`;
   let output = '',
     success = false;
   let browser: Record<string, number> | undefined;
+  let checkCount: number | undefined;
   const args = [
     suite,
     ...(suite === 'test:e2e' && process.env.E2E_SPEC ? [process.env.E2E_SPEC] : []),
@@ -217,6 +230,19 @@ async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
       assert.equal(browser.skipped, 0);
       assert.equal(browser.flaky, 0);
     }
+    if (expectedChecks[suite]) {
+      const names: Record<string, string> = {
+        'test:permissions': 'permission-regressions',
+        'test:whole-audit': 'whole-project-audit',
+        'test:security': 'security-audit',
+        'test:audit-20261022': 'audit-20261022',
+      };
+      const report = JSON.parse(
+        await readFile(path.join(root, `.runtime/reports/${names[suite]}.json`), 'utf8'),
+      );
+      checkCount = (report.checks ?? report.results).length;
+      assert.equal(checkCount, expectedChecks[suite]);
+    }
     success = true;
   } catch (error) {
     const failure = error as { stdout?: string; stderr?: string; message: string };
@@ -235,6 +261,7 @@ async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
     log,
     command: ['pnpm', ...args],
     ...(browser ? { browser } : {}),
+    ...(checkCount === undefined ? {} : { checkCount }),
   });
   console.log(
     `[完整回归] ${name}: ${success ? 'PASS' : 'FAIL'} (${Math.round((Date.now() - started) / 1000)}s)`,
@@ -315,7 +342,9 @@ try {
       {
         success: setup && results.length > 0 && results.every((result) => result.success),
         results,
+        ojRun: process.env.FULL_REGRESSION_OJ === '1',
         fullRun:
+          process.env.FULL_REGRESSION_OJ === '1' &&
           !process.env.FULL_REGRESSION_SUITES &&
           !process.env.E2E_SPEC &&
           !process.env.E2E_MAX_FAILURES,

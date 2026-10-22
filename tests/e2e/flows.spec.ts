@@ -181,7 +181,7 @@ test('manual team, optional teacher, review first, receipt and partial/full conf
       await dialog.locator('input[type=file]').setInputFiles({
         name: 'proof.txt',
         mimeType: 'text/plain',
-        buffer: Buffer.from('offline proof'),
+        buffer: Buffer.from(`offline proof ${stamp}-${amount}`),
       });
       await dialog.getByRole('button', { name: '提交凭证' }).click();
       await expect(dialog).not.toBeVisible();

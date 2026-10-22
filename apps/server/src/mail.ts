@@ -12,6 +12,21 @@ import { db, lock, audit, enqueue, json, type Tx } from './db.js';
 import { requireSystemAdmin, encrypt, decrypt, checkVersion } from './security.js';
 import { config } from './config.js';
 import { formatMail } from './mail-templates.js';
+import { rateLimit } from './auth.js';
+import { lookup } from 'node:dns/promises';
+import { isIP, BlockList } from 'node:net';
+const blockedSmtp = new BlockList();
+blockedSmtp.addSubnet('169.254.0.0', 16);
+blockedSmtp.addAddress('100.100.100.200');
+blockedSmtp.addSubnet('fe80::', 10, 'ipv6');
+blockedSmtp.addAddress('fd00:ec2::254', 'ipv6');
+blockedSmtp.addAddress('fd20:ce::254', 'ipv6');
+export class MailDeliveryUnknown extends Error {
+  constructor() {
+    super('SMTP 投递结果未知，请先核实收件情况再手动重试');
+    this.name = 'MailDeliveryUnknown';
+  }
+}
 
 const key = 'mail';
 type StoredServer = Omit<MailSettingsInput, 'version' | 'password' | 'fallbacks'> & {
@@ -72,11 +87,22 @@ function view(s: Awaited<ReturnType<typeof settings>>): MailSettingsView {
     passwordConfigured: !!encryptedPassword,
   };
 }
-function transport(s: StoredServer) {
+async function transport(s: StoredServer) {
   if (s.authEnabled && (!s.username || !s.encryptedPassword))
     throw new BadRequestException('请填写邮件服务器用户名和密码或授权码');
+  const host = s.host.replace(/^\[|\]$/g, '');
+  const records = isIP(host)
+    ? [{ address: host, family: isIP(host) }]
+    : await lookup(host, { all: true });
+  if (
+    !records.length ||
+    records.some(({ address }) => blockedSmtp.check(address, isIP(address) === 6 ? 'ipv6' : 'ipv4'))
+  )
+    throw new BadRequestException('SMTP 不允许元数据或链路本地地址');
+  const address = records.find((r) => r.family === 4) ?? records[0]!;
   return nodemailer.createTransport({
-    host: s.host,
+    host: address.address,
+    tls: { servername: isIP(host) ? undefined : host },
     port: s.port,
     secure: s.security === 'TLS',
     requireTLS: s.security === 'STARTTLS',
@@ -108,6 +134,7 @@ export async function sendSystemMail(
     actionPath?: string;
     name?: string;
     status?: string;
+    messageId?: string;
   },
   expectedVersion?: number,
   isCurrent?: () => Promise<boolean>,
@@ -125,15 +152,16 @@ export async function sendSystemMail(
   ]) {
     if (isCurrent && !(await isCurrent()))
       return { configurationVersion: s.version, skipped: true, reason: '关联报名已删除，停止发送' };
-    let client: ReturnType<typeof transport> | undefined;
+    let client: Awaited<ReturnType<typeof transport>> | undefined;
     try {
-      client = transport(server);
+      client = await transport(server);
       const sent = await client.sendMail({
         to: message.to,
         subject: formatted.subject,
         text: formatted.text,
         html: formatted.html,
         from: { name: server.fromName, address: server.fromAddress },
+        messageId: message.messageId,
       });
       if (!sent.accepted?.length || sent.rejected?.length) throw new Error('Recipient rejected');
       return {
@@ -143,6 +171,8 @@ export async function sendSystemMail(
         attempts,
       };
     } catch (error) {
+      if ((error as any).command === 'DATA' && !(error as any).responseCode)
+        throw new MailDeliveryUnknown();
       attempts.push({ providerId: server.id, name: server.name, error: mailError(error) });
     } finally {
       client?.close();
@@ -167,7 +197,12 @@ export class MailService {
       let encryptedPassword = '';
       if (b.authEnabled) {
         if (b.password) encryptedPassword = encrypt(b.password);
-        else if (current.value.username === b.username)
+        else if (
+          current.value.username === b.username &&
+          current.value.host.toLowerCase() === b.host.toLowerCase() &&
+          current.value.port === b.port &&
+          current.value.security === b.security
+        )
           encryptedPassword = current.value.encryptedPassword;
         if (!encryptedPassword) throw new BadRequestException('请填写邮件服务器密码或授权码');
       }
@@ -180,7 +215,10 @@ export class MailService {
           ? ''
           : fallback.password
             ? encrypt(fallback.password)
-            : previous?.username === fallback.username
+            : previous?.username === fallback.username &&
+                previous.host.toLowerCase() === fallback.host.toLowerCase() &&
+                previous.port === fallback.port &&
+                previous.security === fallback.security
               ? previous.encryptedPassword
               : '';
         if (fallback.authEnabled && !encryptedPassword)
@@ -198,19 +236,27 @@ export class MailService {
         },
       });
       await audit(tx, u.id, 'MAIL_SETTINGS_UPDATED', key, {
+        fromAddress: b.fromAddress,
+        username: b.username,
+        passwordReused: !!b.authEnabled && !b.password,
         version: row.version,
         enabled: b.enabled,
         host: b.host,
         port: b.port,
         security: b.security,
         authEnabled: b.authEnabled,
-        fallbacks: fallbacks.map(({ id, name, host, port, enabled }) => ({
-          id,
-          name,
-          host,
-          port,
-          enabled,
-        })),
+        fallbacks: fallbacks.map(
+          ({ id, name, host, port, enabled, security, username, fromAddress }) => ({
+            id,
+            name,
+            host,
+            port,
+            enabled,
+            security,
+            username,
+            fromAddress,
+          }),
+        ),
       });
       return view({
         value: row.value as unknown as StoredMail,
@@ -221,6 +267,7 @@ export class MailService {
   }
   async probe(u: Principal, body: unknown) {
     requireSystemAdmin(u);
+    await rateLimit(`smtp-probe:${u.id}`, 5);
     const { version, providerId } = z
       .object({ version: z.number().int().min(0), providerId: z.string().optional() })
       .parse(body);
@@ -232,14 +279,18 @@ export class MailService {
         ? s.value.fallbacks.find((server) => server.id === providerId)
         : s.value;
     if (!server || !server.enabled) throw new BadRequestException('此 SMTP 不存在或未启用');
-    const client = transport(server);
+    let client: Awaited<ReturnType<typeof transport>> | undefined;
     try {
+      client = await transport(server);
       await client.verify();
+      await audit(db, u.id, 'MAIL_PROBE', key, { ok: true, providerId });
       return { ok: true, message: '邮件服务器连接及认证正常' };
     } catch (error) {
+      await audit(db, u.id, 'MAIL_PROBE', key, { ok: false, providerId });
+      if (error instanceof BadRequestException) throw error;
       throw new BadRequestException(mailError(error));
     } finally {
-      client.close();
+      client?.close();
     }
   }
   async test(u: Principal, body: unknown) {

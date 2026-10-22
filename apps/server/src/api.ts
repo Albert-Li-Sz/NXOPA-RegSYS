@@ -173,6 +173,12 @@ export class ApiController {
   @Post('auth/verify-code') verifyCode(@Req() r: AuthRequest, @Body() b: unknown) {
     return this.auth.verifyCode(r, b);
   }
+  @Post('auth/reauth/code') reauthenticationCode(@Req() r: AuthRequest) {
+    return this.auth.reauthenticationCode(r);
+  }
+  @Post('auth/reauth') reauthenticate(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.auth.reauthenticate(r, b);
+  }
   @Post('auth/reset-code') resetCode(@Req() r: AuthRequest, @Body() b: unknown) {
     return this.auth.verifyCode(r, b, 'RESET');
   }
@@ -303,6 +309,9 @@ export class ApiController {
   }
   @Get('contests/:id/statistics') statistics(@Req() r: AuthRequest, @Param('id') id: string) {
     return this.registrations.statistics(user(r), id, r.query as Record<string, string>);
+  }
+  @Get('live') live() {
+    return { status: 'ok' };
   }
   @Get('health') async health() {
     await db.$queryRaw`SELECT 1`;
@@ -471,6 +480,26 @@ export class ApiController {
   }
   @Get('finance/accounts/:id') financeAccount(@Req() r: AuthRequest, @Param('id') id: string) {
     return this.finance.account(user(r), id);
+  }
+  @Post('finance/:id/attribution') attributeFinance(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.finance.attribute(user(r), id, b);
+  }
+  @Get('finance/:id/reconciliation') reconciliation(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return this.finance.reconciliation(user(r), id);
+  }
+  @Post('finance/:id/reconciliation') reconcile(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.finance.completeReconciliation(user(r), id, b);
   }
   @Delete('registrations/:id') removeRegistration(
     @Req() r: AuthRequest,
@@ -686,6 +715,7 @@ export class ApiController {
     @Param('id') id: string,
     @Res() res: Response,
   ) {
+    res.setHeader('Cache-Control', 'private, no-store');
     const f = await this.files.read(user(r), id);
     res.setHeader(
       'Content-Disposition',
@@ -765,6 +795,7 @@ export class ApiController {
         throw new BadRequestException('准考证文件总量超过 100 MB，请分批下载');
       documents.push(document);
     }
+    res.setHeader('Cache-Control', 'private, no-store');
     res
       .status(200)
       .type('application/zip')
@@ -782,6 +813,7 @@ export class ApiController {
     @Res() res: Response,
   ) {
     const d = await this.admissions.download(user(r), id);
+    res.setHeader('Cache-Control', 'private, no-store');
     res
       .type('application/pdf')
       .setHeader('Content-Disposition', `attachment; filename="${d.name}"`);
@@ -796,6 +828,7 @@ export class ApiController {
     @Res() res: Response,
   ) {
     const d = await this.admissions.previewDownload(user(r), id);
+    res.setHeader('Cache-Control', 'private, no-store');
     res
       .type('application/pdf')
       .setHeader('Content-Disposition', 'attachment; filename="preview.pdf"')
@@ -836,6 +869,23 @@ export class ApiController {
   }
   @Post('admin/webhooks') webhook(@Req() r: AuthRequest, @Body() b: unknown) {
     return this.integrations.webhook(user(r), b);
+  }
+  @Get('admin/webhooks') webhooks(@Req() r: AuthRequest, @Query('contestId') id?: string) {
+    return this.integrations.webhooks(user(r), id);
+  }
+  @Put('admin/webhooks/:id') changeWebhook(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.integrations.changeWebhook(user(r), id, b);
+  }
+  @Delete('admin/webhooks/:id') deleteWebhook(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.integrations.changeWebhook(user(r), id, b, true);
   }
   @Get('admin/users') users(@Req() r: AuthRequest, @Query() query: Record<string, string>) {
     return this.admin.users(user(r), query);

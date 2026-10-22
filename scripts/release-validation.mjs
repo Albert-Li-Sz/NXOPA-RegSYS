@@ -3,6 +3,7 @@ export const fullRegressionSuites = [
   'test:integration',
   'test:platform-exports',
   'test:auth',
+  'test:audit-20261022',
   'test:accounts',
   'test:feishu',
   'test:invitations',
@@ -25,8 +26,15 @@ export const fullRegressionSuites = [
   'test:mcp',
   'test:e2e',
 ];
+export const expectedChecks = {
+  'test:permissions': 18,
+  'test:whole-audit': 13,
+  'test:security': 20,
+  'test:audit-20261022': 17,
+};
 export function validateFullRegression(report, commit) {
   assert.equal(report.success, true);
+  assert.equal(report.ojRun, true, 'Hydro and DOMjudge import acceptance is required');
   assert.equal(report.fullRun, true, 'Filtered regression cannot authorize a release');
   assert.equal(report.startCommit, commit, 'Tests must start on the released commit');
   assert.equal(report.commit, commit);
@@ -36,6 +44,12 @@ export function validateFullRegression(report, commit) {
     const result = report.results.find((result) => result.suite === suite);
     assert.equal(result?.success, true, `${suite} must pass before packaging`);
     assert.deepEqual(result.command, ['pnpm', suite], `${suite} must run without selectors`);
+    if (expectedChecks[suite])
+      assert.equal(
+        result.checkCount,
+        expectedChecks[suite],
+        `${suite} must execute every declared check`,
+      );
   }
   const browser = report.results.find((result) => result.suite === 'test:e2e').browser;
   assert.ok(browser && browser.expected > 0, 'Browser report must contain executed tests');

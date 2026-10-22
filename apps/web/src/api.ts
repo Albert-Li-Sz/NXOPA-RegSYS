@@ -1,7 +1,6 @@
 import { reactive } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import type { Principal } from './types';
-import { setClientCsrf } from './generated-client';
 import { requestId } from './request-id';
 import { beginOperation } from './composables/usePendingOperations';
 export const auth = reactive<{
@@ -18,17 +17,45 @@ export class ApiError extends Error {
     super(message);
   }
 }
-function expireSession(path: string, status: number) {
-  if (status !== 401 || path === '/auth/login' || !auth.user) return;
+export function expireSession(path: string, status: number) {
+  if (status !== 401 || ['/auth/login', '/auth/logout'].includes(path) || !auth.user) return;
   auth.expiredUser = auth.user;
   auth.user = null;
   auth.csrf = '';
-  setClientCsrf('');
+}
+let lastPermissionRefresh = 0;
+export function handleAuthResponse(path: string, status: number) {
+  expireSession(path, status);
+  if (status !== 403 || !auth.user || Date.now() - lastPermissionRefresh < 1000) return;
+  lastPermissionRefresh = Date.now();
+  void loadAuth().catch(() => undefined);
+}
+export async function reauthenticate() {
+  if (auth.user?.hasPassword) {
+    const { value } = await ElMessageBox.prompt(
+      '请输入当前登录密码，以确认敏感变更。',
+      '验证身份',
+      { inputType: 'password', inputPattern: /.+/, inputErrorMessage: '请输入当前密码' },
+    );
+    await api('/auth/reauth', 'POST', { password: value });
+  } else {
+    await api('/auth/reauth/code', 'POST');
+    const { value } = await ElMessageBox.prompt(
+      '验证码已发送至当前登录邮箱，请输入六位验证码。',
+      '验证原邮箱',
+      { inputPattern: /^\d{6}$/, inputErrorMessage: '请输入六位验证码' },
+    );
+    await api('/auth/reauth', 'POST', { code: value });
+  }
 }
 const pendingWrites = new Map<string, Promise<any>>();
 const retryKeys = new Map<string, { key: string; expiresAt: number }>();
 export function api<T = any>(path: string, method = 'GET', body?: unknown): Promise<T> {
-  if (method === 'GET' || body instanceof FormData) return requestApi<T>(path, method, body);
+  if (method === 'GET') return requestApi<T>(path, method, body);
+  if (body instanceof FormData) {
+    const end = beginOperation();
+    return requestApi<T>(path, method, body).finally(end);
+  }
   const fingerprint = JSON.stringify([auth.user?.id ?? 'anonymous', method, path, body]);
   if (pendingWrites.has(fingerprint)) return pendingWrites.get(fingerprint)!;
   for (const [key, value] of retryKeys) if (value.expiresAt <= Date.now()) retryKeys.delete(key);
@@ -65,7 +92,8 @@ async function requestApi<T = any>(
     body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   });
   const content = await response.text();
-  expireSession(path, response.status);
+  handleAuthResponse(path, response.status);
+  if (response.status === 401 && path === '/auth/logout') return { ok: true } as T;
   let value: any;
   try {
     value = JSON.parse(content);
@@ -93,7 +121,6 @@ export async function loadAuth(options: { allowSignedOut?: boolean } = {}) {
   }
   auth.user = data.user;
   auth.csrf = data.csrf;
-  setClientCsrf(data.csrf);
   auth.loaded = true;
 }
 export async function downloadArchive(path: string, body: unknown, name: string) {
@@ -105,7 +132,7 @@ export async function downloadArchive(path: string, body: unknown, name: string)
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    expireSession(path, response.status);
+    handleAuthResponse(path, response.status);
     const data = await response.json().catch(() => ({ message: '下载失败，请稍后重试' }));
     ElMessage.error(data.message);
     throw new ApiError(response.status, data.message);

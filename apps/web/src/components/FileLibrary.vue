@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, defineAsyncComponent, ref, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { api, date } from '../api';
+import { api, date, handleAuthResponse } from '../api';
 import { canManage, ownUser } from '../permissions';
 import type { Data } from '../types';
 import { usePagedList } from '../composables/usePagedList';
@@ -56,7 +56,7 @@ const purposes: Record<string, string> = {
   CONTEST_PRIVATE: '管理员分发',
   AVATAR: '头像',
 };
-const link = (row: Data) => `/api/v1/files/${row.public ? 'public/' : ''}${row.id}`;
+const link = (row: Data) => `/api/v1/files/${row.id}`;
 const isPdf = (row: Data) => row.mime === 'application/pdf';
 function clearPreview() {
   previewSequence++;
@@ -77,6 +77,7 @@ async function preview(row: Data) {
   previewRequest = request;
   try {
     const response = await fetch(link(row), { credentials: 'same-origin', signal: request.signal });
+    handleAuthResponse('/files', response.status);
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.message || 'PDF 加载失败，请重试');

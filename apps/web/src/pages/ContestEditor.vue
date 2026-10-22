@@ -14,7 +14,7 @@ import {
   registrationReviewPhase,
   fieldSchema,
 } from '@contest-center/contracts';
-import { api, date, label, money, downloadArchive } from '../api';
+import { api, auth, date, label, money, downloadArchive, handleAuthResponse } from '../api';
 import type { Data, FieldDefinition } from '../types';
 import EditActions from '../components/EditActions.vue';
 import RegistrationReview from '../components/RegistrationReview.vue';
@@ -107,6 +107,7 @@ async function nextReview() {
       const response = await fetch(`/api/v1/registrations/${id}?history=false`, {
         credentials: 'same-origin',
       });
+      handleAuthResponse('/registrations', response.status);
       if (response.status === 404) continue;
       if (!response.ok) throw new Error('报名状态或管理权限已变化');
       const value = await response.json();
@@ -162,7 +163,7 @@ const selected = ref<Data[]>([]),
   field = ref<Data>({}),
   options = ref('');
 const permission = (item: Parameters<typeof canManage>[1]) =>
-  isNew.value || canManage(String(route.params.id), item);
+  isNew.value ? !!auth.user?.isAdmin : canManage(String(route.params.id), item);
 const filtered = computed(() => rows.value);
 const batchRows = computed(() => (selected.value.length ? selected.value : rows.value));
 const batchIds = computed(() => batchRows.value.filter((r) => r.eligible).map((r) => r.id));
@@ -472,7 +473,10 @@ const availableVariables = computed(() => [
   'participant.name',
   ...form.value.fields
     .filter((f: FieldDefinition) => f.type === 'photo')
-    .map((f: FieldDefinition) => `participant.assets.${f.key}`),
+    .map(
+      (f: FieldDefinition) =>
+        `${f.scope === 'PERSON' ? 'participant' : f.scope === 'TEAM' ? 'team' : f.scope === 'REGISTRATION' ? 'registration' : 'coaches.0'}.assets.${f.key}`,
+    ),
   ...form.value.fields.map(
     (f: FieldDefinition) =>
       `${f.scope === 'PERSON' ? 'participant' : f.scope === 'COACH' ? 'this' : f.scope === 'TEAM' ? 'registration.answers.team' : 'registration.answers.registration'}.${f.scope === 'PERSON' || f.scope === 'COACH' ? 'answers.' : ''}${f.key}`,
@@ -523,7 +527,7 @@ function insertVariable(v: string) {
         v-if="permission('CONTEST')"
         label="报名字段"
         name="fields" /><el-tab-pane
-        v-if="!isNew"
+        v-if="!isNew && permission('REGISTRATIONS')"
         label="报名管理"
         name="registrations" /><el-tab-pane
         v-if="!isNew && permission('ADMISSIONS') && form.modules.admissions"
@@ -548,9 +552,18 @@ function insertVariable(v: string) {
     <el-alert v-if="moduleError" :title="moduleError" type="error" :closable="false"
       ><el-button @click="refreshModules">重新加载</el-button></el-alert
     >
-    <RemoteRevocations v-if="tab === 'revocations'" :contest-id="String(route.params.id)" />
-    <SeatingManager v-if="tab === 'rooms'" :contest-id="String(route.params.id)" />
-    <FinanceList v-if="tab === 'finance'" :contest-id="String(route.params.id)" />
+    <RemoteRevocations
+      v-if="tab === 'revocations' && permission('INTEGRATIONS')"
+      :contest-id="String(route.params.id)"
+    />
+    <SeatingManager
+      v-if="tab === 'rooms' && permission('ADMISSIONS')"
+      :contest-id="String(route.params.id)"
+    />
+    <FinanceList
+      v-if="tab === 'finance' && permission('FINANCE')"
+      :contest-id="String(route.params.id)"
+    />
     <RegistrationReview
       v-model="reviewOpen"
       :registration-id="reviewId"
@@ -561,7 +574,7 @@ function insertVariable(v: string) {
       v-if="tab === 'files' && permission('FILES')"
       :contest-id="String(route.params.id)"
     />
-    <div class="panel" v-if="tab === 'settings'">
+    <div class="panel" v-if="tab === 'settings' && permission('CONTEST')">
       <el-form
         :key="String(edit.editing.value)"
         label-position="top"
@@ -868,7 +881,7 @@ function insertVariable(v: string) {
         >
       </div>
     </div>
-    <div class="panel" v-if="tab === 'registrations'">
+    <div class="panel" v-if="tab === 'registrations' && permission('REGISTRATIONS')">
       <div class="stats">
         <div class="stat">
           <span>报名总数</span>
@@ -1057,6 +1070,7 @@ function insertVariable(v: string) {
               v-if="preview?.state === 'SUCCESS'"
               :href="`/api/v1/jobs/${preview.id}/download`"
               target="_blank"
+              rel="noopener"
               >下载预览 PDF</a
             >
           </div>

@@ -46,27 +46,40 @@ async function newcomer(kind: string) {
 }
 
 async function mailToken(userId: string, action: 'verify' | 'reset') {
-  const messages = await db.outboxEvent.findMany({
-    where: { resourceId: userId, type: 'MAIL' },
-    orderBy: { createdAt: 'desc' },
-  });
-  const message = messages.find((row) =>
-    String((row.payload as any).actionPath).startsWith(`/account/${action}?`),
+  const account = await db.user.findUniqueOrThrow({ where: { id: userId } });
+  const email = action === 'verify' ? (account.pendingEmail ?? account.email) : account.email;
+  return until(
+    async () => {
+      const result = (await (
+        await fetch(`${mailpitBase}/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`)
+      ).json()) as any;
+      for (const item of result.messages ?? []) {
+        const message = (await (
+          await fetch(`${mailpitBase}/api/v1/message/${item.ID}`)
+        ).json()) as any;
+        const text = String(message.Text),
+          marker = `/account/${action}?token=`,
+          offset = text.indexOf(marker);
+        if (offset >= 0)
+          return text.slice(offset + marker.length).match(/^[A-Za-z0-9_-]+/)?.[0] ?? '';
+      }
+      return '';
+    },
+    Boolean,
+    30000,
   );
-  assert.ok(message, 'The actual auth endpoint must create its email event');
-  return new URL((message.payload as any).actionPath, 'http://localhost').searchParams.get(
-    'token',
-  )!;
 }
 
 async function changeEmail(client: Client, kind: string) {
+  await client.api('/auth/reauth', 'POST', { password: 'BugRegression2026!' });
   client.user = await client.api('/auth/profile', 'PUT', {
     version: client.user.version,
     name: client.user.name,
     profile: client.user.profile,
     email: `${kind}-new-${run}@example.test`,
   });
-  assert.equal(client.user.verified, false);
+  assert.equal(client.user.verified, true);
+  assert.ok(client.user.pendingEmail);
 }
 
 async function waitingFor(id: string) {
@@ -359,7 +372,8 @@ try {
     await changeEmail(client, 'verify');
     const response = await client.raw('/api/v1/auth/verify', 'POST', { token: old });
     assert.equal(response.status, 400, 'A previous mailbox must not verify the new address');
-    assert.equal((await client.api('/auth/me')).user.verified, false);
+    assert.equal((await client.api('/auth/me')).user.verified, true);
+    assert.ok((await client.api('/auth/me')).user.pendingEmail);
     const current = await mailToken(client.user.id, 'verify');
     await client.api('/auth/verify', 'POST', { token: current });
     assert.equal((await client.api('/auth/me')).user.verified, true);
@@ -376,6 +390,8 @@ try {
     });
     assert.equal(response.status, 400, 'A previous mailbox must not reset the account password');
     assert.equal((await client.api('/auth/me')).user.id, client.user.id);
+    await client.api('/auth/verify', 'POST', { token: await mailToken(client.user.id, 'verify') });
+    client.user = (await client.api('/auth/me')).user;
     await client.api('/auth/forgot', 'POST', { email: client.user.email });
     const current = await mailToken(client.user.id, 'reset');
     await client.api('/auth/reset', 'POST', {

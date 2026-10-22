@@ -9,6 +9,8 @@ import {
   activeGrantWhere,
   ensurePermanentAdministrator,
   effectiveAuthorization,
+  revokeRecipientInvitations,
+  revokeIssuedAuthorizationInvitations,
 } from './authorization.js';
 import { paginated, type ListQuery } from './pagination.js';
 const identityKeys = [
@@ -145,6 +147,7 @@ export class PeopleService {
     return db.$transaction(async (tx) => {
       await lock(tx, `identity:${id}`);
       const request = await tx.identityRequest.findUniqueOrThrow({ where: { id } });
+      if (request.userId === u.id) throw new ForbiddenException('不能审核本人的实名资料');
       if (request.status !== 'PENDING') throw new BadRequestException('此申请已经处理');
       await lock(tx, `auth:${request.userId}`);
       const target = await tx.user.findUniqueOrThrow({ where: { id: request.userId } });
@@ -281,6 +284,8 @@ export class PeopleService {
         data: { revokedAt: new Date() },
       });
       await tx.roleAssignment.deleteMany({ where: { userId: id } });
+      await revokeRecipientInvitations(tx, id);
+      await revokeIssuedAuthorizationInvitations(tx, id);
       await tx.invitation.updateMany({
         where: { OR: [{ inviterId: id }, { targetUserId: id }], acceptedBy: null },
         data: { revoked: true },
@@ -670,6 +675,8 @@ export class PeopleService {
         },
       });
       if (b.banned) {
+        await revokeRecipientInvitations(tx, id);
+        await revokeIssuedAuthorizationInvitations(tx, id);
         await tx.session.deleteMany({ where: { userId: id } });
         await tx.emailToken.updateMany({
           where: { userId: id, usedAt: null },

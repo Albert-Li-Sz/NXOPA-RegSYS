@@ -19,7 +19,7 @@ export {
 
 export const defaultSite = {
   name: '南晓开放原子社在线报名系统',
-  primaryColor: '#2080F0',
+  primaryColor: '#1765C1',
   footer: '南晓开放原子社 · 南京晓庄学院 ICPC 集训队',
 };
 
@@ -200,7 +200,12 @@ export const accountInvitationSchema = z
   });
 export type AccountInvitationInput = z.infer<typeof accountInvitationSchema>;
 export const invitationReturnPathSchema = z.string().regex(/^\/invite\/[A-Za-z0-9_-]{30,100}$/);
-export const answersSchema = z.record(z.string().max(80), z.json());
+export const answersSchema = z
+  .record(z.string().max(80), z.json())
+  .refine(
+    (value) => new TextEncoder().encode(JSON.stringify(value)).length <= 65536,
+    '单组资料最多 64 KB',
+  );
 export const fieldSchema = z
   .object({
     key: z
@@ -285,6 +290,8 @@ export const policySchema = z
     uniquePersonFields: z.array(z.string()).max(5).default([]),
   })
   .superRefine((p, ctx) => {
+    if (p.feeMode === 'PER_PERSON' && p.feeCents * p.maxMembers > 2_147_483_647)
+      ctx.addIssue({ code: 'custom', message: '总费用超过允许范围，请降低单价或最多人数' });
     if (p.minMembers > p.maxMembers)
       ctx.addIssue({ code: 'custom', message: '最少人数不能超过最多人数' });
     if (p.mode === 'INDIVIDUAL' && (p.minMembers !== 1 || p.maxMembers !== 1))
@@ -379,6 +386,7 @@ export type Answers = z.infer<typeof answersSchema>;
 export interface Principal {
   id: string;
   email: string;
+  pendingEmail?: string | null;
   username: string;
   name: string;
   verified: boolean;

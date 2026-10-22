@@ -12,8 +12,13 @@ import {
   balanceChange,
   financeNotify,
 } from './finance-accounts.js';
-import { requireManager, ownerIds } from './security.js';
+import { requireManager, requireSystemAdmin, ownerIds } from './security.js';
 import { bindFile } from './files.js';
+import {
+  normalizePaymentText,
+  paymentReference,
+  normalizeTransactionReference,
+} from './finance-integrity.js';
 const cents = z.number().int().positive().max(100_000_000);
 async function ledgerWithReversalState<T extends { id: string; kind: string }>(rows: T[]) {
   const payments = rows.filter((row) => row.kind === 'PAYMENT').map((row) => `reverse:${row.id}`);
@@ -27,6 +32,94 @@ async function ledgerWithReversalState<T extends { id: string; kind: string }>(r
   return rows.map((row) => ({ ...row, reversed: reversed.has(`reverse:${row.id}`) }));
 }
 export class FinanceService {
+  async reconciliation(u: Principal, id: string) {
+    const r = await getFinance(u, id);
+    requireManager(u, r.contestId, 'FINANCE');
+    return {
+      required: r.reconciliationRequired,
+      ledger: await ledgerWithReversalState(
+        await db.ledgerEntry.findMany({
+          where: { registrationId: id },
+          orderBy: { createdAt: 'asc' },
+        }),
+      ),
+      history: await db.auditEvent.findMany({
+        where: { resourceId: id, action: 'VOUCHER_DUPLICATE_HISTORY' },
+      }),
+    };
+  }
+  async completeReconciliation(u: Principal, id: string, body: unknown) {
+    const { reason } = z.object({ reason: z.string().trim().min(1).max(3000) }).parse(body);
+    return db.$transaction(async (tx) => {
+      await lock(tx, id);
+      const r = await loaded(tx, id);
+      requireManager(u, r.contestId, 'FINANCE');
+      const conflicts = await tx.$queryRaw<{ conflict: boolean }[]>`WITH live AS (
+        SELECT l."registrationId",v."attachmentId",a.sha256,nxopa_normalize_payment_text(v.reference) AS reference
+        FROM "LedgerEntry" l JOIN "PaymentVoucher" v ON l."sourceId"='voucher:'||v.id::text
+        JOIN "Attachment" a ON a.id=v."attachmentId"
+        WHERE l.kind='PAYMENT' AND l."contestId"=${r.contestId}::uuid AND NOT EXISTS (
+          SELECT 1 FROM "LedgerEntry" rev WHERE rev.kind='REVERSAL' AND rev."sourceId"='reverse:'||l.id::text)
+      ) SELECT EXISTS (
+        SELECT 1 FROM live WHERE reference IS NOT NULL AND reference<>'' GROUP BY reference HAVING count(*)>1 AND bool_or("registrationId"=${id}::uuid)
+        UNION ALL SELECT 1 FROM live WHERE sha256<>'' GROUP BY "registrationId",sha256 HAVING count(*)>1 AND "registrationId"=${id}::uuid
+        UNION ALL SELECT 1 FROM live GROUP BY "attachmentId" HAVING count(*)>1 AND bool_or("registrationId"=${id}::uuid)
+      ) AS conflict`;
+      if (
+        (await tx.paymentVoucher.count({
+          where: { registrationId: id, status: 'PENDING', createdBy: null },
+        })) ||
+        (await tx.refund.count({
+          where: {
+            registrationId: id,
+            status: { in: ['REQUESTED', 'APPROVED'] },
+            requestedBy: null,
+          },
+        })) ||
+        (await tx.invoiceRequest.count({
+          where: { registrationId: id, status: 'REQUESTED', requestedBy: null },
+        }))
+      )
+        throw new BadRequestException('仍有历史单据缺少提交人，请由系统管理员核实并登记');
+      if (conflicts[0]?.conflict)
+        throw new BadRequestException('仍有未冲正的历史重复到账，请先核对并由其他财务管理员冲正');
+      await tx.ledgerEntry.updateMany({
+        where: { registrationId: id, requiresReconciliation: true },
+        data: { requiresReconciliation: false },
+      });
+      await tx.financeAccount.update({ where: { id }, data: { reconciliationRequired: false } });
+      await audit(tx, u.id, 'FINANCE_RECONCILED', id, { reason });
+      return { ok: true };
+    });
+  }
+  async attribute(u: Principal, id: string, body: unknown) {
+    requireSystemAdmin(u);
+    const b = z
+      .object({
+        kind: z.enum(['vouchers', 'refunds', 'invoices']),
+        recordId: z.string().uuid(),
+        createdBy: z.string().uuid(),
+        reason: z.string().trim().min(1).max(3000),
+      })
+      .parse(body);
+    return db.$transaction(async (tx) => {
+      await lock(tx, id);
+      await tx.user.findUniqueOrThrow({ where: { id: b.createdBy } });
+      const model = {
+        vouchers: tx.paymentVoucher,
+        refunds: tx.refund,
+        invoices: tx.invoiceRequest,
+      }[b.kind] as any;
+      const field = b.kind === 'vouchers' ? 'createdBy' : 'requestedBy';
+      const changed = await model.updateMany({
+        where: { id: b.recordId, registrationId: id, [field]: null },
+        data: { [field]: b.createdBy },
+      });
+      if (!changed.count) throw new BadRequestException('仅可为缺失提交人的历史单据登记归属');
+      await audit(tx, u.id, 'FINANCE_ATTRIBUTION', id, { ...b });
+      return { ok: true };
+    });
+  }
   async accounts(u: Principal, query: ListQuery = {}) {
     if (query.contestId && query.role !== 'mine') requireManager(u, query.contestId, 'FINANCE');
     const where = {
@@ -76,6 +169,7 @@ export class FinanceService {
       number: r.number,
       feeCents: r.feeCents,
       netPaidCents: r.netPaidCents,
+      reconciliationRequired: r.reconciliationRequired,
       cancelledAt: r.cancelledAt,
       policy: policy(r),
       invoicePolicy: policySchema.parse(r.contest.policy),
@@ -136,7 +230,7 @@ export class FinanceService {
     const b = z
       .object({
         amountCents: cents,
-        channel: z.string().min(1).max(100),
+        channel: z.string().transform(normalizePaymentText).pipe(z.string().min(1).max(100)),
         reference: z.string().max(150).optional(),
         payer: z.string().min(1).max(100),
         paidAt: z.iso.datetime({ offset: true }),
@@ -157,21 +251,40 @@ export class FinanceService {
       )
         throw new BadRequestException('请先等待审核通过');
       await bindFile(tx, u, b.attachmentId, id);
+      const proof = await tx.attachment.findUniqueOrThrow({ where: { id: b.attachmentId } });
+      await lock(tx, `proof:${id}:${proof.sha256}`);
+      if (
+        await tx.paymentProofClaim.findFirst({
+          where: { registrationId: id, proofSha256: proof.sha256 },
+        })
+      )
+        throw new ConflictException('相同文件内容已用于此财务账户的缴费凭证');
       if (await tx.paymentProofClaim.findUnique({ where: { attachmentId: b.attachmentId } }))
         throw new ConflictException('该附件已经用于缴费凭证，请勿重复提交');
       const v = await tx.paymentVoucher.create({
         data: {
           ...b,
-          reference: b.reference?.trim() || null,
+          reference: b.reference
+            ? (await normalizeTransactionReference(tx, b.reference)) || null
+            : null,
           paidAt: new Date(b.paidAt),
           registrationId: id,
           createdBy: u.id,
         },
       });
       await tx.paymentProofClaim.create({
-        data: { attachmentId: b.attachmentId, voucherId: v.id },
+        data: {
+          attachmentId: b.attachmentId,
+          voucherId: v.id,
+          registrationId: id,
+          proofSha256: proof.sha256,
+        },
       });
-      await audit(tx, u.id, 'VOUCHER_UPLOAD', id, { voucherId: v.id });
+      await audit(tx, u.id, 'VOUCHER_UPLOAD', id, {
+        voucherId: v.id,
+        amountCents: b.amountCents,
+        reference: v.reference,
+      });
       await financeNotify(tx, r, { message: '缴费凭证已上传，等待管理员核账。' });
       return v;
     });
@@ -192,6 +305,8 @@ export class FinanceService {
       requireManager(u, r.contestId, 'FINANCE');
       const current = await tx.paymentVoucher.findUniqueOrThrow({ where: { id } });
       const attachment = await tx.attachment.findUnique({ where: { id: current.attachmentId } });
+      if (b.decision === 'CONFIRMED' && current.status === 'PENDING' && !current.createdBy)
+        throw new BadRequestException('历史凭证缺少提交人，请由系统管理员核实登记后处理');
       if (
         ownerIds(u).some((actor) =>
           [r.ownerId, current.createdBy, attachment?.ownerId].includes(actor),
@@ -208,9 +323,21 @@ export class FinanceService {
       if (b.amountCents !== undefined && b.amountCents !== current.amountCents)
         throw new BadRequestException('核账不能改写申报金额，请退回凭证后重新提交');
       const amount = current.amountCents;
-      const reference = current.reference?.trim() || b.reference;
+      const reference = await normalizeTransactionReference(
+        tx,
+        current.reference || b.reference || '',
+      );
       if (b.decision === 'CONFIRMED') {
         if (!reference) throw new BadRequestException('确认到账前请填写银行或支付平台的交易参考号');
+        if (!attachment || !/^[a-f0-9]{64}$/i.test(attachment.sha256))
+          throw new BadRequestException('历史凭证缺少可靠的附件摘要，请退回后重新上传');
+        await lock(tx, `proof:${r.id}:${attachment.sha256}`);
+        if (
+          await tx.paymentProofClaim.findFirst({
+            where: { registrationId: r.id, proofSha256: attachment.sha256, voucherId: { not: id } },
+          })
+        )
+          throw new ConflictException('相同文件内容已经用于此账户的其他凭证');
         await lock(tx, `file:${current.attachmentId}`);
         const claim = await tx.paymentProofClaim.findUnique({
           where: { attachmentId: current.attachmentId },
@@ -219,7 +346,17 @@ export class FinanceService {
           throw new ConflictException('此附件已用于其他缴费凭证');
         if (!claim)
           await tx.paymentProofClaim.create({
-            data: { attachmentId: current.attachmentId, voucherId: id },
+            data: {
+              attachmentId: current.attachmentId,
+              voucherId: id,
+              registrationId: r.id,
+              proofSha256: attachment?.sha256,
+            },
+          });
+        else
+          await tx.paymentProofClaim.update({
+            where: { attachmentId: current.attachmentId },
+            data: { registrationId: r.id, proofSha256: attachment.sha256 },
           });
       }
       const result = await tx.paymentVoucher.update({
@@ -235,6 +372,7 @@ export class FinanceService {
             amountCents: amount,
             sourceId: `voucher:${id}`,
             channelReference: `${current.channel}:${reference}`,
+            normalizedReference: paymentReference(reference),
             actorId: u.id,
             note: b.reason || '管理员确认线下实际到账',
           },
@@ -247,7 +385,11 @@ export class FinanceService {
         amountCents: amount,
         declaredAmountCents: current.amountCents,
         differenceCents: amount - current.amountCents,
+        reference,
+        handledBy: u.id,
       });
+      if (b.decision === 'REJECTED')
+        await tx.paymentProofClaim.deleteMany({ where: { voucherId: id } });
       await financeNotify(tx, r, { message: `缴费核账：${b.decision}。${b.reason}` });
       if (r.registration) await refresh(tx, r.id);
       return result;
@@ -263,6 +405,8 @@ export class FinanceService {
       if (e.kind !== 'PAYMENT') throw new BadRequestException('只能冲正确认收款');
       const prior = await tx.ledgerEntry.findUnique({ where: { sourceId: `reverse:${e.id}` } });
       if (prior) return prior;
+      if (ownerIds(u).includes(e.actorId))
+        throw new ForbiddenException('冲正须由原核账人以外的财务管理员复核');
       const totalInvoices = await tx.invoiceRequest.aggregate({
         where: { registrationId: r.id, status: { in: ['REQUESTED', 'ISSUED'] } },
         _sum: { amountCents: true },
@@ -281,7 +425,12 @@ export class FinanceService {
         },
       });
       await balanceChange(tx, r, -e.amountCents);
-      await audit(tx, u.id, 'PAYMENT_REVERSE', r.id, { ledgerId: id, reason });
+      await audit(tx, u.id, 'PAYMENT_REVERSE', r.id, {
+        ledgerId: id,
+        reason,
+        amountCents: -e.amountCents,
+        originalActorId: e.actorId,
+      });
       await financeNotify(tx, r, { message: '收款已冲正，请查看账簿与资格状态。' });
       if (r.registration) await refresh(tx, r.id);
       return result;
@@ -294,6 +443,8 @@ export class FinanceService {
       const r = await loaded(tx, id);
       if (!canEdit(u, r)) throw new ForbiddenException();
       if (!policy(r).refundsEnabled) throw new BadRequestException('此竞赛未开放退款');
+      if (r.reconciliationRequired)
+        throw new BadRequestException('此账户存在历史重复到账，须先完成财务对账');
       const pending = await tx.refund.aggregate({
         where: { registrationId: id, status: { in: ['REQUESTED', 'APPROVED'] } },
         _sum: { amountCents: true },
@@ -301,7 +452,11 @@ export class FinanceService {
       if (b.amountCents > r.netPaidCents - (pending._sum.amountCents ?? 0))
         throw new BadRequestException('退款金额超过可退款余额');
       const x = await tx.refund.create({ data: { ...b, registrationId: id, requestedBy: u.id } });
-      await audit(tx, u.id, 'REFUND_REQUEST', id, { refundId: x.id });
+      await audit(tx, u.id, 'REFUND_REQUEST', id, {
+        refundId: x.id,
+        amountCents: x.amountCents,
+        requestedBy: u.id,
+      });
       await financeNotify(tx, r, { message: '退款申请已提交，等待管理员处理。' });
       return x;
     });
@@ -312,6 +467,7 @@ export class FinanceService {
         decision: z.enum(['APPROVED', 'REJECTED', 'COMPLETED']),
         reference: z.string().max(150).optional(),
         attachmentId: z.string().uuid().optional(),
+        reason: z.string().trim().max(3000).default(''),
       })
       .parse(body);
     if (b.attachmentId && b.decision !== 'COMPLETED')
@@ -322,6 +478,13 @@ export class FinanceService {
       const r = await loaded(tx, refund.registrationId);
       requireManager(u, r.contestId, 'FINANCE');
       const x = await tx.refund.findUniqueOrThrow({ where: { id } });
+      const reference = b.reference
+        ? await normalizeTransactionReference(tx, b.reference)
+        : undefined;
+      if (b.decision !== 'REJECTED' && !x.requestedBy)
+        throw new BadRequestException('历史退款缺少申请人，请先核实登记');
+      if (b.decision === 'REJECTED' && !b.reason)
+        throw new BadRequestException('请填写拒绝退款原因');
       if (ownerIds(u).some((actor) => [r.ownerId, x.requestedBy].includes(actor)))
         throw new ForbiddenException('不能审核或完成本人的退款申请，请由其他财务管理员处理');
       if (x.status === b.decision) return x;
@@ -329,9 +492,16 @@ export class FinanceService {
       if (b.decision === 'COMPLETED' && x.status !== 'APPROVED')
         throw new BadRequestException('先审核通过，再记录实际退款');
       if (b.decision === 'COMPLETED') {
-        if (x.amountCents > r.feeCents && ownerIds(u).includes(x.approvedBy ?? x.handledBy ?? ''))
+        if (r.reconciliationRequired)
+          throw new BadRequestException('此账户须先完成历史重复到账对账');
+        const completed = await tx.refund.aggregate({
+          where: { registrationId: r.id, status: 'COMPLETED' },
+          _sum: { amountCents: true },
+        });
+        const cumulative = (completed._sum.amountCents ?? 0) + x.amountCents;
+        if (cumulative > r.feeCents && (!x.approvedBy || ownerIds(u).includes(x.approvedBy)))
           throw new ForbiddenException('超过应收费用的退款须由另一位财务管理员复核并登记实际退款');
-        if (!b.reference?.trim()) throw new BadRequestException('请填写实际退款参考号');
+        if (!reference) throw new BadRequestException('请填写实际退款参考号');
         if (x.amountCents > r.netPaidCents) throw new BadRequestException('余额不足');
         if (
           await tx.invoiceRequest.count({
@@ -347,7 +517,8 @@ export class FinanceService {
             kind: 'REFUND',
             amountCents: -x.amountCents,
             sourceId: `refund:${id}`,
-            channelReference: `refund:${b.reference}`,
+            channelReference: paymentReference(reference, true),
+            normalizedReference: paymentReference(reference, true),
             actorId: u.id,
             note: x.reason,
           },
@@ -358,15 +529,30 @@ export class FinanceService {
         where: { id },
         data: {
           status: b.decision,
-          reference: b.reference,
+          reference,
           attachmentId: b.attachmentId,
           handledBy: u.id,
           ...(b.decision === 'APPROVED' ? { approvedBy: u.id } : {}),
+          ...(b.decision === 'COMPLETED' && x.approvedBy !== u.id
+            ? { secondReviewerId: u.id }
+            : {}),
+          ...(b.decision === 'REJECTED' ? { rejectionReason: b.reason } : {}),
           completedAt: b.decision === 'COMPLETED' ? new Date() : null,
         },
       });
-      await audit(tx, u.id, 'REFUND_REVIEW', r.id, { refundId: id, decision: b.decision });
-      await financeNotify(tx, r, { message: `退款处理：${b.decision}` });
+      await audit(tx, u.id, 'REFUND_REVIEW', r.id, {
+        refundId: id,
+        decision: b.decision,
+        amountCents: x.amountCents,
+        approvedBy: result.approvedBy,
+        handledBy: u.id,
+        secondReviewerId: result.secondReviewerId,
+        reference: result.reference,
+        reason: b.reason,
+      });
+      await financeNotify(tx, r, {
+        message: `退款处理：${b.decision}${b.reason ? `；${b.reason}` : ''}`,
+      });
       if (r.registration) await refresh(tx, r.id);
       return result;
     });
@@ -393,9 +579,13 @@ export class FinanceService {
       if (b.amountCents > r.netPaidCents - (total._sum.amountCents ?? 0))
         throw new BadRequestException('金额超过可开票余额');
       const x = await tx.invoiceRequest.create({
-        data: { ...b, snapshot: json(b), registrationId: id },
+        data: { ...b, snapshot: json(b), registrationId: id, requestedBy: u.id },
       });
-      await audit(tx, u.id, 'INVOICE_REQUEST', id, { invoiceId: x.id });
+      await audit(tx, u.id, 'INVOICE_REQUEST', id, {
+        invoiceId: x.id,
+        amountCents: x.amountCents,
+        requestedBy: u.id,
+      });
       await financeNotify(tx, r, {
         message: '开票申请已提交，等待管理员上传发票。',
         category: 'INVOICE',
@@ -420,6 +610,10 @@ export class FinanceService {
       const r = await loaded(tx, x.registrationId);
       requireManager(u, r.contestId, 'FINANCE');
       const current = await tx.invoiceRequest.findUniqueOrThrow({ where: { id } });
+      if (current.status === 'REQUESTED' && b.decision === 'ISSUED' && !current.requestedBy)
+        throw new BadRequestException('历史发票缺少申请人，请先核实登记');
+      if (ownerIds(u).some((actor) => [r.ownerId, current.requestedBy].includes(actor)))
+        throw new ForbiddenException('不能处理本人申请或本人账户的发票');
       if (current.status === b.decision) return current;
       if (
         (b.decision === 'VOID' && current.status !== 'ISSUED') ||
@@ -441,7 +635,13 @@ export class FinanceService {
           reason: b.reason,
         },
       });
-      await audit(tx, u.id, 'INVOICE_REVIEW', r.id, { invoiceId: id, decision: b.decision });
+      await audit(tx, u.id, 'INVOICE_REVIEW', r.id, {
+        invoiceId: id,
+        decision: b.decision,
+        amountCents: current.amountCents,
+        handledBy: u.id,
+        reason: b.reason,
+      });
       await financeNotify(tx, r, {
         message: `开票处理：${b.decision}`,
         category: 'INVOICE',

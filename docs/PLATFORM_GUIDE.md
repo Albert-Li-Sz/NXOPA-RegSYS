@@ -14,7 +14,7 @@ MinIO 镜像从[固定官方源码版本](https://github.com/minio/minio/release
 
 活动可先开放报名，后期在设置中启用“平台文件导出”。平台导出中心选择活动和平台，导出合格报名的 ZIP。Hydro 使用官方 Onsite Toolkit 的 teams.json；DOMjudge 9.x 依次导入 groups.json、organizations.json、teams.json、accounts.json。包内附账号密码表与操作说明，重复导出账号密码稳定，本站不再连接远端或执行自动同步。参见[完整导入教程](INTEGRATIONS.md)。
 
-可排除非正式报名，也可全部按非正式导入。资格变更、取消或删除报名后，已导入的远端账号由评测管理员手动处理。v0.7.2 为破坏性更新，移除旧服务凭据并取消同步任务，升级前备份。
+可排除非正式报名，也可全部按非正式导入。资格变更、取消或删除报名后，已导入的远端账号由评测管理员手动处理。v0.7.0 为破坏性更新，移除旧服务凭据并取消同步任务，升级前备份。
 
 ## 存储和文件
 
@@ -46,7 +46,7 @@ MinIO 镜像从[固定官方源码版本](https://github.com/minio/minio/release
 
 | 管理授权   | 权限                                                                                                                           |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| 系统管理员 | 全站管理、核心 SMTP / 公网地址 / S3 / GitHub / 平台凭据与 API 配置、授权其他管理员                                             |
+| 系统管理员 | 全站管理、核心 SMTP / 公网地址 / S3 / GitHub 与 API 配置、授权其他管理员                                                       |
 | 高级管理员 | 全站竞赛创建、报名、财务、准考证、文件、工单、学生与教师视图、普通账号资料编辑及封禁、实名审核、授权竞赛管理员；不配置核心信息 |
 | 竞赛管理员 | 仅指定竞赛，按查看、竞赛配置、报名审核、财务、准考证、文件、工单、学生与教师视图、平台联动分别授权                             |
 
@@ -90,7 +90,7 @@ MinIO 镜像从[固定官方源码版本](https://github.com/minio/minio/release
 
 ## 验收命令
 
-报名流程回归使用 `pnpm test:activity-workflows`，考点选择与分配使用 `pnpm test:exam-sites`，升级和恢复使用 `pnpm test:workflow-upgrade`。`pnpm test:full` 在独立 PostgreSQL、Redis、Mailpit 和 LaTeX 环境中运行二十二组回归；其中浏览器覆盖查看／编辑、审核弹窗、考点选择和排考预览。原始结果位于 `.runtime/reports/`，测试数据与正式数据分开。
+报名流程回归使用 `pnpm test:activity-workflows`，考点选择与分配使用 `pnpm test:exam-sites`，升级和恢复使用 `pnpm test:workflow-upgrade`。`pnpm test:full` 在独立 PostgreSQL、Redis、Mailpit 和 LaTeX 环境中运行 scripts/release-validation.mjs 声明的全部回归套件；其中浏览器覆盖查看／编辑、审核弹窗、考点选择和排考预览。原始结果位于 `.runtime/reports/`，测试数据与正式数据分开。
 
 `pnpm test:platform-features` 在独立 PostgreSQL / Redis / MinIO / Mailpit / LaTeX 环境中运行真实接口、邮件、PDF 和浏览器验收；报告写入 `.runtime/reports/platform-features.json`。`pnpm test:release-features` 保留既有 GitHub OAuth、资料、编号和 UI 回归；`pnpm test:install` 验证实际 Compose 安装、数据卷、PDF 和加密备份恢复。测试使用虚构身份，不复制参考图中的个人资料。
 
@@ -137,3 +137,11 @@ MinIO 镜像从[固定官方源码版本](https://github.com/minio/minio/release
 每个活动只有一个排考场次。团队仍共用一张准考证，按成员排考时列出各成员座位。调整座位、考场名称或地点后，受影响准考证失效并需重新生成；未调整的历史准考证继续使用原信息。已存在排考时不能直接更改排考单位，须先清空。
 
 内容未变的考场保存、重复确认相同座位均保留现有准考证。排考预览和保存期间锁定范围及操作按钮；预览失败或版本冲突后旧预览失效，重新预览后才能确认。
+
+## v0.8.0 安全与使用变化
+
+变更邮箱或绑定、解绑第三方登录前，须输入当前密码；没有密码的用户可验证原邮箱验证码。新邮箱验证完成前仍使用原邮箱登录和找回密码。验证完成后，其他设备会话失效，原邮箱收到通知。仅查看活动的 VIEW 授权不包含报名个人资料；业务管理员须取得对应模块权限。
+
+参考号按 Unicode NFKC、空白和大小写规范化，在活动内按交易去重；同一财务账户不能重复使用内容相同的凭证。累计退款超过应收费用时，每笔后续退款须由审批人以外的管理员完成；冲正同样需要原核账人以外的管理员。历史疑似重复到账先对账，不能直接继续退款。拒绝退款须填写原因。
+
+排考每次最多 200 份报名，准考证生成每次最多 100 份，每活动待处理编译任务最多 200 个。预览一小时后失效，Worker 自动清理预览和过期编译目录。

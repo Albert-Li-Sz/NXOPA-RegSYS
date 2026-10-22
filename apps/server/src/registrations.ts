@@ -1,3 +1,5 @@
+import { answersSchema } from '@contest-center/contracts';
+import { canManageRegistrationData } from './security.js';
 import {
   BadRequestException,
   ForbiddenException,
@@ -74,13 +76,13 @@ import { examSiteOrder, saveExamSites, validateExamSite } from './exam-sites.js'
 function registrationAccess(u: Principal, contestId?: string) {
   return {
     ...(contestId ? { contestId } : {}),
-    ...(!u.isAdmin && !(contestId && manages(u, contestId))
+    ...(!u.isAdmin && !(contestId && canManageRegistrationData(u, contestId))
       ? {
           OR: [
             { ownerId: { in: ownerIds(u) } },
             { people: { some: { userId: { in: ownerIds(u) }, active: true } } },
             { coaches: { some: { userId: { in: ownerIds(u) } } } },
-            { contestId: { in: u.contestIds } },
+            { contestId: { in: u.contestIds.filter((id) => canManageRegistrationData(u, id)) } },
           ],
         }
       : {}),
@@ -152,6 +154,16 @@ function registrationFilters(query: ListQuery) {
 const ajv = new (Ajv as unknown as typeof import('ajv').Ajv)({ allErrors: true, strict: false });
 (addFormats as unknown as (a: typeof ajv) => void)(ajv);
 export const policy = (r: Registration) => policySchema.parse(r.policySnapshot ?? r.contest.policy);
+function personUniqueKey(p: ReturnType<typeof policy>, answers: Answers) {
+  const key = p.uniquePersonFields
+    .map((name) =>
+      String(answers[name] ?? '')
+        .trim()
+        .toLowerCase(),
+    )
+    .join('|');
+  return key.replaceAll('|', '') ? key : null;
+}
 export async function loaded(tx: Tx, id: string) {
   const r = await tx.registration.findUnique({ where: { id }, include: registrationInclude });
   if (!r) throw new NotFoundException('报名不存在');
@@ -173,9 +185,15 @@ export async function refresh(tx: Tx, id: string) {
 }
 export async function dirty(tx: Tx, r: Registration, u: Principal, reason: string) {
   const next = r.status === 'SUBMITTED' || r.status === 'CORRECTION' ? 'CORRECTION' : r.status;
+  const forcedCorrection = next === 'CORRECTION' && !editingWindow(r);
   await tx.registration.update({
     where: { id: r.id },
-    data: { status: next, review: 'PENDING', eligible: false, version: { increment: 1 } },
+    data: {
+      status: next,
+      review: forcedCorrection ? 'CORRECTION' : 'PENDING',
+      eligible: false,
+      version: { increment: 1 },
+    },
   });
   await tx.admissionDocument.updateMany({
     where: { registrationId: r.id },
@@ -360,6 +378,11 @@ export class RegistrationService {
             data: { state: 'STALE', releasedAt: null, version: { increment: 1 } },
           });
         if (disabled.includes('integrations')) {
+          await tx.webhook.updateMany({
+            where: { contestId: id },
+            data: { enabled: false, version: { increment: 1 } },
+          });
+          await audit(tx, u.id, 'WEBHOOK_MODULE_DISABLE', id);
           const mappings = await tx.accountMapping.findMany({
             where: { registration: { contestId: id } },
           });
@@ -447,6 +470,81 @@ export class RegistrationService {
         }),
       () => db.registration.count({ where: filtered }),
       Math.min(500, Math.max(1, take)),
+    );
+  }
+  async exportRows(
+    u: Principal,
+    contestId: string,
+    cursor: string | undefined,
+    take: number,
+    query: ListQuery,
+  ) {
+    requireManager(u, contestId, 'REGISTRATIONS');
+    const where = await filteredAccess(u, query, contestId);
+    return db.$transaction(
+      async (tx) => {
+        const candidates = await tx.registration.findMany({
+          where,
+          select: { id: true },
+          orderBy: [
+            { number: { sort: 'asc', nulls: 'last' } },
+            { createdAt: 'asc' },
+            { id: 'asc' },
+          ],
+          take: Math.min(10, Math.max(1, take)),
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        });
+        if (!candidates.length) return [];
+        const ids = candidates.map((row) => row.id);
+        const sizes = await tx.$queryRaw<
+          { bytes: bigint }[]
+        >`WITH ids AS (SELECT value::uuid AS id FROM jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))
+        SELECT COALESCE((SELECT sum(octet_length(answers::text)) FROM "Registration" WHERE id IN (SELECT id FROM ids)),0)
+          +COALESCE((SELECT sum(octet_length(answers::text)) FROM "RegistrationPerson" WHERE "registrationId" IN (SELECT id FROM ids) AND active),0)
+          +COALESCE((SELECT sum(octet_length(answers::text)) FROM "RegistrationCoach" WHERE "registrationId" IN (SELECT id FROM ids)),0) AS bytes`;
+        if (Number(sizes[0]?.bytes ?? 0) > 50 * 1024 * 1024)
+          throw new BadRequestException('导出扫描资料超过 50 MB，请缩小筛选范围');
+        return tx.registration.findMany({
+          where: { id: { in: ids } },
+          select: {
+            id: true,
+            number: true,
+            formVersion: true,
+            teamName: true,
+            teamEnglishName: true,
+            participationType: true,
+            organization: true,
+            answers: true,
+            status: true,
+            review: true,
+            eligible: true,
+            submittedAt: true,
+            feeCents: true,
+            netPaidCents: true,
+            examSite: true,
+            people: {
+              where: { active: true },
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                captain: true,
+                answers: true,
+                active: true,
+              },
+            },
+            coaches: {
+              select: { id: true, answers: true, user: { select: { name: true, email: true } } },
+            },
+          },
+          orderBy: [
+            { number: { sort: 'asc', nulls: 'last' } },
+            { createdAt: 'asc' },
+            { id: 'asc' },
+          ],
+        });
+      },
+      { isolationLevel: 'RepeatableRead', timeout: 10000 },
     );
   }
   async reviewQueue(u: Principal, contestId: string, query: ListQuery = {}) {
@@ -576,8 +674,12 @@ export class RegistrationService {
         reviewerName: reviewers.find((u) => u.id === review.actorId)?.name || '管理员',
       })),
       revisions,
-      invoiceIssuedCents: issued._sum.amountCents ?? 0,
-      invoiceReservedCents: invoicesTotal._sum.amountCents ?? 0,
+      ...(financeDetails
+        ? {
+            invoiceIssuedCents: issued._sum.amountCents ?? 0,
+            invoiceReservedCents: invoicesTotal._sum.amountCents ?? 0,
+          }
+        : {}),
       latestFormVersion: forms?.version,
       formUpdated: !r.quoted && r.formVersion !== r.contest.formVersion,
       fields: forms?.fields ?? [],
@@ -594,6 +696,7 @@ export class RegistrationService {
     if (!u.verified) throw new ForbiddenException('请先验证邮箱');
     if (!profileComplete(u))
       throw new BadRequestException('请先完善学号、姓名、班级、学院和性别后再报名');
+    answersSchema.parse(u.profile);
     const { contestId } = z.object({ contestId: z.string().uuid() }).parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, contestId);
@@ -637,6 +740,7 @@ export class RegistrationService {
       const examSiteId = b.examSiteId === undefined ? r.examSiteId : b.examSiteId;
       validateExamSite(r, examSiteId);
       const p = policy(r);
+      await lock(tx, r.contestId);
       const participationType = b.participationType ?? r.participationType;
       if (participationType === 'UNOFFICIAL' && !p.allowUnofficial)
         throw new BadRequestException('此竞赛未开放非正式报名');
@@ -689,7 +793,8 @@ export class RegistrationService {
           );
         });
       if (same) return r;
-      if (r.examSiteId !== examSiteId) {
+      const retainedPeople = new Set(b.people.flatMap((p) => (p.id ? [p.id] : [])));
+      if (r.examSiteId !== examSiteId || r.people.some((p) => !retainedPeople.has(p.id))) {
         await tx.seatAssignment.deleteMany({ where: { registrationId: id } });
         await tx.contest.update({
           where: { id: r.contestId },
@@ -705,7 +810,7 @@ export class RegistrationService {
           email: old?.userId ? old.email : x.email,
           captain: x.captain,
           answers: json(x.answers),
-          uniqueKey: null,
+          uniqueKey: personUniqueKey(p, x.answers),
         };
         if (old) await tx.registrationPerson.update({ where: { id: old.id }, data });
         else
@@ -967,6 +1072,21 @@ export class RegistrationService {
       const p = policy(r);
       const phase = registrationReviewPhase(r);
       if (!phase) throw new BadRequestException('当前报名不能审核，请等待报名者提交资料');
+      if (b.decision === 'APPROVED') {
+        if (p.coachMode === 'REQUIRED' && !r.coaches.length)
+          throw new BadRequestException('需要补充指导老师');
+        const form = await tx.formVersion.findUniqueOrThrow({
+          where: { contestId_version: { contestId: r.contestId, version: r.formVersion } },
+        });
+        const fields = fieldsSchema.parse((r.snapshot as any)?.fields ?? form.fields);
+        const answers = r.answers as Record<string, Answers>;
+        await this.validateAnswers(tx, u, r, fields, 'REGISTRATION', answers.registration ?? {});
+        await this.validateAnswers(tx, u, r, fields, 'TEAM', answers.team ?? {});
+        for (const person of r.people.filter((p) => p.active))
+          await this.validateAnswers(tx, u, r, fields, 'PERSON', person.answers as Answers);
+        for (const coach of r.coaches)
+          await this.validateAnswers(tx, u, r, fields, 'COACH', coach.answers as Answers);
+      }
       if (
         b.decision === 'CORRECTION' &&
         new Date() >= new Date(r.contest.correctionUntil ?? r.contest.closesAt)
@@ -1188,7 +1308,7 @@ export class RegistrationService {
           throw new BadRequestException('邀请人的报名管理权限已失效，请重新获取邀请');
       }
       if (i.kind === 'MEMBER') {
-        if (r.people.some((person) => person.userId === u.id && person.active))
+        if (r.people.some((person) => !!person.userId && owns(u, person.userId) && person.active))
           throw new ConflictException('您已是此队伍的成员');
         if (p.mode !== 'TEAM' || p.memberMode !== 'INVITE' || r.people.length >= p.maxMembers)
           throw new BadRequestException('无法加入此团队');
@@ -1249,7 +1369,10 @@ export class RegistrationService {
         await tx.invitation.updateMany({
           where: {
             registrationId: r.id,
-            inviterId: coach.userId,
+            OR: [
+              { inviterId: coach.userId },
+              { kind: 'COACH', targetEmail: coach.user.email.toLowerCase() },
+            ],
             acceptedBy: null,
             revoked: false,
           },
@@ -1265,19 +1388,28 @@ export class RegistrationService {
       .object({
         version: z.number().int(),
         name: z.string().min(1).max(100),
-        answers: z.record(z.string(), z.json()),
+        answers: z
+          .record(z.string(), z.json())
+          .refine((a) => Buffer.byteLength(JSON.stringify(a)) <= 65536, '资料最多 64 KB'),
       })
       .parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, id);
       const r = await loaded(tx, id);
-      const p = r.people.find((p) => p.id === personId && p.userId === u.id && p.active);
+      const p = r.people.find(
+        (p) => p.id === personId && !!p.userId && owns(u, p.userId) && p.active,
+      );
+      await lock(tx, r.contestId);
       if (!p) throw new ForbiddenException();
       checkVersion(r.version, b.version);
       windowOpen(r);
       await tx.registrationPerson.update({
         where: { id: p.id },
-        data: { name: b.name, answers: json(b.answers), uniqueKey: null },
+        data: {
+          name: b.name,
+          answers: json(b.answers),
+          uniqueKey: personUniqueKey(policy(r), b.answers),
+        },
       });
       await dirty(tx, r, u, 'MEMBER_EDIT');
       return loaded(tx, id);
@@ -1285,7 +1417,12 @@ export class RegistrationService {
   }
   async coachAnswers(u: Principal, id: string, coachId: string, body: unknown) {
     const b = z
-      .object({ version: z.number().int(), answers: z.record(z.string(), z.json()) })
+      .object({
+        version: z.number().int(),
+        answers: z
+          .record(z.string(), z.json())
+          .refine((a) => Buffer.byteLength(JSON.stringify(a)) <= 65536, '资料最多 64 KB'),
+      })
       .parse(body);
     return db.$transaction(async (tx) => {
       await lock(tx, id);

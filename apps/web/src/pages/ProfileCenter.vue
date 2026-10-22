@@ -10,7 +10,7 @@ import {
   adminLevelLabels,
   adminPermissionLabels,
 } from '@contest-center/contracts';
-import { api, auth, loadAuth, date, label } from '../api';
+import { api, auth, loadAuth, date, label, reauthenticate } from '../api';
 import type { Data, FieldDefinition } from '../types';
 import { useEditSession, mayLeaveEdits } from '../composables/useEditSession';
 import EditActions from '../components/EditActions.vue';
@@ -134,10 +134,28 @@ onMounted(async () => {
   await loadSessions();
   if (auth.user?.grants?.length) contests.value = await api('/contests?all=true');
 });
+async function linkProvider(provider: 'github' | 'feishu') {
+  try {
+    await reauthenticate();
+    location.assign(`/api/v1/auth/${provider}?mode=link&next=%2Fme%2Fprofile%3Ftab%3Dsettings`);
+  } catch (error) {
+    if (error instanceof Error) ElMessage.error(error.message);
+  }
+}
+async function unlinkProvider(provider: 'github' | 'feishu') {
+  try {
+    await reauthenticate();
+    await api(`/auth/${provider}`, 'DELETE');
+    (provider === 'github' ? github : feishu).value.linked = false;
+  } catch (error) {
+    if (error instanceof Error) ElMessage.error(error.message);
+  }
+}
 async function save() {
   if (busy.value || !operationsSettled()) return;
   busy.value = true;
   try {
+    if (profile.email !== auth.user?.email) await reauthenticate();
     await api('/auth/profile', 'PUT', {
       version: profile.version,
       name: profile.name,
@@ -350,7 +368,10 @@ const contestName = (id: string | null) =>
               auth.user.verified ? '邮箱已验证' : '邮箱未验证'
             }}</el-tag>
           </div>
-          <div v-if="!auth.user.verified" class="toolbar">
+          <p v-if="auth.user.pendingEmail" role="status">
+            待验证新邮箱：{{ auth.user.pendingEmail }}。验证完成前，登录及找回密码仍使用原邮箱。
+          </p>
+          <div v-if="!auth.user.verified || auth.user.pendingEmail" class="toolbar">
             <el-input
               v-model="code"
               inputmode="numeric"
@@ -361,7 +382,9 @@ const contestName = (id: string | null) =>
             /><el-button type="primary" @click="verify">验证邮箱</el-button
             ><el-button @click="resend">重新发送验证邮件</el-button>
           </div>
-          <p class="form-help">修改邮箱后需重新验证，后续通知发送至当前邮箱。</p>
+          <p class="form-help">
+            变更邮箱需要验证当前身份和新邮箱；完成后其他设备将退出登录，原邮箱会收到通知。
+          </p>
         </div>
         <MailDelivery :resource-id="auth.user.id" />
         <div class="card login-sessions">
@@ -458,13 +481,12 @@ const contestName = (id: string | null) =>
             }}
           </p>
           <div class="actions">
-            <a v-if="!feishu.linked" href="/api/v1/auth/feishu?mode=link"
-              ><el-button :disabled="!auth.user?.verified">绑定飞书</el-button></a
-            ><el-button
-              v-else
-              @click="api('/auth/feishu', 'DELETE').then(() => (feishu.linked = false))"
-              >解除飞书绑定</el-button
-            >
+            <el-button
+              v-if="!feishu.linked"
+              :disabled="!auth.user?.verified"
+              @click="linkProvider('feishu')"
+              >绑定飞书</el-button
+            ><el-button v-else @click="unlinkProvider('feishu')">解除飞书绑定</el-button>
           </div>
         </div>
         <div class="card" v-if="github.enabled || github.linked">
@@ -476,14 +498,8 @@ const contestName = (id: string | null) =>
                 : '绑定后可使用 GitHub 登录当前账号。'
             }}
           </p>
-          <a
-            v-if="!github.linked"
-            href="/api/v1/auth/github?mode=link&next=%2Fme%2Fprofile%3Ftab%3Dsettings"
-            ><el-button>绑定 GitHub</el-button></a
-          ><el-button
-            v-else
-            :disabled="!auth.user.hasPassword"
-            @click="api('/auth/github', 'DELETE').then(() => (github.linked = false))"
+          <el-button v-if="!github.linked" @click="linkProvider('github')">绑定 GitHub</el-button
+          ><el-button v-else :disabled="!auth.user.hasPassword" @click="unlinkProvider('github')"
             >解除 GitHub 绑定</el-button
           >
           <p v-if="!auth.user.hasPassword" class="form-help">

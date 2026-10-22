@@ -1,3 +1,7 @@
+if (process.env.NXOPA_ISOLATED_TEST_DATABASE !== '1')
+  throw new Error(
+    'Run pnpm test:full (or FULL_REGRESSION_SUITES=... pnpm test:full) to use an isolated test database',
+  );
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';

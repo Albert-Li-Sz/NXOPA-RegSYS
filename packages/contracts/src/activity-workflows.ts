@@ -46,7 +46,7 @@ export const seatAssignmentSchema = z.object({
   seat: z.number().int().positive(),
 });
 export const seatingRequestSchema = z.object({
-  registrationIds: z.array(z.string().uuid()).min(1).max(10000),
+  registrationIds: z.array(z.string().uuid()).min(1).max(200),
   replace: z.boolean().default(false),
   assignments: z.array(seatAssignmentSchema).max(30000).optional(),
   seatingVersion: z.number().int().optional(),

@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { Client, base } from './client.js';
+import { Client, base, until } from './client.js';
 import { exportFixture } from './platform-export-fixture.js';
 import { db } from '../../apps/server/src/db.js';
 import { sha } from '../../apps/server/src/security.js';
@@ -14,12 +14,25 @@ const fixtures: Awaited<ReturnType<typeof exportFixture>>[] = [];
 const stage = await mkdtemp(path.join(tmpdir(), 'platform-exports-'));
 async function bundle(client: Client, id: string, options: Record<string, unknown>) {
   const key = randomUUID();
-  const response = await client.raw(
-    `/api/v1/contests/${id}/platform-exports`,
-    'POST',
-    options,
-    key,
+  const response = await until(
+    async () => {
+      const response = await client.raw(
+        `/api/v1/contests/${id}/platform-exports`,
+        'POST',
+        options,
+        key,
+      );
+      if (
+        response.status === 429 &&
+        (await response.clone().json()).message === '导出繁忙，请稍后重试'
+      )
+        return null;
+      return response;
+    },
+    (response) => response !== null,
+    10000,
   );
+  assert.ok(response);
   if (!response.ok) throw new Error(`Export failed: ${response.status} ${await response.text()}`);
   assert.equal(response.status, 201);
   assert.match(response.headers.get('content-type') ?? '', /application\/zip/);
@@ -34,6 +47,7 @@ try {
   const admin = await new Client().login('admin'),
     alice = await new Client().login('alice'),
     manager = await new Client().login('manager');
+  await redis.del(`rate:exports:${admin.user.id}`);
   const f = await exportFixture(alice.user.id);
   fixtures.push(f);
   const route = `/api/v1/contests/${f.contest.id}/platform-exports`;

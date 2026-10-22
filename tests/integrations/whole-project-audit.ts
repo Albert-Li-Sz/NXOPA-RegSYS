@@ -1,3 +1,7 @@
+if (process.env.NXOPA_ISOLATED_TEST_DATABASE !== '1')
+  throw new Error(
+    'Run pnpm test:full (or FULL_REGRESSION_SUITES=... pnpm test:full) to use an isolated test database',
+  );
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -85,6 +89,10 @@ async function registration(owner: Client, c: { id: string }, submit = true) {
   return submit ? owner.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version }) : r;
 }
 async function grant(user: Client, contestId: string, permissions: string[]) {
+  const previous = await db.adminGrant.findMany({
+    where: { userId: user.user.id, contestId, level: 'CONTEST', revokedAt: null },
+  });
+  for (const grant of previous) await admin.api(`/admin/grants/${grant.id}`, 'DELETE');
   return admin.api('/admin/grants', 'POST', {
     userId: user.user.id,
     level: 'CONTEST',
@@ -139,6 +147,7 @@ try {
         await writeFile(
           path.join(folder, 'request.json'),
           JSON.stringify({
+            expiresAt: Date.now() + 120000,
             source: String.raw`\documentclass{article}\begin{document}RESTART-RECOVERED\end{document}`,
           }),
         );
@@ -153,6 +162,48 @@ try {
           await pdfText(new Uint8Array(await readFile(path.join(folder, 'document.pdf')))),
           /RESTART-RECOVERED/,
         );
+        const canary = `/tmp/nxopa-readable-${run}`;
+        await exec('docker', [
+          'exec',
+          process.env.TEST_LATEX_CONTAINER!,
+          'sh',
+          '-c',
+          `printf 'WORLD-READABLE-CANARY' > ${canary} && chmod 644 ${canary}`,
+        ]);
+        assert.equal(
+          (
+            await exec('docker', [
+              'exec',
+              '--user',
+              '100999:100999',
+              process.env.TEST_LATEX_CONTAINER!,
+              'cat',
+              canary,
+            ])
+          ).stdout,
+          'WORLD-READABLE-CANARY',
+        );
+        await rm(folder, { recursive: true, force: true });
+        await mkdir(folder, { recursive: true, mode: 0o700 });
+        await writeFile(
+          path.join(folder, 'request.json'),
+          JSON.stringify({
+            expiresAt: Date.now() + 120000,
+            source: String.raw`\documentclass{article}\begin{document}\input{${canary}}\end{document}`,
+          }),
+        );
+        const blocked = await until(
+          async () =>
+            JSON.parse(await readFile(path.join(folder, 'result.json'), 'utf8').catch(() => '{}')),
+          (r) => r.ok !== undefined,
+          90000,
+        );
+        assert.equal(
+          blocked.ok,
+          false,
+          'TeX must deny readable absolute paths independently of Unix permissions',
+        );
+        await exec('docker', ['exec', process.env.TEST_LATEX_CONTAINER!, 'rm', '-f', canary]);
       } finally {
         await rm(folder, { recursive: true, force: true });
       }
@@ -219,7 +270,10 @@ try {
           { decision, attachmentId: foreign.id },
           400,
         );
-      await admin.api(`/finance/refunds/${refund.id}/review`, 'POST', { decision: 'REJECTED' });
+      await admin.api(`/finance/refunds/${refund.id}/review`, 'POST', {
+        decision: 'REJECTED',
+        reason: '回归拒绝原因',
+      });
       const request = await owner.api(`/finance/${r.id}/invoices`, 'POST', invoice);
       await expectStatus(
         admin,
@@ -298,10 +352,19 @@ try {
   await check('payment reversal is idempotent across UUID case aliases', async () => {
     const { r } = await paid(owner);
     const payment = r.ledger.find((entry: any) => entry.kind === 'PAYMENT');
-    const first = await admin.api(`/finance/ledger/${payment.id}/reverse`, 'POST', {
+    await grant(viewer, r.contestId, ['FINANCE']);
+    assert.equal(
+      (
+        await admin.raw(`/api/v1/finance/ledger/${payment.id}/reverse`, 'POST', {
+          reason: '禁止自审',
+        })
+      ).status,
+      403,
+    );
+    const first = await viewer.api(`/finance/ledger/${payment.id}/reverse`, 'POST', {
       reason: '回归冲正',
     });
-    const again = await admin.api(`/finance/ledger/${payment.id.toUpperCase()}/reverse`, 'POST', {
+    const again = await viewer.api(`/finance/ledger/${payment.id.toUpperCase()}/reverse`, 'POST', {
       reason: '重复冲正',
     });
     assert.equal(first.id, again.id);
@@ -495,7 +558,11 @@ try {
   await mkdir('.runtime/reports', { recursive: true });
   await writeFile(
     '.runtime/reports/whole-project-audit.json',
-    JSON.stringify({ success: failures.length === 0, checks, failures }, null, 2),
+    JSON.stringify(
+      { success: checks.length === 13 && failures.length === 0, checks, failures },
+      null,
+      2,
+    ),
   );
   await redis.del('rate:login:::ffff:127.0.0.1', 'rate:login:127.0.0.1');
   await redis.quit();
@@ -503,3 +570,5 @@ try {
 }
 assert.equal(failures.length, 0, failures.join('\n'));
 console.log(`Whole-project audit: ${checks.length} cases passed`);
+
+assert.equal(checks.length, 13, 'Every declared check must execute');

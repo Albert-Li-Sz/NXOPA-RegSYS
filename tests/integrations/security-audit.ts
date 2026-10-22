@@ -1,3 +1,7 @@
+if (process.env.NXOPA_ISOLATED_TEST_DATABASE !== '1')
+  throw new Error(
+    'Run pnpm test:full (or FULL_REGRESSION_SUITES=... pnpm test:full) to use an isolated test database',
+  );
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -6,7 +10,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { Client, base, until } from './client.js';
 import { encrypt } from '../../apps/server/src/security.js';
 import { db, json } from '../../apps/server/src/db.js';
-import { redis, session } from '../../apps/server/src/auth.js';
+import { redis, session, cookieValue } from '../../apps/server/src/auth.js';
 import { config } from '../../apps/server/src/config.js';
 import { policySchema, type ContestPolicy } from '../../packages/contracts/src/index.js';
 
@@ -234,18 +238,21 @@ try {
     const c = await contest({ uniquePersonFields: ['audit_id'] }, [
       { key: 'audit_id', label: '学号', type: 'text', scope: 'PERSON', required: true },
     ]);
-    await entry(c, alice, { audit_id: 'SAME-STUDENT' });
-    let r = await bob.api('/registrations', 'POST', { contestId: c.id });
-    r = await bob.api(`/registrations/${r.id}`, 'PUT', {
+    const first = await entry(c, alice, { audit_id: 'SAME-STUDENT' });
+    const editing = await alice.api(`/registrations/${first.id}`);
+    await alice.api(`/registrations/${first.id}`, 'PUT', {
+      ...editing,
+      teamName: '补正期间仍保留身份',
+    });
+    const r = await bob.api('/registrations', 'POST', { contestId: c.id });
+    const response = await bob.raw(`/api/v1/registrations/${r.id}`, 'PUT', {
       ...r,
       people: r.people.map((p: any) => ({ ...p, answers: { audit_id: 'same-student' } })),
     });
-    const response = await bob.raw(`/api/v1/registrations/${r.id}/submit`, 'POST', {
-      version: r.version,
-    });
-    assert.ok(
-      [400, 409].includes(response.status),
-      `Duplicate identity accepted: ${response.status}`,
+    assert.equal(
+      response.status,
+      409,
+      'Identity uniqueness also applies while the first registration is being edited',
     );
   });
   await check('concurrent-registration-capacity', async () => {
@@ -488,9 +495,24 @@ try {
     let secure: unknown;
     try {
       config.publicUrl = 'https://secure.example.test';
+      const request = {
+        secure: true,
+        headers: { cookie: 'cc_session=legacy; __Host-cc_session=host' },
+        cookies: { cc_session: 'legacy', '__Host-cc_session': 'host' },
+      } as unknown as Parameters<typeof cookieValue>[0];
+      assert.equal(await cookieValue(request, 'cc_session'), 'host');
+      for (const header of [
+        '__Host-cc_session=host; __Host-cc_session=attacker',
+        '__Host-cc_session=attacker; __Host-cc_session=host',
+      ])
+        await assert.rejects(
+          cookieValue(Object.assign(request, { headers: { cookie: header } }), 'cc_session'),
+          /Cookie 冲突/,
+        );
       await session(
         { secure: false, headers: { 'user-agent': agent } } as Parameters<typeof session>[0],
         {
+          clearCookie: () => undefined,
           cookie: (_name: string, _value: string, options: any) => {
             secure = options.secure;
           },
@@ -525,7 +547,7 @@ try {
             password: 'InvalidTokenPassword2026!',
           })
         ).status,
-        403,
+        429,
       );
     } finally {
       await redis.del(...keys);
@@ -624,7 +646,7 @@ try {
   await writeFile(
     '.runtime/reports/security-audit.json',
     JSON.stringify(
-      { success: results.length > 0 && results.every((r) => r.status === 'PASS'), results },
+      { success: results.length === 20 && results.every((r) => r.status === 'PASS'), results },
       null,
       2,
     ),
@@ -632,4 +654,4 @@ try {
   await redis.quit();
   await db.$disconnect();
 }
-if (!results.length || results.some((r) => r.status !== 'PASS')) process.exitCode = 1;
+if (results.length !== 20 || results.some((r) => r.status !== 'PASS')) process.exitCode = 1;

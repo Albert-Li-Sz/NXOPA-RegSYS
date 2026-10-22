@@ -16,7 +16,7 @@ const props = defineProps<{
 const emit = defineEmits<{ deleted: [] }>();
 const busy = ref(false);
 async function remove() {
-  if (busy.value) return;
+  if (busy.value || props.contest.deletion?.allowed === false) return;
   busy.value = true;
   try {
     if (props.beforeRemove && !(await props.beforeRemove())) return;
@@ -46,11 +46,14 @@ async function remove() {
       <el-button
         :text="text"
         type="danger"
-        :disabled="contest.deletion?.allowed === false"
+        :aria-disabled="contest.deletion?.allowed === false"
         :loading="busy"
         @click="remove"
         >{{ text ? '删除' : '删除活动' }}</el-button
       >
+      <span v-if="contest.deletion?.allowed === false" class="form-help">{{
+        contest.deletion.reason
+      }}</span>
     </span>
   </el-tooltip>
 </template>

@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { defaultSite } from '@contest-center/contracts';
 import { api, auth, loadAuth } from './api';
-import { setClientCsrf } from './generated-client';
 import { confirmLeaveEdits, discardEdits } from './composables/useEditSession';
 import { adminLevelLabels } from '@contest-center/contracts';
 import { adminCenters, centerTabs } from './admin-centers';
@@ -40,7 +39,6 @@ async function recoverSession(passwordLogin = true) {
     if (passwordLogin) {
       const current = await api<{ csrf: string }>('/auth/me');
       auth.csrf = current.csrf;
-      setClientCsrf(current.csrf);
       await api('/auth/login', 'POST', {
         account: auth.expiredUser.email,
         password: recoveryPassword.value,
@@ -71,7 +69,37 @@ onMounted(async () => {
   try {
     site.value = await api('/site');
     document.title = site.value.name;
-    document.documentElement.style.setProperty('--el-color-primary', site.value.primaryColor);
+    let rgb = [1, 3, 5].map((i) => parseInt(site.value.primaryColor.slice(i, i + 2), 16));
+    const luminance = () =>
+      rgb
+        .map((v) => v / 255)
+        .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+        .reduce((n, v, i) => n + v * [0.2126, 0.7152, 0.0722][i]!, 0);
+    while (luminance() > 0.16) rgb = rgb.map((v) => Math.floor(v * 0.9));
+    const color = '#' + rgb.map((v) => v.toString(16).padStart(2, '0')).join('');
+    document.documentElement.style.setProperty('--el-color-primary', color);
+    document.documentElement.style.setProperty(
+      '--el-color-primary-light-3',
+      '#' +
+        rgb
+          .map((v) =>
+            Math.floor(v * 0.9)
+              .toString(16)
+              .padStart(2, '0'),
+          )
+          .join(''),
+    );
+    document.documentElement.style.setProperty(
+      '--el-color-primary-dark-2',
+      '#' +
+        rgb
+          .map((v) =>
+            Math.floor(v * 0.8)
+              .toString(16)
+              .padStart(2, '0'),
+          )
+          .join(''),
+    );
   } catch {}
 });
 async function logout() {
@@ -83,7 +111,6 @@ async function logout() {
     discardEdits();
     auth.user = null;
     auth.csrf = '';
-    setClientCsrf('');
     await router.replace('/');
   } catch {
     // API failures already display an error; keep the current session available for retry.

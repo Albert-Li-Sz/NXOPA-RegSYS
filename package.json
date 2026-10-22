@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -49,7 +49,7 @@
     "test:permissions": "tsx tests/integrations/permission-regressions.ts",
     "test:platform-features": "tsx tests/integrations/platform-features.ts",
     "test:release-features": "tsx tests/integrations/release-features.ts",
-    "test:install-bootstrap": "node --test tests/install-bootstrap.test.mjs",
+    "test:install-bootstrap": "node --test tests/install-bootstrap.test.mjs tests/install-transport.test.mjs",
     "test:install-gateway": "tsx tests/integrations/install-gateway.ts",
     "test:install-interactive": "tsx tests/integrations/install-interactive.ts",
     "generate:client": "openapi-typescript docs/api/openapi.json -o apps/web/src/generated/api.d.ts",
@@ -64,8 +64,9 @@
     "test:workflow-upgrade": "tsx tests/integrations/workflow-upgrade.ts",
     "test:security": "tsx tests/integrations/security-audit.ts",
     "test:whole-audit": "tsx tests/integrations/whole-project-audit.ts",
+    "test:audit-20261022": "tsx tests/integrations/audit-20261022.ts",
     "test:audit-fixes": "tsx tests/integrations/audit-fixes.ts",
-    "test:backup-security": "node --test tests/backup-security.test.mjs tests/backup-lifecycle.test.mjs",
+    "test:backup-security": "node --test tests/backup-security.test.mjs tests/backup-lifecycle.test.mjs tests/restore-lifecycle.test.mjs",
     "audit:runtime": "node scripts/audit-runtime.mjs",
     "test:platform-exports": "tsx tests/integrations/platform-exports.ts"
   },

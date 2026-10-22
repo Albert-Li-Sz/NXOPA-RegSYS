@@ -11,6 +11,7 @@ def run(job):
     sequence+=1
     uid=100000+sequence
     request=json.loads((job/'request.json').read_text())
+    if request.get('expiresAt',0)<time.time()*1000: raise ValueError('Expired compilation lease')
     source=request['source']
     if not isinstance(source,str) or len(source)>250000:
         raise ValueError('Invalid or oversized template')
@@ -77,6 +78,7 @@ while True:
         except Exception as error:
             result={'ok':False,'error':str(error)[-2500:]}
         finally:
+            (job/'request.json').unlink(missing_ok=True)
             shutil.rmtree(job/'input',ignore_errors=True)
             try:
                 for p in job.iterdir():

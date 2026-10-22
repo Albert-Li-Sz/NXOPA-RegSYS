@@ -17,7 +17,7 @@
 | SMTP_SECURE                         | SMTPS 465 设置 true；STARTTLS 587 使用 false                           |
 | SMTP_USER、SMTP_PASSWORD、SMTP_FROM | 邮件认证和发件人                                                       |
 | ENCRYPTION_KEY                      | 64 位十六进制密钥；需要保持不变才能读取既有凭据与备份                  |
-| ALLOW_PRIVATE_INTEGRATIONS          | 默认 true；如需禁止内网实例显式设置 false                              |
+| ALLOW_PRIVATE_INTEGRATIONS          | 兼容变量，默认 false；当前平台导出不建立 OJ 出站连接                   |
 
 正式部署环境固定 production，Cookie 使用 HttpOnly、SameSite=Lax，HTTPS 请求设置 Secure。写请求检查 CSRF；API Token 与浏览器会话分别授权。内部 Caddy 模式仅向外层代理提供本机 HTTP 入口；external 模式由自有代理分别转发本机 API 3000 和 Web 8081 端口。数据库、Redis、Worker 与编译器不暴露公网端口。
 
@@ -34,10 +34,10 @@ SMTP_HOST=smtp.example.org
 SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_FROM=Contest Center <noreply@example.org>
-ALLOW_PRIVATE_INTEGRATIONS=true
+ALLOW_PRIVATE_INTEGRATIONS=false
 ```
 
-实际密码保存在本机 `.env`，不写入源码。正式环境的OJ / Webhook 连接要求 HTTPS。私有网络的 HTTP OJ 可通过同机 HTTPS 代理接入。演示数据库固定使用开发密码与独立端口，与正式数据库互不共用。
+实际密码保存在本机 `.env`，不写入源码。平台导出仅生成本地文件，不连接 Hydro / DOMjudge。公网 Webhook 使用 HTTPS，私网目标须经系统管理员单独批准。演示数据库固定使用开发密码与独立端口，与正式数据库互不共用。
 
 ## 初次启动
 
@@ -50,13 +50,13 @@ curl --fail http://localhost:8080/api/v1/health
 
 初始化任务先为两个私有卷设置 UID 1000 所有权，再执行 Prisma migration deploy。API 和 Worker 使用非 root 用户。管理员初始化命令交互输入邮箱与隐藏密码；自动安装也可通过 `ADMIN_EMAIL`、`ADMIN_USERNAME`、`ADMIN_PASSWORD` 环境变量提供，避免把密码写入命令参数或 shell 历史。
 
-首次登录后可管理竞赛；以参赛身份报名时先在账号中心完善学号、姓名、班级、学院和性别。账号支持四类身份并存；系统管理员在“用户权限”生成账号或角色邀请 URL，指定账号 / 邮箱、身份、有效期及竞赛，接收者登录、验证邮箱并确认后获得权限。公开邮箱注册继续开放。原有角色保留；首次管理员由初始化命令建立。邮件在“管理中心 → 邮件设置”配置，Hydro / DOMjudge 的实例与比赛绑定通过“管理中心 → 评测平台”配置；竞赛管理员只可操作获授权的实例与竞赛。带截图的操作教程见 [PDF](../output/pdf/configuration-guide.pdf)，可编辑的 [LaTeX 源码](CONFIGURATION_GUIDE.tex) 与截图一并提供。
+首次登录后可管理竞赛；以参赛身份报名时先在账号中心完善学号、姓名、班级、学院和性别。账号支持四类身份并存；系统管理员在“用户权限”生成账号或角色邀请 URL，指定账号 / 邮箱、身份、有效期及竞赛，接收者登录、验证邮箱并确认后获得权限。公开邮箱注册继续开放。原有角色保留；首次管理员由初始化命令建立。邮件在“管理中心 → 邮件设置”配置；Hydro / DOMjudge 使用“平台导出”下载导入文件，再由评测管理员在目标平台手动导入。带截图的操作教程见 [PDF](../output/pdf/configuration-guide.pdf)，可编辑的 [LaTeX 源码](CONFIGURATION_GUIDE.tex) 与截图一并提供。
 
 ## 后台邮件设置
 
 系统管理员可配置启用状态、主机、端口、连接加密、服务器认证、用户名、密码 / 授权码以及发件地址和名称。提供立即加密、强制升级加密和不加密三种连接模式；不加密用于本地测试。首次未保存时继承上述环境变量，保存后数据库配置优先，Worker 每个邮件任务读取最新配置，无需重启。`SMTP_SECURITY=TLS/STARTTLS/NONE` 可明确设置初始模式；兼容原有 `SMTP_SECURE`。Compose 中的主机名是容器可访问的地址，本机 Mailpit 示例使用 `host.docker.internal`，不能填写容器自己的 `localhost`。
 
-密码以 AES-256-GCM 加密，不返回浏览器。留空保留密码；更换认证用户名需重新填写，关闭认证并保存清除密码。修改检查配置版本，冲突返回 409；审计记录不含密码或密文。站点公开接口不会返回邮件配置，竞赛管理员与参赛者不能访问邮件配置或测试接口。
+密码以 AES-256-GCM 加密，不返回浏览器。留空保留密码；更换主机、端口、加密方式或认证用户名需重新填写，关闭认证并保存清除密码。修改检查配置版本，冲突返回 409；审计记录不含密码或密文。站点公开接口不会返回邮件配置，竞赛管理员与参赛者不能访问邮件配置或测试接口。
 
 保存后先检测连接，再发送测试邮件，接收者固定为当前管理员。测试经持久化 Outbox / Worker 发送，可查询状态；检测通过与服务器接受邮件之后，还需在收件箱检查实际送达。失败原因使用中文并隐藏服务器原始认证信息。关闭邮件服务后发送任务失败，管理员启用服务后可在“任务”页重试。
 
@@ -106,9 +106,9 @@ bash scripts/backup.sh /srv/contest-backups
 bash scripts/restore.sh /srv/contest-backups/contest-center-YYYYMMDDTHHMMSSZ.ccbak
 ```
 
-备份短暂停止 API / Worker，取得同一时间段的 PostgreSQL 自定义格式 dump、私有附件和 `.env`，再用 AES-256-GCM 加密，自动保留最近 30 天备份。完成或失败后恢复服务，临时明文目录自动删除。备份与生产目录同样需要限制访问。
+备份短暂停止 API / Worker，取得同一时间段的 PostgreSQL 自定义格式 dump、私有附件和 `.env`，再用 AES-256-GCM 加密，自动保留最近 30 天备份。备份完成或失败后恢复原有服务，临时明文目录自动删除。恢复失败时保持 API 和 Worker 停止，避免在部分恢复的数据上继续运行。备份与生产目录同样需要限制访问。
 
-恢复时使用原始 `ENCRYPTION_KEY`，先完成认证解密和归档检查，数据库以单事务恢复，再恢复私有文件。原配置保存到 `.runtime/restored-environment.env` 供比较；恢复脚本不会自动覆盖当前连接配置。源文件、PDF、收款凭证、发票和已存在会话包含在备份中；Redis、运行中的编译目录不包含，任务从数据库恢复。
+恢复时使用原始 `ENCRYPTION_KEY`，先确认覆盖操作，再完成认证解密、归档及 S3 manifest / 对象校验，并生成恢复前快照。数据库以单事务恢复，再恢复私有文件。原配置保存到 `.runtime/restored-environment.env` 供比较；恢复脚本不会自动覆盖当前连接配置。源文件、PDF、收款凭证、发票和已存在会话包含在备份中；Redis、运行中的编译目录不包含，任务从数据库恢复。
 
 恢复在停止业务服务前检查外层和嵌套文件归档，拒绝越界路径、重复路径、符号／硬链接、特殊文件及损坏数据。默认限制解压总量 100 GiB、最多 100000 项。验证器在 API 镜像内运行，无需宿主机 Node.js。验证失败不会执行数据库恢复。
 
@@ -116,7 +116,7 @@ bash scripts/restore.sh /srv/contest-backups/contest-center-YYYYMMDDTHHMMSSZ.ccb
 
 安装、更新和恢复使用 `IMAGE_TAG` 指定的完整版本标签（如 `v0.6.7`），不使用 `latest`、浮动小版本或 `@sha256`。从 `main` 获取的新入口兼容旧发布包，会在校验安装包后移除自动摘要覆盖并保留官方镜像原版本；新版安装与备份恢复助手不再加载遗留的 `compose.digest.yaml`。发布清单中的摘要仍用于检查五类镜像的版本、来源提交及公开可拉取性，附件 SHA256 继续验证下载完整性；这些检查不能替代独立可信的发布渠道或离线签名，详见 [安全说明](../SECURITY.md)。
 
-在服务器的调度服务中每天调用备份脚本，示例为 `/absolute/path/scripts/backup.sh /srv/contest-backups`。本次实现没有修改宿主机的系统调度。异机恢复时保持数据库版本、源代码 / 镜像版本与加密密钥一致，并先用隔离数据库验证备份。
+在服务器的调度服务中每天调用备份脚本，安装器布局示例为 `bash /opt/nxopa-regsys/install.sh backup /srv/contest-backups`；完整源码根布局才使用 `bash /absolute/path/scripts/backup.sh /srv/contest-backups`。本次实现没有修改宿主机的系统调度。异机恢复时保持数据库版本、源代码 / 镜像版本与加密密钥一致，并先用隔离数据库验证备份。
 
 ## 资源与隔离
 
@@ -129,3 +129,15 @@ bash scripts/restore.sh /srv/contest-backups/contest-center-YYYYMMDDTHHMMSSZ.ccb
 管理员在“管理中心 → GitHub 登录”配置 OAuth App 的 Client ID、Client Secret 与回调地址。回调默认使用请求站点地址加 `/api/v1/auth/github/callback`，需要与 GitHub 注册的地址一致；也可设置 `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`GITHUB_CALLBACK_URL` 作为初始配置。反向代理传递正确的 Host 与 X-Forwarded-Proto。密钥加密保存且不返回浏览器。
 
 新账号使用 GitHub 已验证邮箱，不自动合并同邮箱的本站账号；已有账号先登录再绑定。所有参赛账号均需完成五项资料。管理员在用户列表编辑标签并筛选；报名按首次正式提交从早到晚分配每个竞赛独立编号，补正保留编号，删除后不重复使用原编号，CSV 同步导出。旧报名升级自动回填序号，旧账号缺失资料需要补填；已取消报名按上述升级规则清理。
+
+## v0.8.0 升级注意事项
+
+先备份数据库、文件和 ENCRYPTION_KEY。升级撤销无签发人信息的历史 API Token，并停用历史私网 Webhook；系统管理员需重新签发和批准。历史疑似重复到账或来源不明的在途单据会暂停退款，按财务对账接口核实，账簿与余额不会自动删除或改写。
+
+HTTPS 会话改用 __Host- Cookie，旧设备可能需要重新登录。预览保留一小时，成功或取消任务保留 30 天，已投递 Outbox 保留七天；验证码邮件投递后删除任务中的原始链接与验证码。定时清理过期会话、验证码、失效 PDF 和编译目录，并对超过一天、带本安装实例归属标记且未引用的对象做存储对账。未标记的历史对象及共享桶中的其他文件保留，需单独人工核对。
+
+发布下载前缀要求 HTTPS；仅受控内网测试可显式设置 NXOPA_ALLOW_INSECURE_MIRROR=1。完整版本镜像与公开 Release 附件不可覆盖，修改发布制品必须增加版本号。
+
+部分唯一索引、CHECK 和 JSON 引用查询索引由 SQL migration 管理。开发和部署只运行 prisma migrate deploy；禁止对持久数据运行 db push，新增迁移必须保留手写约束，并通过审计回归检查 pg_indexes / pg_constraint。
+
+external 双上游兼容模式使用 compose.external.yaml，仅发布回环 API 端口，默认不信任 Docker 桥接来源的转发头。若需要保留客户端 IP，API_TRUSTED_PROXY_CIDRS 必须收敛到实际可信代理地址；网关层的 TRUSTED_PROXY_CIDRS 同样只填写外层代理的具体地址，不信任整个私网。

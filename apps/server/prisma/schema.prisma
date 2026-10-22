@@ -7,6 +7,7 @@ datasource db {
 model User {
   id String @id @default(uuid()) @db.Uuid
   email String @unique
+  pendingEmail String?
   username String @unique
   passwordHash String?
   name String
@@ -78,6 +79,7 @@ model Session {
   createdAt DateTime @default(now())
   expiresAt DateTime
   authenticatedAt DateTime @default(now())
+  reauthenticatedAt DateTime?
   userAgent String
   @@index([userId])
 }
@@ -89,6 +91,7 @@ model EmailToken {
   usedAt DateTime?
   codeHash String?
   attempts Int @default(0)
+  @@index([userId,purpose])
 }
 model RegistrationVerification {
   id String @id
@@ -236,6 +239,7 @@ model Registration {
   @@index([examSiteId])
   @@index([contestId,createdAt,id])
   @@unique([contestId,number])
+  teamFiles TeamFile[]
 }
 model PlatformExportAccount {
   id String @id @default(uuid()) @db.Uuid
@@ -247,6 +251,7 @@ model PlatformExportAccount {
   createdAt DateTime @default(now())
   @@unique([registrationId,platform])
 }
+/// active_contest_user and active_contest_identifier are partial unique indexes maintained by SQL migrations. Never use db push.
 model RegistrationPerson {
   id String @id @default(uuid()) @db.Uuid
   registrationId String @db.Uuid
@@ -261,6 +266,7 @@ model RegistrationPerson {
   confirmed Boolean @default(false)
   answers Json @default("{}")
   @@index([userId,active])
+  @@index([registrationId])
 }
 model RegistrationCoach {
   id String @id @default(uuid()) @db.Uuid
@@ -324,6 +330,7 @@ model Attachment {
   @@index([ownerId,deletedAt])
   @@index([ownerId,purgedAt])
   @@index([contestId,purpose])
+  @@index([registrationId])
 }
 model TeamFile {
   id String @id @default(uuid()) @db.Uuid
@@ -334,6 +341,7 @@ model TeamFile {
   createdAt DateTime @default(now())
   @@unique([attachmentId,registrationId])
   @@index([registrationId])
+  registration Registration @relation(fields:[registrationId],references:[id],onDelete:Cascade)
 }
 model StorageConfiguration {
   id String @id @default(uuid()) @db.Uuid
@@ -372,11 +380,15 @@ model PaymentVoucher {
   createdBy String? @db.Uuid
   proofClaim PaymentProofClaim?
   createdAt DateTime @default(now())
+  @@index([registrationId])
 }
 model PaymentProofClaim {
   attachmentId String @id @db.Uuid
   voucherId String @unique @db.Uuid
   voucher PaymentVoucher @relation(fields:[voucherId],references:[id],onDelete:Cascade)
+  registrationId String? @db.Uuid
+  proofSha256 String?
+  @@unique([registrationId,proofSha256])
 }
 model LedgerEntry {
   id String @id @default(uuid()) @db.Uuid
@@ -387,10 +399,14 @@ model LedgerEntry {
   amountCents Int
   sourceId String @unique
   channelReference String?
+  normalizedReference String?
+  requiresReconciliation Boolean @default(false)
   actorId String @db.Uuid
   note String
   createdAt DateTime @default(now())
   @@unique([contestId,channelReference])
+  @@unique([contestId,normalizedReference])
+  @@index([registrationId])
 }
 model Refund {
   id String @id @default(uuid()) @db.Uuid
@@ -404,8 +420,11 @@ model Refund {
   handledBy String? @db.Uuid
   requestedBy String? @db.Uuid
   approvedBy String? @db.Uuid
+  secondReviewerId String? @db.Uuid
+  rejectionReason String @default("")
   createdAt DateTime @default(now())
   completedAt DateTime?
+  @@index([registrationId])
 }
 model InvoiceRequest {
   id String @id @default(uuid()) @db.Uuid
@@ -427,8 +446,10 @@ model InvoiceRequest {
   status String @default("REQUESTED")
   attachmentId String? @db.Uuid
   handledBy String? @db.Uuid
+  requestedBy String? @db.Uuid
   reason String @default("")
   createdAt DateTime @default(now())
+  @@index([registrationId])
 }
 model SupportTicket {
   id String @id @default(uuid()) @db.Uuid
@@ -444,6 +465,8 @@ model SupportTicket {
   updatedAt DateTime @updatedAt
   messages SupportMessage[]
   @@index([createdAt,id])
+  @@index([ownerId])
+  @@index([contestId])
 }
 model SupportMessage {
   id String @id @default(uuid()) @db.Uuid
@@ -569,6 +592,7 @@ model Job {
   @@index([state,updatedAt])
   @@index([state,leaseUntil])
   @@index([createdAt,id])
+  @@index([kind,resourceId,createdAt])
 }
 model OutboxEvent {
   id String @id @default(uuid()) @db.Uuid
@@ -585,6 +609,7 @@ model OutboxEvent {
 model ApiToken {
   id String @id @default(uuid()) @db.Uuid
   name String
+  createdBy String? @db.Uuid
   tokenHash String @unique
   contestIds Json
   scopes Json
@@ -598,6 +623,7 @@ model Webhook {
   contestId String? @db.Uuid
   url String
   privateApprovedBy String? @db.Uuid
+  privateApprovalExpiresAt DateTime?
   secret String
   enabled Boolean @default(true)
   version Int @default(1)
@@ -632,6 +658,7 @@ model FinanceAccount {
   number Int?
   feeCents Int @default(0)
   netPaidCents Int @default(0)
+  reconciliationRequired Boolean @default(false)
   policySnapshot Json
   cancelledAt DateTime?
   version Int @default(1)
@@ -655,6 +682,7 @@ model ExamSite {
   rooms ExamRoom[]
   @@index([contestId,sortOrder])
 }
+/// Positive capacity CHECK is maintained by SQL migrations and verified in CI.
 model ExamRoom {
   id String @id @default(uuid()) @db.Uuid
   contestId String @db.Uuid
@@ -671,6 +699,7 @@ model ExamRoom {
   @@unique([contestId,name])
   @@index([examSiteId])
 }
+/// Positive seat CHECK is maintained by SQL migrations and verified in CI.
 model SeatAssignment {
   id String @id @default(uuid()) @db.Uuid
   registrationId String @db.Uuid

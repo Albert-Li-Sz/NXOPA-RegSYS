@@ -1,10 +1,27 @@
 # Compatibility for existing installations only; new installs use their own reverse proxy.
 services:
+  caddy-initialize:
+    image: caddy:2.10.2-alpine
+    user: root
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: [no-new-privileges:true]
+    volumes: [caddy_data:/data, caddy_config:/config]
+    command: [sh, -c, 'chown -R 1000:1000 /data /config']
+    restart: 'no'
   api:
     ports: !reset []
   web:
     ports: !reset []
   caddy:
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    user: '1000:1000'
+    read_only: true
+    tmpfs: [/tmp:size=32m]
     image: caddy:2.10.2-alpine
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
@@ -17,6 +34,8 @@ services:
       - caddy_config:/config
     networks: [edge, app]
     depends_on:
+      caddy-initialize:
+        condition: service_completed_successfully
       api:
         condition: service_healthy
       web:

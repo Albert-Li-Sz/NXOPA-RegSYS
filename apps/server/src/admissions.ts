@@ -54,7 +54,9 @@ export function admissionContext(
   const coaches = (snapshot.coaches ?? r.coaches) as unknown[];
   return {
     contest: {
-      ...r.contest,
+      id: r.contest.id,
+      title: r.contest.title,
+      location: r.contest.location,
       startsAt: r.contest.startsAt.toLocaleString('zh-CN', {
         timeZone: 'Asia/Shanghai',
         hour12: false,
@@ -114,8 +116,19 @@ export async function admissionMaterial(
   const coaches = [];
   for (const coach of context.coaches)
     coaches.push(await add(coach as Record<string, unknown>, 'COACH'));
+  const registration = await add(
+    { answers: (context.registration.answers as any).registration ?? {} },
+    'REGISTRATION',
+  );
+  const team = await add({ answers: (context.registration.answers as any).team ?? {} }, 'TEAM');
   return {
-    context: { ...context, participant: members[0], team: { ...context.team, members }, coaches },
+    context: {
+      ...context,
+      registration: { ...context.registration, assets: registration.assets },
+      participant: members[0],
+      team: { ...context.team, assets: team.assets, members },
+      coaches,
+    },
     assets,
   };
 }
@@ -179,7 +192,7 @@ export class AdmissionService {
   }
 
   async templates(u: Principal, contestId?: string) {
-    if (contestId) requireManager(u, contestId);
+    if (contestId) requireManager(u, contestId, 'ADMISSIONS');
     else requireAdmin(u);
     return db.admissionTemplate.findMany({
       where: { OR: [{ contestId: null }, ...(contestId ? [{ contestId }] : [])] },
@@ -264,6 +277,21 @@ export class AdmissionService {
     });
     const id = randomUUID();
     return db.$transaction(async (tx) => {
+      await lock(tx, `preview-budget:${u.id}`);
+      const previous = await tx.job.findMany({
+        where: { kind: 'PDF_PREVIEW', resourceId: u.id, state: { not: 'CANCELLED' } },
+        select: { id: true, result: true },
+        take: 1000,
+      });
+      await tx.job.updateMany({
+        where: { id: { in: previous.map((j) => j.id) } },
+        data: { state: 'CANCELLED', payload: {}, leaseToken: null, leaseUntil: null },
+      });
+      for (const prior of previous)
+        if ((prior.result as any)?.storageKey)
+          await enqueue(tx, 'OBJECT_DELETE', prior.id, `preview-replace:${prior.id}`, {
+            storageRef: prior.result,
+          });
       const job = await enqueue(tx, 'PDF_PREVIEW', u.id, `preview:${id}`, {
         source,
         ownerId: u.id,
@@ -274,7 +302,7 @@ export class AdmissionService {
   async generate(u: Principal, body: unknown) {
     const b = z
       .object({
-        registrationIds: z.array(z.string().uuid()).min(1).max(10000),
+        registrationIds: z.array(z.string().uuid()).min(1).max(100),
         location: z.string().max(300).default(''),
         room: z.string().max(100).default(''),
         seat: z.string().max(100).default(''),
@@ -284,10 +312,11 @@ export class AdmissionService {
           .regex(/^[A-Z0-9-]{1,20}$/)
           .optional(),
         releaseAt: z.iso.datetime({ offset: true }).nullable().optional(),
-        seats: z.array(seatSchema).max(10000).optional(),
+        seats: z.array(seatSchema).max(100).optional(),
       })
       .parse(body);
     const results = [];
+    await rateLimit(`admission-generate:${u.id}`, 10);
     if (
       b.seats?.some((s) => !b.registrationIds.includes(s.registrationId)) ||
       (b.seats && new Set(b.seats.map((s) => s.registrationId)).size !== b.seats.length)
@@ -301,6 +330,24 @@ export class AdmissionService {
       requireManager(u, r.contestId, 'ADMISSIONS');
       if (!modulesFor(r.contest).admissions) throw new BadRequestException('此活动未启用准考证');
       registrations.set(id, r);
+    }
+    for (const contestId of new Set([...registrations.values()].map((r) => r.contestId))) {
+      if (
+        (await db.job.count({
+          where: {
+            kind: 'ADMISSION',
+            state: { in: ['PENDING', 'OUTBOX', 'RUNNING'] },
+            resourceId: {
+              in: (
+                await db.registration.findMany({ where: { contestId }, select: { id: true } })
+              ).map((r) => r.id),
+            },
+          },
+        })) +
+          b.registrationIds.length >
+        200
+      )
+        throw new BadRequestException('此活动已有较多准考证任务，请等待完成后分批生成');
     }
     const numbers = (b.seats ?? []).flatMap((s) => (s.number ? [s.number] : []));
     if (new Set(numbers).size !== numbers.length)
@@ -340,6 +387,23 @@ export class AdmissionService {
         const a = await db.$transaction(async (tx) => {
           await lock(tx, id);
           await lock(tx, `seating:${r.contestId}`);
+          await lock(tx, `admission-budget:${r.contestId}`);
+          const queued = await tx.job.count({
+            where: {
+              kind: 'ADMISSION',
+              state: { in: ['PENDING', 'OUTBOX', 'RUNNING'] },
+              resourceId: {
+                in: (
+                  await tx.registration.findMany({
+                    where: { contestId: r.contestId },
+                    select: { id: true },
+                  })
+                ).map((x) => x.id),
+              },
+            },
+          });
+          if (queued >= 200)
+            throw new BadRequestException('此活动准考证队列已满，请等待完成后再生成');
           const currentContest = await tx.contest.findUniqueOrThrow({ where: { id: r.contestId } });
           if (!modulesFor(currentContest).admissions)
             throw new BadRequestException('此活动已关闭准考证');
@@ -466,7 +530,7 @@ export class AdmissionService {
         if ((error as { code?: string }).code === 'P2002') {
           // A failed SQL statement aborts the outer HTTP idempotency transaction.
           // Let it roll back before the interceptor writes a replay record.
-          if (inRequestTransaction())
+          if (inRequestTransaction() || b.registrationIds.length === 1)
             throw new BadRequestException('准考证编号已被使用，请修改后重试');
           results.push({ registrationId: id, error: '准考证编号已被使用，请修改后重试' });
         } else throw error;
@@ -476,8 +540,9 @@ export class AdmissionService {
   }
   async release(u: Principal, id: string) {
     return db.$transaction(async (tx) => {
-      const a = await tx.admissionDocument.findUniqueOrThrow({ where: { id } });
+      let a = await tx.admissionDocument.findUniqueOrThrow({ where: { id } });
       await lock(tx, a.registrationId);
+      a = await tx.admissionDocument.findUniqueOrThrow({ where: { id } });
       const r = await getRegistration(u, a.registrationId);
       requireManager(u, r.contestId, 'ADMISSIONS');
       if (
@@ -488,6 +553,7 @@ export class AdmissionService {
         !['READY', 'RELEASED'].includes(a.state)
       )
         throw new BadRequestException('准考证未完成或资料已经改变');
+      if (a.state === 'RELEASED') return { ok: true };
       await tx.admissionDocument.update({
         where: { id, version: a.version },
         data: { state: 'RELEASED', releasedAt: new Date() },
@@ -566,6 +632,8 @@ export class AdmissionService {
   }
   async previewDownload(u: Principal, id: string) {
     const j = await db.job.findUniqueOrThrow({ where: { id } });
+    if (j.createdAt.getTime() < Date.now() - 3600000)
+      throw new BadRequestException('预览已过期，请重新生成');
     if (j.kind !== 'PDF_PREVIEW' || (j.resourceId !== u.id && !u.isAdmin) || j.state !== 'SUCCESS')
       throw new ForbiddenException();
     return {

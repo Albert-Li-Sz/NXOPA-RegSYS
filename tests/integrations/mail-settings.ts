@@ -192,7 +192,12 @@ try {
   report.push(
     'Invalid settings rejected; authentication and required-TLS failures return sanitized Chinese messages',
   );
-  current = await admin.api('/admin/mail', 'PUT', { ...current, enabled: false, security: 'NONE' });
+  current = await admin.api('/admin/mail', 'PUT', {
+    ...current,
+    password,
+    enabled: false,
+    security: 'NONE',
+  });
   assert.equal(
     (await admin.raw('/api/v1/admin/mail/test', 'POST', { version: current.version })).status,
     400,

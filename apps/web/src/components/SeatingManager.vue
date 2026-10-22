@@ -211,11 +211,12 @@ async function importCsv(event: Event) {
 async function downloadCsv() {
   await loadCandidates();
   const rows: unknown[][] = [['registrationId', 'personId', 'room', 'seat']];
+  const seats = new Map(
+    data.value.seats.map((a: Data) => [`${a.registrationId}:${a.personId || ''}`, a]),
+  );
   for (const r of candidates.value) {
     for (const person of data.value.seatingMode === 'PERSON' ? r.people : [{ id: null }]) {
-      const existing = data.value.seats.find(
-        (a: Data) => a.registrationId === r.id && (a.personId || null) === (person.id || null),
-      );
+      const existing = seats.get(`${r.id}:${person.id || ''}`) as Data | undefined;
       rows.push([r.id, person.id || '', existing?.room.name || '', existing?.seat || '']);
     }
   }
