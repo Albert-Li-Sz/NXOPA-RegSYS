@@ -176,6 +176,8 @@ try {
     version: registration.version,
   });
   const attachment = await admin.upload(registration.id);
+  const attachmentContents = await (await admin.raw(`/api/v1/files/${attachment.id}`)).text();
+  assert.match(attachmentContents, /^offline payment proof [0-9a-f-]{36}$/);
   assert.equal(registration.eligible, true);
 
   console.log(`[交互安装验收] 交互升级至 ${targetTag}……`);
@@ -190,7 +192,7 @@ try {
   assert.equal((await admin.api(`/registrations/${registration.id}`)).eligible, true);
   assert.equal(
     await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
-    'offline payment proof',
+    attachmentContents,
   );
   assert.deepEqual(await volumes(), originalVolumes);
   const backups = (await readdir(backupDir)).filter((name) => name.endsWith('.ccbak'));
@@ -211,7 +213,7 @@ try {
   assert.equal((await admin.api(`/registrations/${registration.id}`)).eligible, true);
   assert.equal(
     await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
-    'offline payment proof',
+    attachmentContents,
   );
   passed('默认卸载移除容器并保留六个卷；再次交互安装恢复原管理员会话、报名和附件');
 

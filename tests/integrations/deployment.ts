@@ -132,6 +132,8 @@ try {
   r = await admin.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version });
   assert.equal(r.eligible, false);
   const file = await admin.upload(r.id);
+  const attachmentContents = await (await admin.raw(`/api/v1/files/${file.id}`)).text();
+  assert.match(attachmentContents, /^offline payment proof [0-9a-f-]{36}$/);
   const voucher = await admin.api(`/finance/${r.id}/vouchers`, 'POST', {
     amountCents: 500,
     channel: 'Docker fixture bank',
@@ -197,7 +199,7 @@ try {
   corrupted[corrupted.length - 17] ^= 1;
   await writeFile('.runtime/tampered.ccbak', corrupted, { mode: 0o600 });
   assert.throws(() =>
-    execFileSync('bash', ['scripts/restore.sh', '.runtime/tampered.ccbak'], {
+    execFileSync('bash', ['scripts/restore.sh', '.runtime/tampered.ccbak', '--yes'], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     }),
@@ -210,7 +212,7 @@ try {
   assert.equal(cancel.deleted, true);
   assert.equal((await admin.raw(`/api/v1/registrations/${r.id}`)).status, 404);
   assert.equal((await admin.api(`/finance/accounts/${r.id}`)).netPaidCents, 500);
-  execFileSync('bash', ['scripts/restore.sh', `.runtime/backups/${backup}`], {
+  execFileSync('bash', ['scripts/restore.sh', `.runtime/backups/${backup}`, '--yes'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
   });
@@ -220,7 +222,7 @@ try {
   assert.equal(restored.netPaidCents, 500);
   assert.deepEqual(restored.ledger, before.ledger);
   const attachment = await admin.raw(`/api/v1/files/${file.id}`);
-  assert.equal(await attachment.text(), 'offline payment proof');
+  assert.equal(await attachment.text(), attachmentContents);
   report.push(
     'AES-256-GCM encrypted backup restores database versions, ledger, private files and original session',
   );

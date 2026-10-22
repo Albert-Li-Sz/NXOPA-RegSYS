@@ -66,6 +66,8 @@ export async function verifyInstallationUpgrade(
     version: registration.version,
   });
   const attachment = await admin.upload(registration.id);
+  const attachmentContents = await (await admin.raw(`/api/v1/files/${attachment.id}`)).text();
+  assert.match(attachmentContents, /^offline payment proof [0-9a-f-]{36}$/);
   const generated = await admin.api('/admissions/generate', 'POST', {
     registrationIds: [registration.id],
     room: '升级验收',
@@ -177,7 +179,7 @@ export async function verifyInstallationUpgrade(
   }
   assert.equal(
     await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
-    'offline payment proof',
+    attachmentContents,
   );
   const pdf = await admin.raw(`/api/v1/admissions/${documentId}/download`);
   assert.equal(pdf.status, 200);

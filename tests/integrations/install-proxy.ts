@@ -142,6 +142,8 @@ try {
     version: registration.version,
   });
   const attachment = await admin.upload(registration.id);
+  const attachmentContents = await (await admin.raw(`/api/v1/files/${attachment.id}`)).text();
+  assert.match(attachmentContents, /^offline payment proof [0-9a-f-]{36}$/);
   assert.equal(
     (
       await run([
@@ -201,7 +203,7 @@ try {
   assert.equal((await admin.api(`/registrations/${registration.id}`)).eligible, true);
   assert.equal(
     await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
-    'offline payment proof',
+    attachmentContents,
   );
   assert.deepEqual(await volumes(), originalVolumes);
   assert.equal((await fetch(`${base}/api/v1/health`)).status, 200);
@@ -222,7 +224,7 @@ try {
   assert.equal((await admin.api(`/registrations/${registration.id}`)).eligible, true);
   assert.equal(
     await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
-    'offline payment proof',
+    attachmentContents,
   );
   assert.deepEqual(await volumes(), originalVolumes);
   passed(

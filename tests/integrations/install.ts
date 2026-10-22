@@ -348,6 +348,8 @@ try {
   });
   assert.equal(registration.eligible, true);
   const attachment = await admin.upload(registration.id);
+  const attachmentContents = await (await admin.raw(`/api/v1/files/${attachment.id}`)).text();
+  assert.match(attachmentContents, /^offline payment proof [0-9a-f-]{36}$/);
   assert.equal((await fetch(`${base}/api/v1/files/${attachment.id}`)).status, 401);
   const generated = await admin.api('/admissions/generate', 'POST', {
     registrationIds: [registration.id],
@@ -432,7 +434,7 @@ try {
   assert.equal(restored.eligible, true);
   assert.equal(
     await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
-    'offline payment proof',
+    attachmentContents,
   );
   assert.ok(
     (await readFile(restoredEnvFile, 'utf8')) === source,
