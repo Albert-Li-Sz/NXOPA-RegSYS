@@ -11,6 +11,7 @@ import { chromium, expect } from '@playwright/test';
 import { policySchema } from '../../packages/contracts/src/index.js';
 import { checkUserInterfaces } from './ui-regressions.js';
 import { registrationProof } from './registration-proof.js';
+import { until } from './client.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url)),
   exec = promisify(execFile);
@@ -132,6 +133,26 @@ async function wait(url: string) {
     await new Promise((r) => setTimeout(r, 300));
   }
   throw new Error(`Service did not start: ${url}`);
+}
+async function deliveredMail(address: string, subject: string) {
+  return until(
+    async () => {
+      const search = (await (
+        await fetch(
+          `http://127.0.0.1:${mailPort}/api/v1/search?query=${encodeURIComponent(`to:${address}`)}`,
+        )
+      ).json()) as { messages?: { ID: string }[] };
+      for (const row of search.messages ?? []) {
+        const content = (await (
+          await fetch(`http://127.0.0.1:${mailPort}/api/v1/message/${row.ID}`)
+        ).json()) as { Text?: string; Subject?: string };
+        if (content.Subject?.includes(subject)) return content.Text ?? '';
+      }
+      return '';
+    },
+    Boolean,
+    30000,
+  );
 }
 const students = {
   student_id: '20260001',
@@ -445,6 +466,12 @@ try {
     ).status,
     403,
   );
+  assert.equal((await github.raw('/auth/github', 'DELETE')).status, 403);
+  await github.api('/auth/reauth/code', 'POST');
+  const reauthenticationMail = await deliveredMail(github.user.email, '敏感操作');
+  const reauthenticationCode = reauthenticationMail.match(/验证码[：:\s]+(\d{6})/)?.[1];
+  assert.ok(reauthenticationCode);
+  await github.api('/auth/reauth', 'POST', { code: reauthenticationCode });
   assert.equal((await github.raw('/auth/github', 'DELETE')).status, 400);
   await github.complete();
   assert.equal(github.user.profileComplete, true);
@@ -492,6 +519,7 @@ try {
     (await collision.raw(collisionFlow.path)).headers.get('location')!,
     /github_error=email_exists/,
   );
+  await admin.api('/auth/reauth', 'POST', { password });
   const linkFlow = await oauth(admin, 'link');
   assert.equal(
     (await admin.raw(linkFlow.path)).headers.get('location'),
@@ -574,21 +602,11 @@ try {
       .screenshot({ path: path.join(screenshotRoot, '26-profile.png') });
     assert.deepEqual(errors, []);
     await admin.api('/auth/forgot', 'POST', { email: admin.user.email });
-    const resetMail = await compose([
-      'exec',
-      '-T',
-      'postgres',
-      'psql',
-      '-U',
-      'contest',
-      '-d',
-      'contest_center',
-      '-At',
-      '-c',
-      `SELECT payload->>'actionPath' FROM "OutboxEvent" WHERE "resourceId"='${admin.user.id}' AND type='MAIL' AND payload->>'actionPath' LIKE '/account/reset%' ORDER BY "createdAt" DESC LIMIT 1`,
-    ]);
+    const resetMail = await deliveredMail(admin.user.email, '重置登录密码');
+    const resetPath = resetMail.match(/\/account\/reset\?token=[A-Za-z0-9_-]+/)?.[0];
+    assert.ok(resetPath);
     await checkUserInterfaces(page, webBase, contest.id, second.id, {
-      path: resetMail.stdout.trim(),
+      path: resetPath,
       password,
     });
     passed('手机、平板和桌面页面布局，长昵称与联系方式编辑、HTTP 表单、密码重置与会话撤销回归通过');
