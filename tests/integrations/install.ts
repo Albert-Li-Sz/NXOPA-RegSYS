@@ -444,6 +444,8 @@ try {
 
   await run(['restore-url', 'https://reg.example.test']);
   assert.equal((await admin.api('/site')).publicUrl, 'https://reg.example.test');
+  assert.equal((await admin.api('/auth/me')).user, null);
+  await admin.login(credentials.ADMIN_EMAIL, credentials.ADMIN_PASSWORD);
   const site = await admin.api('/site');
   const saved = await fetch(`${base}/api/v1/admin/site`, {
     method: 'PUT',
@@ -456,7 +458,7 @@ try {
     body: JSON.stringify({ ...site, name: '安装验收站点' }),
   });
   assert.equal(saved.status, 200);
-  passed('公网地址恢复命令生效，原部署入口仍可继续管理');
+  passed('公网地址恢复命令生效，HTTPS Cookie 切换后重新登录可继续管理');
   if (
     process.env.INSTALL_UPGRADE_FROM &&
     process.env.INSTALL_UPGRADE_FROM !== (env.IMAGE_TAG ?? defaultTag)
