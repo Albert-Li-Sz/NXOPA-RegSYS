@@ -191,31 +191,75 @@ export async function verifyInstallationUpgrade(
   );
   passed(`${previousTag} 升级到 ${targetTag} 自动备份并迁移，管理员会话、报名、附件和准考证保留`);
 
-  for (const { client, purpose, token } of users) {
-    // Existing sessions survive upgrades, but a key-purpose change requires fresh CSRF data.
-    const session = await client.api('/auth/me');
-    assert.equal(session.user.id, client.user.id, 'Existing mailbox test session survives upgrade');
-    assert.equal(session.user.verified, false);
-    client.csrf = session.csrf;
-    client.user = session.user;
-    const response = await client.raw(`/api/v1/auth/${purpose}`, 'POST', {
-      token,
-      ...(purpose === 'reset' ? { password: 'OldMailbox2026!' } : {}),
-    });
-    assert.equal(response.status, 400, 'Legacy mailbox links must be invalid after upgrade');
-    assert.equal((await client.api('/auth/me')).user.verified, false);
-    if (purpose === 'verify') await client.api('/auth/resend', 'POST', {});
-    else await client.api('/auth/forgot', 'POST', { email: client.user.email });
-    const current = await emailLink(client, purpose);
-    await client.api(`/auth/${purpose}`, 'POST', {
-      token: current,
-      ...(purpose === 'reset' ? { password: 'NewMailbox2026!' } : {}),
-    });
-    if (purpose === 'verify') assert.equal((await client.api('/auth/me')).user.verified, true);
-    else {
-      assert.equal((await client.api('/auth/me')).user, null);
-      await new Client().login(client.user.email, 'NewMailbox2026!');
+  // Mail is intentionally disabled in this disposable installer fixture. Pause its
+  // worker while reading queued links so delivery-payload redaction cannot race us.
+  await run(['compose', 'stop', 'worker']);
+  try {
+    for (const { client, purpose, token } of users) {
+      // Existing sessions survive upgrades, but a key-purpose change requires fresh CSRF data.
+      const session = await client.api('/auth/me');
+      assert.equal(
+        session.user.id,
+        client.user.id,
+        'Existing mailbox test session survives upgrade',
+      );
+      assert.equal(session.user.verified, false);
+      client.csrf = session.csrf;
+      client.user = session.user;
+      const response = await client.raw(`/api/v1/auth/${purpose}`, 'POST', {
+        token,
+        ...(purpose === 'reset' ? { password: 'OldMailbox2026!' } : {}),
+      });
+      assert.equal(response.status, 400, 'Legacy mailbox links must be invalid after upgrade');
+      assert.equal((await client.api('/auth/me')).user.verified, false);
+      if (purpose === 'verify') await client.api('/auth/resend', 'POST', {});
+      else {
+        const outstandingResets = async () =>
+          Number(
+            (
+              await run([
+                'compose',
+                'exec',
+                '-T',
+                'postgres',
+                'psql',
+                '-U',
+                'contest',
+                '-d',
+                'contest_center',
+                '-At',
+                '-c',
+                `SELECT count(*) FROM "EmailToken" WHERE "userId"='${client.user.id}' AND purpose='RESET' AND "usedAt" IS NULL`,
+              ])
+            ).trim(),
+          );
+        const before = await outstandingResets();
+        await client.api('/auth/forgot', 'POST', { email: client.user.email });
+        assert.equal(
+          await outstandingResets(),
+          before,
+          'Unverified mailbox must not receive a reset token',
+        );
+        await client.api('/auth/resend', 'POST', {});
+        await client.api('/auth/verify', 'POST', { token: await emailLink(client, 'verify') });
+        assert.equal((await client.api('/auth/me')).user.verified, true);
+        await client.api('/auth/forgot', 'POST', { email: client.user.email });
+      }
+      const current = await emailLink(client, purpose);
+      await client.api(`/auth/${purpose}`, 'POST', {
+        token: current,
+        ...(purpose === 'reset' ? { password: 'NewMailbox2026!' } : {}),
+      });
+      if (purpose === 'verify') assert.equal((await client.api('/auth/me')).user.verified, true);
+      else {
+        assert.equal((await client.api('/auth/me')).user, null);
+        await new Client().login(client.user.email, 'NewMailbox2026!');
+      }
     }
+  } finally {
+    await run(['compose', 'start', 'worker']);
   }
-  passed('升级前遗留的验证与重置链接失效，新邮箱重新申请链接可用；重置密码撤销旧会话');
+  passed(
+    '升级前遗留的验证与重置链接失效，新邮箱验证后可重新申请重置链接，未验证时拒绝重置；重置密码撤销旧会话',
+  );
 }
