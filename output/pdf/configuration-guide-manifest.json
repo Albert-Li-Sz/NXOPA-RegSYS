@@ -1,7 +1,7 @@
 {
-  "sourceSha256": "1a83e02e282fe8d09223e4ae81db4d0a337af22e933a3a18937306d71725f005",
-  "pdfSha256": "0b26ea356bcdd28eafb356a3aff70d2d1d2c805889bbfabd7e2c9437fcaeff80",
-  "sourceZipSha256": "d09a511a8d59c1c2afea07bd531c7026c9f9798dba8ae55fc0ac265216fd99c5",
+  "sourceSha256": "790cce10ddf089e21f478cb8e776c08798579afa4de40e18047bd4bae3b2e729",
+  "pdfSha256": "6afef36980e318c41b42735dbbe9bf94ae86a80e5a3f10133e691922390cd766",
+  "sourceZipSha256": "69e2c26eca70d020110810daa99270a1cd0087ba39ad9715a6dc9887bfaaed36",
   "screenshots": {
     "01-home.png": "afac20a997452dbf93b5acde4f7174cca538cf64718fddac7dc07fddc39e343d",
     "02-login.png": "57f346b4bf286306120a52292e8f7ae6c654cd6ddecfa8f43287c2ff6ea5daf0",

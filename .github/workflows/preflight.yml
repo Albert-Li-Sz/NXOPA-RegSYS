@@ -38,6 +38,7 @@ jobs:
           pnpm test:backup-security
           pnpm test:web-static
           pnpm test:install-bootstrap
+          pnpm test:install-gateway
           pnpm exec playwright install --with-deps chromium
           pnpm test:release-features
           docker build -t nxopa-minio-test:current infra/minio

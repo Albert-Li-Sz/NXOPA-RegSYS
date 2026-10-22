@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v0.8.0
+        description: 已存在的版本标签，例如 v0.8.1
         required: true
-        default: v0.8.0
+        default: v0.8.1
         type: string
 
 permissions:
@@ -72,6 +72,7 @@ jobs:
           pnpm test:backup-security
           pnpm test:web-static
           pnpm test:install-bootstrap
+          pnpm test:install-gateway
           pnpm exec playwright install --with-deps chromium
           pnpm test:release-features
           docker build -t nxopa-minio-test:current infra/minio

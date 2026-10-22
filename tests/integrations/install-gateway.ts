@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { request } from 'node:https';
-import { createServer } from 'node:net';
+import { createServer, isIP } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -38,6 +38,7 @@ export async function verifyGatewayTransport() {
     ...process.env,
     GATEWAY_PORT: String(gatewayPort),
     GATEWAY_BIND_ADDRESS: '127.0.0.1',
+    TRUSTED_PROXY_CIDRS: '127.0.0.1/32 ::1/128',
     GATEWAY_TEST_STAGE: stage,
     GATEWAY_TEST_ECHO: path.join(root, 'tests/fixtures/gateway-echo.mjs'),
     GATEWAY_TEST_TLS_PORT: String(tlsPort),
@@ -154,6 +155,19 @@ export async function verifyGatewayTransport() {
         req.end(method === 'POST' ? content : undefined);
       });
     }
+    const untrusted = await throughTls('/api/v1/echo', 'GET');
+    assert.equal(untrusted.payload.headers['x-forwarded-proto'], 'http');
+    const outerId = (await compose(['ps', '-q', 'outer-proxy'])).stdout.trim();
+    assert.ok(outerId);
+    const networks = JSON.parse(
+      (await exec('docker', ['inspect', '--format', '{{json .NetworkSettings.Networks}}', outerId]))
+        .stdout,
+    ) as Record<string, { IPAddress?: string }>;
+    const trustedPeer = networks[`${project}_edge`]?.IPAddress;
+    assert.ok(trustedPeer && isIP(trustedPeer) === 4);
+    env.TRUSTED_PROXY_CIDRS = `${trustedPeer}/32`;
+    await compose(['up', '-d', '--no-deps', '--wait', '--wait-timeout', '60', 'caddy']);
+    await compose(['exec', '-T', 'outer-proxy', 'nginx', '-s', 'reload']);
     const upload = Buffer.concat([
       Buffer.from(
         '--gateway-boundary\r\nContent-Disposition: form-data; name="file"; filename="maximum.txt"\r\nContent-Type: text/plain\r\n\r\n',
@@ -189,11 +203,13 @@ export async function verifyGatewayTransport() {
       assert.equal(payload.headers['x-forwarded-host'], host);
       assert.ok(cookies.some((cookie) => cookie.includes('Secure; HttpOnly; SameSite=Lax')));
     }
-    assert.equal(
-      (await fetch(`http://127.0.0.1:${gatewayPort}/api/v1/echo`).then((r) => r.json())).service,
-      'api',
-    );
-    return '真实 HTTPS Nginx → HTTP Caddy 两层代理保留 API 路径、查询、正文、Host / Origin、Cookie 及 HTTPS 协议；50 MB 附件及表单边界完整传输，本机 HTTP 入口可用';
+    const direct = await fetch(`http://127.0.0.1:${gatewayPort}/api/v1/echo`, {
+      headers: { 'X-Forwarded-Proto': 'https', 'X-Forwarded-For': '203.0.113.99' },
+    }).then((r) => r.json());
+    assert.equal(direct.service, 'api');
+    assert.equal(direct.headers['x-forwarded-proto'], 'http');
+    assert.ok(!String(direct.headers['x-forwarded-for']).includes('203.0.113.99'));
+    return '真实 HTTPS Nginx → HTTP Caddy 两层代理保留 API 路径、查询、正文、Host / Origin、Cookie 及 HTTPS 协议；50 MB 附件及表单边界完整传输，本机 HTTP 入口可用，未经信任来源的伪造转发头被忽略';
   } finally {
     await compose(['down', '--volumes', '--remove-orphans']);
     await rm(stage, { recursive: true, force: true });
