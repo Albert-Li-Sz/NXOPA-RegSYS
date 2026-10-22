@@ -138,6 +138,15 @@ try {
       assert.ok(
         await db.auditEvent.count({ where: { actorId: owner.user.id, action: 'EMAIL_CHANGE' } }),
       );
+      const anonymous = new Client();
+      for (let i = 0; i < 11; i++) {
+        const response = await anonymous.raw('/api/v1/auth/reset-code', 'POST', {
+          email: `unknown-reset-${stamp}-${i}@example.test`,
+          code: '000000',
+          password,
+        });
+        assert.equal(response.status, i < 10 ? 400 : 429);
+      }
     },
   );
   await check('H2: split refunds require a second reviewer after cumulative fee', async () => {

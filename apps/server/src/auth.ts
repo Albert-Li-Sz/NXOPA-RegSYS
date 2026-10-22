@@ -607,7 +607,7 @@ export class AuthService {
   async verifyCode(req: AuthRequest, body: unknown, purpose = 'VERIFY') {
     const started = Date.now();
     try {
-      await rateLimit(`email-code-ip:${req.ip}`, 10);
+      if (purpose === 'RESET') await rateLimit(`email-code-ip:${req.ip}`, 10);
       const b = z
         .object({
           code: z.string().regex(/^\d{6}$/, '请输入六位验证码'),
