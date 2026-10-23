@@ -117,6 +117,10 @@ try {
     'PDF, source ZIP and LaTeX downloads have the exact hashes of the delivered artifacts',
   );
   await expect(page.locator('#hydro')).toContainText('onsiteImport');
+  await expect(page.locator('#hydro')).toContainText('学号');
+  await expect(page.locator('#hydro')).toContainText('报名 UUID');
+  await expect(page.locator('#hydro')).toContainText('A01、A100');
+  await expect(page.locator('#exam-sites')).toContainText('考场编号');
   await expect(page.locator('#domjudge')).toContainText('accounts.json');
   await expect(page.getByText('Hydro 插件下载', { exact: true })).toHaveCount(0);
   checks.push(

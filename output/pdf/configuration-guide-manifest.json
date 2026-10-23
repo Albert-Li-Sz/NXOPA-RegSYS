@@ -1,7 +1,7 @@
 {
-  "sourceSha256": "790cce10ddf089e21f478cb8e776c08798579afa4de40e18047bd4bae3b2e729",
-  "pdfSha256": "6afef36980e318c41b42735dbbe9bf94ae86a80e5a3f10133e691922390cd766",
-  "sourceZipSha256": "69e2c26eca70d020110810daa99270a1cd0087ba39ad9715a6dc9887bfaaed36",
+  "sourceSha256": "949ca1b8129dd24c97c367105a9111c6f5a87ccfafe186772139dfb072fffd45",
+  "pdfSha256": "0a00a29b66d944516fe9d37bf1eb1ef53b53543e63c0c6b45babce73db54f48a",
+  "sourceZipSha256": "58cedcffb3811e707be54a60125c19c5320a88faa9a209cd7eed7974ff01eb81",
   "screenshots": {
     "01-home.png": "afac20a997452dbf93b5acde4f7174cca538cf64718fddac7dc07fddc39e343d",
     "02-login.png": "57f346b4bf286306120a52292e8f7ae6c654cd6ddecfa8f43287c2ff6ea5daf0",
@@ -9,8 +9,8 @@
     "04-site.png": "bc6f1d26689e6a12cbcefff794b1cabd79f7908813ff66f2c5cefaff2851445e",
     "05-role-invitation.png": "da90f313fecd44cacb6b611d395a4bf4f1fd51ab142053617c0cda38250097e1",
     "06-role-confirmation.png": "e82cdaf610fd0d9a3c485f1cc764de754939f263f02c26960cd0fdd8483c95ea",
-    "07-platform-hydro-export.png": "0a9a01acbbbc860c0daf4a0940cfb40b7e61a2df69f383984789e53417ff38fd",
-    "08-platform-domjudge-export.png": "7123adf5e78f966a169470c23c64d5e5d9fd81f92c5e48156b6475cacd7e8e5f",
+    "07-platform-hydro-export.png": "2ec7fb61390f901338f9e9a391fddadbe890399d5bf8386435d05f53ac09177e",
+    "08-platform-domjudge-export.png": "7d772a9928b0790437e22b465477ac4649fd64696624497bbae29d5ee59d8f69",
     "10-contest-policy.png": "7a2321a4d57f777875184303c55c8a1de29d2933caa39f7fe6439576a1b4c934",
     "11-contest-finance.png": "c77765aefd6ff4ae55306dc97b46e79511ca108aba9c0f56ab5594104b5c7802",
     "12-fields.png": "f6e279ad0d5e00af72372a2406ff0a9f3492deb25abe474aac1a9f3dfbc59d69",

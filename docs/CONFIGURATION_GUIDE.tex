@@ -28,7 +28,7 @@
 \fancyhf{}
 \fancyhead[L]{\small\color{muted}南晓开放原子社在线报名系统}
 \fancyhead[R]{\small\color{muted}配置教程}
-\fancyfoot[L]{\small\color{muted}v0.8.1 · 中文 · Asia/Shanghai}
+\fancyfoot[L]{\small\color{muted}v0.9.0 · 中文 · Asia/Shanghai}
 \fancyfoot[R]{\small\color{muted}\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
@@ -38,7 +38,7 @@
 \AfterEndEnvironment{Code}{\end{minipage}\par}
 \begin{document}
 \thispagestyle{empty}
-{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 22 日}
+{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 23 日}
 \vspace{9mm}
 
 {\huge\bfseries\color{ink}南晓开放原子社\\[3mm]在线报名系统}
@@ -207,15 +207,17 @@ hydrooj cli system onsiteImport /srv/import/teams.json 0123456789abcdef01234567 
 # 同域多个比赛：ObjectId,ObjectId，不加空项
 hydrooj cli system onsiteImport /srv/import/teams.json 0123456789abcdef01234567,1123456789abcdef01234567 webp system
 \end{Code}
-字段包含 id、name、displayName、password、school、members、coach、seat 和 rank。id 用于识别对应 onsite.local 账号，name 是唯一登录名，displayName 保留真实队名／姓名；rank 为 false 表示非正式。JSON 直接生成，队名 NULL、中文与空的可选成员不会被表格转换丢弃。
+字段包含 id、name、displayName、password、school、members、coach、seat 和 rank。id 固定使用报名 UUID，用于识别对应 onsite.local 账号；name 为个人本人／团队队长报名资料中的学号，按字符串保留前导零并遵循 Hydro 规范化规则；displayName 保留填写的队名／个人姓名。password 为系统生成并加密保存的独立比赛密码。members 只包含有效成员且队长在前，不同时输出 member1 至 member4，四名及更多成员仍使用数组。rank 必须为布尔值，true 为正式，false 为非正式；支持全部按非正式导出。JSON 直接生成，队名 NULL 和中文不会被表格转换丢弃。
+
+seat 使用考场编号加至少两位座位序号，例如 A01、A100，不带活动前缀。未排座或未填编号时为空，不用人工队伍编号或报名编号替代。学号缺失、格式不符或同包重名时整包拒绝，凭据表的学号、密码和座位与 JSON 保持一致。
 
 \textbf{必须核对的已知问题。}
 \begin{itemize}
-\item 用户名和座位不得跨比赛重名。本站生成含可读姓名片段的唯一账号并给座位加活动前缀，重复导入保留 ID。不同报名不能共用座位，一个团队有多个成员座位时先统一平台座位。
+\item 每次比赛清空 Hydro 后导入，不兼容旧导入账号或跨活动账号复用。用户名全站唯一，同包学号按 Hydro 规范化后忽略大小写比较；保留包内报名 UUID。不同报名不能共用非空座位，多条空座位允许导出；一个团队有多个成员座位时先统一平台座位。
 \item 当前插件重导会用 password 覆盖远端旧密码。本站重复导出保持密码不变，远端自行改过密码时先核对；不要使用会重算随机值的 Excel 公式生成密码条。
-\item 部分 XCPCIO／CCS 榜单只显示 name，不显示 displayName。本站生成的 name 包含可读姓名片段与唯一后缀；赛前仍须核对榜单。
+\item 部分 XCPCIO／CCS 榜单只显示 name，不显示 displayName，此时会显示学号；赛前检查队名显示。
 \item contestMode 限制账号功能及域访问。使用导出的账号实际登录，核对域、比赛关联、正式／非正式性质与成员。
-\item 需要 IP 登录时创建无表头的 seat,ip CSV，seat 使用导出的完整座位；执行下方命令。CSV 不支持含逗号的座位和引号转义。旧 IP 映射只增改，不会随名单缩减自动清除；同时检查代理真实 IP。
+\item 需要 IP 登录时先补齐编号和排座，再创建无表头的 seat,ip CSV，seat 使用导出的非空座位；执行下方命令。CSV 不支持含逗号的座位和引号转义。旧 IP 映射只增改，不会随名单缩减自动清除；同时检查代理真实 IP。
 \end{itemize}
 \begin{Code}
 hydrooj cli system setIpLogin /srv/import/seats.csv
@@ -267,6 +269,8 @@ hydrooj cli system setIpLogin /srv/import/seats.csv
 已被报名或考场使用的考点不能直接删除，可先停用，或调整关联数据后再删除。已有报名的竞赛后期新增考点时，须先补充报名考点，再排考或生成准考证。
 
 启用“考场与座位”后，为每个考场选择所属考点。自动、手动及 CSV 排座均限制在报名所选考点内；团队按现有排考模式安排同考点座位。考场已有座位时，先清空座位才能更换所属考点。准考证地点合并考点名称、地址和考场地址；修改考点名称或地址后，应重新生成并发放准考证。
+
+考场另有可选的“考场编号”，支持字母、数字、下划线和连字符，最长 20 字符，去除首尾空格后统一大写，同一活动内唯一。例如编号 A、座位 1 在 Hydro 中导出为 A01，座位 100 为 A100。已有考场编号为空，不按名称推测；未填编号时 Hydro 导出空座位。新增或修改编号后重新导出导入包，编号修改沿用排考版本和准考证失效流程；排考 CSV 仍使用考场名称。
 
 管理员在报名管理中可查看和筛选考点，导出的名单包含考点名称与地址。报名详情也显示所选考点及地址，便于选手核对。
 

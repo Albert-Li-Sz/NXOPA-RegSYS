@@ -41,7 +41,15 @@ onMounted(load);
 function editRoom(row?: Data) {
   room.value = row
     ? JSON.parse(JSON.stringify(row))
-    : { name: '', location: '', examSiteId: null, capacity: 30, sortOrder: 0, enabled: true };
+    : {
+        name: '',
+        code: '',
+        location: '',
+        examSiteId: null,
+        capacity: 30,
+        sortOrder: 0,
+        enabled: true,
+      };
   dialog.value = true;
   if (row) roomEdit.finish();
   else roomEdit.begin();
@@ -319,8 +327,9 @@ async function closeRoom(done: () => void) {
     </div>
     <PaginatedTable page-key="seatingmanager-data-rooms" :data="data.rooms"
       ><el-table-column prop="name" label="考场" /><el-table-column
-        v-if="data.examSites.length"
-        label="所属考点"
+        prop="code"
+        label="考场编号"
+      /><el-table-column v-if="data.examSites.length" label="所属考点"
         ><template #default="{ row }">{{
           row.examSite?.name || '未关联'
         }}</template></el-table-column
@@ -391,6 +400,17 @@ async function closeRoom(done: () => void) {
       :class="{ 'read-mode': !roomEdit.editing.value }"
       @submit.prevent="saveRoom"
       ><el-form-item label="考场名称"><el-input v-model="room.name" /></el-form-item
+      ><el-form-item label="考场编号" for="room-code">
+        <el-input
+          id="room-code"
+          v-model="room.code"
+          maxlength="20"
+          placeholder="例如 A、B；留空时 Hydro 导出空座位"
+        />
+        <p class="form-help">
+          可选，支持字母、数字、下划线和连字符，保存后统一为大写，同一活动内不可重复。Hydro
+          座位示例：A01。
+        </p> </el-form-item
       ><el-form-item v-if="data.examSites.length" label="所属考点" required for="room-exam-site">
         <el-select
           id="room-exam-site"

@@ -362,8 +362,9 @@ try {
   );
   teamRoom = await admin.api(`/contests/${memberContest.id}/rooms/${teamRoom.id}`, 'PUT', {
     ...teamRoom,
-    location: '新考点',
+    code: ' t_01 ',
   });
+  assert.equal(teamRoom.code, 'T_01');
   assert.equal((await alice.raw(`/api/v1/admissions/${documentId}/download`)).status, 403);
   assert.equal(
     (await db.admissionDocument.findUniqueOrThrow({ where: { id: documentId } })).state,

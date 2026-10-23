@@ -59,7 +59,30 @@ async function hydro(admin: Client) {
     `Create Hydro test contest: ${created.status} ${await created.clone().text()}`,
   );
   const target = (await created.json()) as any;
+  const room = await db.examRoom.create({
+    data: { contestId: fixture!.contest.id, name: 'Hydro 导入考场', code: 'A', capacity: 200 },
+  });
+  await db.seatAssignment.createMany({
+    data: fixture!.rows.slice(0, 2).map((r, i) => ({
+      registrationId: r.id,
+      roomId: room.id,
+      unitKey: 'registration',
+      seat: i === 0 ? 1 : 100,
+    })),
+  });
+  await db.registrationPerson.createMany({
+    data: ['张三', '李四', '王五', '赵六'].map((name) => ({
+      registrationId: fixture!.rows[0]!.id,
+      contestId: fixture!.contest.id,
+      name,
+    })),
+  });
+  await db.registrationCoach.create({
+    data: { registrationId: fixture!.rows[0]!.id, userId: admin.user.id },
+  });
   const teams = await exported(admin, 'HYDRO');
+  assert.equal(teams[0].id, fixture!.rows[0]!.id);
+  assert.equal(teams[0].name, fixture!.studentIds[0]);
   async function importFile() {
     await compose('HYDRO', [
       'cp',
@@ -94,11 +117,25 @@ async function hydro(admin: Client) {
   assert.equal(first.length, 2);
   assert.ok(first.every((t) => t?.attend));
   assert.equal(first[0].displayName, 'NULL');
-  assert.deepEqual(first[0].members, ['NULL']);
+  assert.deepEqual(first[0].members, teams[0].members);
+  assert.equal(first[0].members.length, 5);
+  assert.equal(new Set(first[0].members).size, 5);
+  assert.equal(first[0].members[0], 'NULL');
+  assert.equal(first[0].username, fixture!.studentIds[0]);
+  assert.equal(first[0].school, '测试大学');
+  assert.equal(first[0].coach, admin.user.name);
+  assert.deepEqual(
+    first.map((t: any) => t.seat),
+    ['A01', 'A100'],
+  );
   assert.equal(first[0].unrank ?? false, false);
   assert.equal(first[1].unrank, true);
   assert.ok(first.every((t) => t.contestMode === target.domainId));
-  await exported(admin, 'HYDRO', true);
+  const reexported = await exported(admin, 'HYDRO', true);
+  assert.deepEqual(
+    reexported.map((t: any) => [t.id, t.name, t.password]),
+    teams.map((t: any) => [t.id, t.name, t.password]),
+  );
   await importFile();
   const repeat = await inspect();
   assert.deepEqual(
@@ -106,7 +143,7 @@ async function hydro(admin: Client) {
     first.map((t) => t.uid),
   );
   assert.ok(repeat.every((t) => t.unrank === true));
-  assert.deepEqual(repeat[0].members, ['NULL']);
+  assert.deepEqual(repeat[0].members, teams[0].members);
   const login = await fetch(`${base}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
@@ -137,10 +174,13 @@ async function hydro(admin: Client) {
     customDomain: true,
     officialAndUnofficial: true,
     repeatAndRankUpdate: true,
+    studentIdLoginAndRegistrationUuid: true,
+    fiveMembersWithoutDuplicates: true,
+    roomCodeSeats: ['A01', 'A100'],
     actualLoginAndContestAccess: true,
   });
   console.log(
-    'PASS Hydro official onsiteImport: custom domain, rank, names, members, repeat import and actual contest login',
+    'PASS Hydro official onsiteImport: student-ID login, registration UUID, five members, A01/A100 seats, rank, repeat import and actual contest access',
   );
 }
 async function domjudge(admin: Client) {

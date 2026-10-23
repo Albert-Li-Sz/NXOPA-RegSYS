@@ -688,6 +688,7 @@ model ExamRoom {
   contestId String @db.Uuid
   contest Contest @relation(fields:[contestId],references:[id],onDelete:Cascade)
   name String
+  code String?
   location String @default("")
   examSiteId String? @db.Uuid
   examSite ExamSite? @relation(fields:[examSiteId],references:[id],onDelete:Restrict)
@@ -697,6 +698,7 @@ model ExamRoom {
   version Int @default(1)
   seats SeatAssignment[]
   @@unique([contestId,name])
+  @@unique([contestId,code])
   @@index([examSiteId])
 }
 /// Positive seat CHECK is maintained by SQL migrations and verified in CI.

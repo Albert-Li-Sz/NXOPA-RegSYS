@@ -18,6 +18,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1150.0",
     "@contest-center/contracts": "workspace:*",
+    "@mongodb-js/saslprep": "^1.6.1",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",

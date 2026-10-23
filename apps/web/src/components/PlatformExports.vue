@@ -93,7 +93,8 @@ async function download() {
       </div>
       <p class="notice" v-if="platform === 'HYDRO'">
         包含 teams.json、账号密码表和导入说明。使用官方 Onsite Toolkit 的 onsiteImport
-        命令，用户名唯一，队名／姓名写入 displayName。
+        命令，个人本人／团队队长的学号作为登录名，队名／姓名写入
+        displayName。座位使用考场编号加序号（如 A01），未排座或未填编号时为空。
       </p>
       <p class="notice" v-else>
         包含
@@ -101,7 +102,13 @@ async function download() {
         Import / export 中导入。
       </p>
       <p>
-        重复导出保留同一报名的平台账号和密码。导入包含明文比赛密码，请妥善保管。完成导出后仍需在目标平台导入，并核对比赛访问权限。
+        重复导出保留同一报名的比赛密码，与本站登录密码独立。<span v-if="platform === 'HYDRO'"
+          >重新导入 Hydro 会重设远端密码。</span
+        >导入包含明文比赛密码，请妥善保管。完成导出后仍需在目标平台导入，并核对比赛访问权限。
+      </p>
+      <p v-if="platform === 'HYDRO'">
+        每次比赛清空 Hydro 后导入；本包不兼容旧账号或跨活动账号复用。队员只通过 members
+        数组导入，正式／非正式性质使用布尔值 rank。
       </p>
       <p>资格撤销或报名删除后，请在目标平台手动处理原账号；新的导入包不会删除远端记录。</p>
       <div class="actions">

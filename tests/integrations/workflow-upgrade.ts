@@ -149,12 +149,54 @@ try {
   assert.ok(backup.stdout.length > 1000);
   await writeFile(path.join(stage, 'before-v0.4.dump'), backup.stdout, { mode: 0o600 });
   pass('建立真实 v0.4.0 表结构、取消／未取消报名、财务及后台任务，并备份');
+  // Stop immediately before room codes are introduced, with real assigned legacy rooms.
+  for (const name of (await readdir('apps/server/prisma/migrations')).filter(
+    (name) => name >= '202610150001_activity_workflows' && name < '202610230001_exam_room_code',
+  ))
+    await cp(
+      path.join(root, 'apps/server/prisma/migrations', name),
+      path.join(stage, 'migrations', name),
+      { recursive: true },
+    );
+  run(
+    'pnpm',
+    [
+      '--filter',
+      '@contest-center/server',
+      'exec',
+      'prisma',
+      'migrate',
+      'deploy',
+      '--config',
+      path.join(stage, 'prisma.config.ts'),
+    ],
+    undefined,
+    isolated,
+  );
+  const legacyRoom = randomUUID();
+  sql(
+    database,
+    `
+    INSERT INTO "ExamRoom" (id,"contestId",name,capacity) VALUES ('${legacyRoom}','${contest}','A',30),('${randomUUID()}','${contest}','B',30);
+    INSERT INTO "SeatAssignment" (id,"registrationId","roomId","unitKey",seat) VALUES ('${randomUUID()}','${active}','${legacyRoom}','registration',1);
+  `,
+  );
   run('pnpm', ['db:migrate'], undefined, isolated);
   Object.assign(process.env, isolated);
   const { db } = await import('../../apps/server/src/db.js');
   const { migrateCancelledRegistrations } =
     await import('../../apps/server/src/registration-removal.js');
   try {
+    const room = await db.examRoom.findUniqueOrThrow({ where: { id: legacyRoom } });
+    assert.equal(room.code, null);
+    assert.equal(room.name, 'A');
+    assert.equal(room.capacity, 30);
+    assert.equal(await db.examRoom.count({ where: { contestId: contest, code: null } }), 2);
+    assert.equal(
+      (await db.seatAssignment.findFirstOrThrow({ where: { roomId: legacyRoom } })).seat,
+      1,
+    );
+    pass('旧考场编号迁移为空且不从名称推测，多个空编号与原座位完整保留');
     await migrateCancelledRegistrations();
     await migrateCancelledRegistrations();
     assert.equal(await db.registration.count(), 1);

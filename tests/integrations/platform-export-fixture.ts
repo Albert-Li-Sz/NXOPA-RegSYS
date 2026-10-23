@@ -4,6 +4,10 @@ import { policySchema } from '../../packages/contracts/src/index.js';
 
 export async function exportFixture(ownerId: string, mode: 'TEAM' | 'INDIVIDUAL' = 'TEAM') {
   const id = randomUUID();
+  const studentIds = Array.from(
+    { length: 4 },
+    (_, i) => `00${id.replaceAll('-', '').slice(0, 16)}${i}`,
+  );
   const contest = await db.contest.create({
     data: {
       id,
@@ -40,6 +44,7 @@ export async function exportFixture(ownerId: string, mode: 'TEAM' | 'INDIVIDUAL'
                 name: i === 0 ? 'NULL' : '同名选手',
                 email: 'fixture@example.test',
                 captain: true,
+                answers: { student_id: studentIds[i] },
               },
             ],
           },
@@ -49,6 +54,7 @@ export async function exportFixture(ownerId: string, mode: 'TEAM' | 'INDIVIDUAL'
   return {
     contest,
     rows,
+    studentIds,
     async cleanup() {
       await db.adminGrant.deleteMany({ where: { contestId: id } });
       await db.registration.deleteMany({ where: { contestId: id } });

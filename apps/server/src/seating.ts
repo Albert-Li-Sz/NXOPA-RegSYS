@@ -70,15 +70,25 @@ export class SeatingService {
       if (!roomId && (await tx.examRoom.count({ where: { contestId: id } })) >= 200)
         throw new BadRequestException('每个活动最多设置 200 个考场');
       const old = roomId ? await tx.examRoom.findUniqueOrThrow({ where: { id: roomId } }) : null;
+      if (old && old.contestId !== id) throw new BadRequestException('考场不属于此活动');
+      const code = b.code === undefined ? (old?.code ?? null) : b.code || null;
+      if (
+        code &&
+        (await tx.examRoom.findFirst({
+          where: { contestId: id, code, ...(roomId ? { id: { not: roomId } } : {}) },
+          select: { id: true },
+        }))
+      )
+        throw new BadRequestException(`考场编号 ${code} 已存在，请使用不同编号`);
       const examSiteId = b.examSiteId === undefined ? (old?.examSiteId ?? null) : b.examSiteId;
       if (examSiteId && !c.examSites.some((s) => s.id === examSiteId))
         throw new BadRequestException('考点不属于此活动');
       if (c.examSites.length && !examSiteId) throw new BadRequestException('请为考场选择所属考点');
       if (old) {
-        if (old.contestId !== id) throw new BadRequestException('考场不属于此活动');
         checkVersion(old.version, b.version);
         if (
           old.name === b.name &&
+          old.code === code &&
           old.location === b.location &&
           old.examSiteId === examSiteId &&
           old.capacity === b.capacity &&
@@ -97,7 +107,7 @@ export class SeatingService {
         );
       }
       const { version, ...input } = b;
-      const data = { ...input, examSiteId };
+      const data = { ...input, code, examSiteId };
       const r = roomId
         ? await tx.examRoom.update({
             where: { id: roomId },

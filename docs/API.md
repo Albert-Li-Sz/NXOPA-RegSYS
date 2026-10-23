@@ -83,13 +83,15 @@ GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
 | 方法与路径                                 | 用途                                           |
 | ------------------------------------------ | ---------------------------------------------- |
 | GET `/contests/:id/rooms`                  | 考场、座位及 `seatingVersion`                  |
-| POST `/contests/:id/rooms`                 | 新增名称、地点、容量、顺序及启用状态           |
+| POST `/contests/:id/rooms`                 | 新增名称、可选编号、地点、容量、顺序及启用状态 |
 | PUT / DELETE `/contests/:id/rooms/:roomId` | 带考场 `version` 更新或删除                    |
 | POST `/contests/:id/seating/preview`       | 按报名 ID 预览自动或明确座位，不写入           |
 | POST `/contests/:id/seating/commit`        | 同一请求加预览返回的版本，事务内再次校验并写入 |
 | POST `/contests/:id/seating/clear`         | 带 `seatingVersion`，可选 `roomId` 清空        |
 
 以上需要 ADMISSIONS 权限及启用考场。排考请求包含 `registrationIds`、可选 `replace`（默认保留已有座位），手工安排附加 `assignments: [{registrationId,personId?,roomId,seat}]`。提交必须带预览的 `seatingVersion`、`registrationVersions`；容量、重复、跨活动、非资格报名和资料变化会整批拒绝。数据库具有考场／座号及报名／排考单位唯一约束。
+
+考场新增可空的 `code`，创建／更新接受、查询返回。支持字母、数字、下划线和连字符，最多 20 字符；去除首尾空格后转为大写，同活动内非空编号唯一。更新省略 `code` 保留原值，空字符串或 `null` 清空；旧考场迁移后为 `null`，不根据名称推测。编号修改沿用考场 `version`、排考版本及准考证失效流程。
 
 `GET /integrations/revocations?contestId=…` 查询远端撤权待办，`POST /integrations/revocations/:id/complete` 由管理员实际处理远端后标记完成并审计，两者需要 INTEGRATIONS 权限。待办仅保存平台目标和远端编号，不保留报名快照或账号密码。
 
@@ -107,7 +109,9 @@ GET /api/v1/registrations/:id/finance/invoices?page=1&pageSize=20
 
 POST `/api/v1/contests/:id/platform-exports`，正文 `{platform:"HYDRO"|"DOMJUDGE",includeUnofficial?:boolean,importMode?:"FOLLOW"|"FORCE_UNOFFICIAL",officialGroupId?:string,unofficialGroupId?:string}`。要求当前活动 `INTEGRATIONS` 权限且已启用 `modules.integrations`。响应为 `application/zip`，`Cache-Control:no-store`，不进入幂等结果缓存。
 
-仅导出取得资格的当前报名，两个平台分别保存加密密码；重复、并发导出保持账号密码稳定。默认组 ID 与座位使用活动前缀，正式／非正式组不得同名。缺项、重复座位、多个成员座位会拒绝导出。单次最多 10000 条报名及 50 MB 资料。包内文件及导入步骤见 [INTEGRATIONS.md](INTEGRATIONS.md)。
+仅导出取得资格的当前报名，两个平台分别保存加密比赛密码；重复、并发导出保持比赛密码稳定。Hydro 的 `teams.json` 为数组，`id` 使用报名 UUID，`name` 使用个人本人／团队队长报名资料中的字符串学号（保留前导零并按 Hydro 规则规范化），`displayName` 为队名／个人姓名，只输出 `members` 数组，`rank` 为布尔值。学号缺失、格式不符或规范化后忽略大小写重名时整包拒绝。`seat` 为考场 `code` 加至少两位座位序号；未排座或未填编号时为 `""`，不回退到人工编号。非空座位冲突或多个成员座位仍拒绝导出，允许多个空座位；凭据 CSV 与 JSON 一致。按每次比赛清空 Hydro 的方式使用，不兼容旧导入账号或跨活动账号复用。
+
+DOMjudge 账号及导出规则保持不变，默认组 ID 与队伍编号／座位使用活动前缀，正式／非正式组不得同名。单次最多 10000 条报名及 50 MB 资料。包内文件及导入步骤见 [INTEGRATIONS.md](INTEGRATIONS.md)。
 
 GET `/api/v1/integrations/field-templates` 保留平台表单模板；内部旧模板 ID 保留以读取历史活动，界面名称为 Hydro 最新版 / DOMjudge 9.x。旧实例、绑定、学校映射、同步、凭据交付和回调接口已移除，返回 404。历史撤权待办可继续处理。
 

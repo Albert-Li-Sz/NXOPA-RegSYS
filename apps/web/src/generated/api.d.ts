@@ -2398,6 +2398,7 @@ export interface components {
             /** Format: uuid */
             examSiteId?: string | null;
             name: string;
+            code?: string | null;
             /** @default  */
             location: string;
             capacity: number;
@@ -9066,6 +9067,7 @@ export interface operations {
                     /** Format: uuid */
                     examSiteId?: string | null;
                     name: string;
+                    code?: string | null;
                     /** @default  */
                     location: string;
                     capacity: number;
@@ -9160,6 +9162,7 @@ export interface operations {
                     /** Format: uuid */
                     examSiteId?: string | null;
                     name: string;
+                    code?: string | null;
                     /** @default  */
                     location: string;
                     capacity: number;

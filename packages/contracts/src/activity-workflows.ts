@@ -34,6 +34,14 @@ export const roomSchema = z.object({
   version: z.number().int().optional(),
   examSiteId: z.string().uuid().nullable().optional(),
   name: z.string().trim().min(1).max(100),
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .max(20)
+    .regex(/^[A-Z0-9_-]*$/, '考场编号只允许字母、数字、下划线和连字符')
+    .nullable()
+    .optional(),
   location: z.string().trim().max(300).default(''),
   capacity: z.number().int().min(1).max(10000),
   sortOrder: z.number().int().default(0),
