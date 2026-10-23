@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, cp, readFile, writeFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, cp, readFile, writeFile, rm, stat, chmod } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -230,6 +230,39 @@ test('校验和错误不会安装配置或调用 Docker', () =>
     await assert.rejects(stat(path.join(target, 'deploy/.env')), { code: 'ENOENT' });
     await assert.rejects(stat(log), { code: 'ENOENT' });
   }));
+test('单文件安装及再次启动修复 Caddy 挂载权限，实例密钥保持私有', () =>
+  fixture(async ({ run, target }) => {
+    const response = await run(
+      ['install'],
+      'gateway-permissions\n\n1\n\n3\n\nhttp://proxy.example.test\ny\nn\n',
+    );
+    assert.equal(response.code, 0, response.output);
+    const directory = path.join(target, 'infra/caddy-gateway');
+    const config = path.join(directory, 'Caddyfile');
+    const envFile = path.join(target, 'deploy/.env');
+    const original = await readFile(envFile);
+    const check = async () => {
+      assert.equal((await stat(directory)).mode & 0o777, 0o755);
+      assert.equal((await stat(config)).mode & 0o777, 0o644);
+      assert.equal((await stat(envFile)).mode & 0o777, 0o600);
+      assert.deepEqual(await readFile(envFile), original);
+    };
+    await check();
+    // Existing installations may retain root-only modes from an older bootstrap.
+    for (const mode of ['gateway', 'caddy']) {
+      const mounted = path.join(target, 'infra', mode === 'gateway' ? 'caddy-gateway' : 'caddy');
+      await chmod(mounted, 0o700);
+      await chmod(path.join(mounted, 'Caddyfile'), 0o600);
+      const restart = await run(['up'], '', {
+        installed: true,
+        env: { REVERSE_PROXY_MODE: mode },
+      });
+      assert.equal(restart.code, 0, restart.output);
+      assert.equal((await stat(mounted)).mode & 0o777, 0o755);
+      assert.equal((await stat(path.join(mounted, 'Caddyfile'))).mode & 0o777, 0o644);
+      await check();
+    }
+  }));
 test('新单文件入口转换旧发布包与已有材料的摘要覆盖，保留版本、平台及实例配置', () =>
   fixture(
     async ({ run, target, log }) => {
@@ -355,6 +388,12 @@ test('跨版本更新先备份，下载新版材料并执行新入口，保留�
       await readFile(path.join(target, 'deploy/.env'), 'utf8'),
       previous.replace(`IMAGE_TAG=${tag}`, `IMAGE_TAG=${nextTag}`),
     );
+    assert.equal((await stat(path.join(target, 'infra/caddy-gateway'))).mode & 0o777, 0o755);
+    assert.equal(
+      (await stat(path.join(target, 'infra/caddy-gateway/Caddyfile'))).mode & 0o777,
+      0o644,
+    );
+    assert.equal((await stat(path.join(target, 'deploy/.env'))).mode & 0o777, 0o600);
     const calls = (await readFile(log, 'utf8'))
       .split('\n')
       .filter(Boolean)

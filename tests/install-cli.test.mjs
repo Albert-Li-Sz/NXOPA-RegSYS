@@ -107,6 +107,8 @@ async function fixture(fn, { isolated = false } = {}) {
     for (const name of [
       'install.sh',
       'deploy',
+      'infra/caddy',
+      'infra/caddy-gateway',
       'scripts/backup.sh',
       'scripts/restore.sh',
       'scripts/compose-lib.sh',

@@ -262,7 +262,25 @@ backup() {
     bash "$repo_root/scripts/backup.sh" "$destination"
 }
 
+prepare_proxy_config() {
+  local directory
+  case "$proxy_mode" in
+    gateway) directory="$repo_root/infra/caddy-gateway" ;;
+    caddy) directory="$repo_root/infra/caddy" ;;
+    external) return 0 ;;
+    *) return 1 ;;
+  esac
+  [[ -d "$directory" && ! -L "$directory" && -f "$directory/Caddyfile" && ! -L "$directory/Caddyfile" ]] || {
+    printf 'Caddy 配置必须为实际目录中的普通文件：%s/Caddyfile\n' "$directory" >&2
+    return 1
+  }
+  # Bootstrap keeps secrets private with umask 077. Caddy runs as UID 1000 and
+  # needs to traverse its bind-mounted directory and read this public config.
+  chmod 755 "$directory" && chmod 644 "$directory/Caddyfile"
+}
+
 start_services() {
+  prepare_proxy_config || return
   if [[ "$install_mode" == images ]]; then
     if ! compose pull; then
       printf '镜像拉取失败。请记录上方失败的镜像名；若出现 content descriptor / not found，请检查镜像代理是否完整同步，并参阅 deploy/README.md。\n' >&2
