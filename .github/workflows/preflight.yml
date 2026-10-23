@@ -30,6 +30,7 @@ jobs:
           DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm db:generate
       - name: 工程、安装引导与完整业务验收
         run: |
+          pnpm audit:runtime
           pnpm typecheck
           pnpm format:check
           pnpm test
