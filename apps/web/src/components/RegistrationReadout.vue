@@ -102,8 +102,7 @@ onBeforeUnmount(close);
   <div class="card" v-if="registration.organization">
     <h3>代表学校／单位</h3>
     <p>
-      {{ registration.organization.name }} · {{ registration.organization.shortName }} ·
-      {{ registration.organization.country }}
+      {{ registration.organization.name }}
     </p>
   </div>
   <template v-for="scope in ['REGISTRATION', 'TEAM']" :key="scope"

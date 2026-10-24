@@ -83,24 +83,6 @@ try {
   assert.equal(selectedZip.readUInt16LE(selectedEnd + 10), 2);
   report.push('Administrator registration selection resolves the current eligible documents');
   const registration = await admin.api(`/registrations/${fixture.paid}`);
-  const token = await admin.api('/admin/tokens', 'POST', {
-    name: 'Admission job boundary fixture',
-    contestIds: [registration.contestId],
-    scopes: ['integration:read'],
-    fields: [],
-    expiresAt: new Date(Date.now() + 3600000).toISOString(),
-  });
-  const job = await db.job.findFirst({
-    where: { kind: 'ADMISSION', resourceId: fixture.paid },
-    orderBy: { updatedAt: 'desc' },
-  });
-  assert.ok(job);
-  const denied = await fetch(`${base}/api/integration/v1/jobs/${job.id}`, {
-    headers: { Authorization: `Bearer ${token.token}` },
-  });
-  assert.equal(denied.status, 404);
-  await admin.api(`/admin/tokens/${token.id}`, 'DELETE');
-  report.push('Integration read token cannot retrieve private PDF job results or compiler logs');
   const contest = await admin.api('/contests', 'POST', {
     title: '验收自动审核的管理员否决',
     season: '验收',

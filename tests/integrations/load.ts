@@ -189,6 +189,7 @@ try {
     await db.registration.deleteMany({ where: { contestId } });
     await db.formVersion.deleteMany({ where: { contestId } });
     await db.contest.delete({ where: { id: contestId } });
+    await db.identityRequest.deleteMany({ where: { userId: { in: userIds } } });
     await db.user.deleteMany({ where: { id: { in: userIds } } });
   }
   await db.$disconnect();

@@ -1,6 +1,6 @@
 # 当前版本验收
 
-v0.7.2 已将 Hydro / DOMjudge 同步替换为平台导入文件导出。以下旧版本的同步、桥接插件与任务记录仅为历史证据；当前安装和导入操作以 [INTEGRATIONS.md](INTEGRATIONS.md) 为准。
+当前实现按全新部署移除外接平台、API Token、Webhook 与 MCP；报名支持 Excel／CSV、独立比赛账号、实名单位和准考证批量生成／发放／下载。验收脚本为 `test:registration-exports` 和 `tests/e2e/registration-exports.spec.ts`。下文保留旧版本历史记录，当前操作以[报名导出](REGISTRATION_EXPORTS.md)与[准考证](ADMISSIONS.md)为准。
 
 # MVP 验收报告
 

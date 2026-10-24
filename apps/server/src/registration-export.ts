@@ -1,3 +1,6 @@
+import ExcelJS from 'exceljs';
+import { z } from 'zod';
+import { competitionCredentials } from './competition-accounts.js';
 import { BadRequestException } from '@nestjs/common';
 import { fieldsSchema, type Principal, type FieldDefinition } from '@contest-center/contracts';
 import { db, audit } from './db.js';
@@ -12,18 +15,23 @@ const escapeCell = (value: unknown) => {
   if (/^\s*[=+\-@]|^[\t\r\n]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 };
-export async function registrationCsv(
+export async function registrationExport(
   service: RegistrationService,
   user: Principal,
   id: string,
   query: ListQuery,
 ) {
   requireManager(user, id, 'REGISTRATIONS');
+  const format = z.enum(['csv', 'xlsx']).parse(query.format ?? 'csv');
+  const includeCredentials =
+    z.enum(['true', 'false']).parse(query.includeCredentials ?? 'false') === 'true';
   return withExportBudget(user.id, id, async () => {
     const started = Date.now();
     const filter = { ...query };
     delete filter.page;
     delete filter.pageSize;
+    delete filter.format;
+    delete filter.includeCredentials;
     const records: any[] = [];
     let cursor: string | undefined;
     let rowCount = 0,
@@ -114,6 +122,18 @@ export async function registrationCsv(
       { name: '考点', value: (r) => r.examSite?.name },
       { name: '考点地址', value: (r) => r.examSite?.address },
       { name: '代表学校／单位', value: (r) => r.organization?.name },
+      {
+        name: '考场',
+        value: (r) => [...new Set((r.seats ?? []).map((s: any) => s.room.name))].join('；'),
+      },
+      {
+        name: '座位',
+        value: (r, p) =>
+          (r.seats ?? [])
+            .filter((s: any) => !s.personId || s.personId === p.id)
+            .map((s: any) => String(s.seat))
+            .join('；'),
+      },
       { name: '姓名', value: (_, p) => p.name },
       { name: '邮箱', value: (_, p) => p.email },
       { name: '队长', value: (_, p) => (p.captain ? '是' : '否') },
@@ -126,6 +146,17 @@ export async function registrationCsv(
           r.submittedAt?.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }),
       },
     ];
+    if (includeCredentials) {
+      const accounts = new Map<string, { username: string; password: string }>();
+      for (const r of records) {
+        const account = await competitionCredentials(r.id);
+        if (account) accounts.set(r.id, account);
+      }
+      columns.push(
+        { name: '比赛账号', value: (r) => accounts.get(r.id)?.username },
+        { name: '比赛密码', value: (r) => accounts.get(r.id)?.password },
+      );
+    }
     if (manages(user, id, 'FINANCE'))
       columns.push(
         {
@@ -175,6 +206,17 @@ export async function registrationCsv(
           });
     }
     if (columns.length > 500) throw new BadRequestException('历史字段超过 500 列，请缩小导出范围');
+    const workbook = format === 'xlsx' ? new ExcelJS.Workbook() : null;
+    const sheet = workbook?.addWorksheet('报名信息', { views: [{ state: 'frozen', ySplit: 1 }] });
+    if (sheet) {
+      sheet.columns = columns.map((c) => ({
+        header: c.name,
+        width: Math.min(40, Math.max(16, c.name.length * 2 + 2)),
+        style: { numFmt: '@' },
+      }));
+      sheet.getRow(1).font = { bold: true };
+      sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
+    }
     const lines = [columns.map((c) => escapeCell(c.name)).join(',')];
     let bytes = Buffer.byteLength(lines[0]!);
     for (const r of records)
@@ -183,15 +225,30 @@ export async function registrationCsv(
         bytes += Buffer.byteLength(line) + 2;
         if (bytes > 25 * 1024 * 1024)
           throw new BadRequestException('导出内容超过 25 MB，请缩小筛选范围');
-        lines.push(line);
+        if (sheet) sheet.addRow(columns.map((c) => String(c.value(r, p) ?? '')));
+        else lines.push(line);
       }
     await audit(db, user.id, 'REGISTRATION_EXPORT', id, {
       registrations: records.length,
       rows: rowCount,
       columns: columns.length,
+      format,
+      credentialsIncluded: includeCredentials,
       financeIncluded: manages(user, id, 'FINANCE'),
       filters: filter,
     });
-    return '\uFEFF' + lines.join('\r\n') + '\r\n';
+    const content = workbook
+      ? Buffer.from(await workbook.xlsx.writeBuffer())
+      : '\uFEFF' + lines.join('\r\n') + '\r\n';
+    if (Buffer.byteLength(content) > 25 * 1024 * 1024)
+      throw new BadRequestException('导出内容超过 25 MB，请缩小筛选范围');
+    return {
+      format,
+      content,
+      mime:
+        format === 'xlsx'
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'text/csv; charset=utf-8',
+    };
   });
 }

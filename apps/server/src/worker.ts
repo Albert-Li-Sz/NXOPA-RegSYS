@@ -1,4 +1,5 @@
-import { postWebhook } from './webhook-http.js';
+import { runAdmissionBatch } from './admission-batches.js';
+import { backfillCompetitionAccounts } from './competition-accounts.js';
 import { Queue, Worker, type Job as QueueJob } from 'bullmq';
 import { mkdir, writeFile, readFile, rename, rm, readdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -12,7 +13,7 @@ import { cleanSpool, retainTemporaryData, reconcileOrphans } from './retention.j
 import { pendingPdfJobs } from './job-scheduling.js';
 import { admissionMaterial, activeTemplate } from './admissions.js';
 import { modulesFor } from './workflow.js';
-import { migrateCancelledRegistrations, recordRemoteRevocation } from './registration-removal.js';
+import { migrateCancelledRegistrations } from './registration-removal.js';
 import { renderTemplate } from './templates.js';
 import { sendSystemMail } from './mail.js';
 import { publicLink } from './site-settings.js';
@@ -112,8 +113,14 @@ const executeJob = async (qjob: QueueJob) => {
         return;
       }
     }
-    if (j.kind === 'SYNC') throw new Error('平台同步已移除');
-    if (j.kind === 'MAIL') {
+    if (j.kind === 'ADMISSION_BATCH') {
+      result = await runAdmissionBatch(
+        String(p.batchId),
+        async () => !!(await db.job.count({ where: owned })),
+      );
+    } else if (j.kind === 'ACCOUNT_BACKFILL') {
+      await backfillCompetitionAccounts(String(p.contestId));
+    } else if (j.kind === 'MAIL') {
       if (p.templateTest === true) {
         const template = await db.mailTemplate.findUnique({ where: { key: String(p.category) } });
         if ((template?.version ?? 0) !== p.templateVersion)
@@ -256,36 +263,6 @@ const executeJob = async (qjob: QueueJob) => {
       });
       producedBlob = undefined;
       result = { documentId: document.id };
-    } else if (j.kind === 'WEBHOOK') {
-      const hook = await db.webhook.findUniqueOrThrow({ where: { id: String(p.webhookId) } });
-      if (!hook.enabled) throw new Error('Webhook disabled');
-      if (hook.privateApprovalExpiresAt && hook.privateApprovalExpiresAt <= new Date())
-        throw new Error('Webhook private approval expired');
-      if (
-        hook.privateApprovedBy &&
-        !(await effectiveAuthorization(hook.privateApprovedBy)).isSystemAdmin
-      )
-        throw new Error('Webhook private approval expired');
-      const contestId = String((p.body as any)?.contestId ?? hook.contestId ?? '');
-      if (contestId) {
-        const contest = await db.contest.findUnique({ where: { id: contestId } });
-        if (!contest || !modulesFor(contest).integrations)
-          throw new Error('Activity integrations disabled');
-      }
-      const timestamp = String(Math.floor(Date.now() / 1000));
-      const body = JSON.stringify(p.body);
-      const signature = hmac(decrypt(hook.secret), `${timestamp}.${body}`);
-      await postWebhook(
-        hook.url,
-        body,
-        {
-          'Content-Type': 'application/json',
-          'X-ContestCenter-Event': String((p.body as Record<string, unknown>).eventId),
-          'X-ContestCenter-Timestamp': timestamp,
-          'X-ContestCenter-Signature': `sha256=${signature}`,
-        },
-        !!hook.privateApprovedBy,
-      );
     }
     if (
       j.kind === 'MAIL' &&
@@ -302,6 +279,11 @@ const executeJob = async (qjob: QueueJob) => {
     if (!completed.count) throw new Error('执行租约已失效');
     producedBlob = undefined;
   } catch (error) {
+    if (j.kind === 'ADMISSION_BATCH')
+      await db.admissionBatch.updateMany({
+        where: { id: j.resourceId, state: 'RUNNING' },
+        data: { state: 'FAILED' },
+      });
     if (producedBlob) await removeBlob(producedBlob).catch(() => undefined);
     if (!(await db.job.count({ where: owned }))) return;
     const message = (error instanceof Error ? error.message : 'Task failed').slice(0, 1500);
@@ -464,92 +446,6 @@ async function dispatch() {
                 update: {},
               });
           }
-        } else if (e.type === 'REGISTRATION_REMOVED') {
-          const contest = await tx.contest.findUnique({ where: { id: String(p.contestId) } });
-          const hooks =
-            contest && modulesFor(contest).integrations
-              ? await tx.webhook.findMany({
-                  where: {
-                    enabled: true,
-                    OR: [{ contestId: String(p.contestId) }, { contestId: null }],
-                  },
-                })
-              : [];
-          for (const hook of hooks)
-            await tx.job.upsert({
-              where: { dedupeKey: `hook:${e.id}:${hook.id}` },
-              create: {
-                kind: 'WEBHOOK',
-                resourceId: e.resourceId,
-                dedupeKey: `hook:${e.id}:${hook.id}`,
-                payload: json({
-                  webhookId: hook.id,
-                  body: {
-                    schemaVersion: 1,
-                    eventId: e.id,
-                    type: 'registration.eligibility',
-                    registrationId: e.resourceId,
-                    contestId: p.contestId,
-                    version: p.version,
-                    eligible: false,
-                    deleted: true,
-                  },
-                }),
-              },
-              update: {},
-            });
-        } else if (e.type === 'ELIGIBILITY') {
-          const r = await tx.registration.findUnique({ where: { id: e.resourceId } });
-          if (!r) {
-            await tx.outboxEvent.updateMany({
-              where: { id: e.id },
-              data: { deliveredAt: new Date() },
-            });
-            return;
-          }
-          if (!r.eligible) {
-            const mappings = await tx.accountMapping.findMany({ where: { registrationId: r.id } });
-            for (const mapping of mappings)
-              await recordRemoteRevocation(tx, mapping, r.contestId, {
-                reason: 'REGISTRATION_INELIGIBLE',
-              });
-            await tx.accountMapping.updateMany({
-              where: {
-                registrationId: r.id,
-                OR: [{ remoteUserId: { not: null } }, { remoteTeamId: { not: null } }],
-              },
-              data: { state: 'REVOKED_LOCALLY' },
-            });
-          }
-          const hooks = modulesFor(
-            await tx.contest.findUniqueOrThrow({ where: { id: r.contestId } }),
-          ).integrations
-            ? await tx.webhook.findMany({
-                where: { enabled: true, OR: [{ contestId: r.contestId }, { contestId: null }] },
-              })
-            : [];
-          for (const hook of hooks)
-            await tx.job.upsert({
-              where: { dedupeKey: `hook:${e.id}:${hook.id}` },
-              create: {
-                kind: 'WEBHOOK',
-                resourceId: r.id,
-                dedupeKey: `hook:${e.id}:${hook.id}`,
-                payload: json({
-                  webhookId: hook.id,
-                  body: {
-                    schemaVersion: 1,
-                    eventId: e.id,
-                    type: 'registration.eligibility',
-                    registrationId: r.id,
-                    contestId: r.contestId,
-                    version: r.version,
-                    eligible: r.eligible,
-                  },
-                }),
-              },
-              update: {},
-            });
         }
         await tx.outboxEvent.updateMany({
           where: { id: e.id },
@@ -572,7 +468,7 @@ async function dispatch() {
   await recoverExpiredJobs();
   const general = await db.job.findMany({
     where: {
-      kind: { notIn: ['SYNC', 'ADMISSION', 'PDF_PREVIEW'] },
+      kind: { notIn: ['ADMISSION', 'PDF_PREVIEW'] },
       OR: [
         { state: 'PENDING', attempts: { lt: 4 } },
         { state: 'FAILED', attempts: { lt: 4 }, updatedAt: { lt: new Date(Date.now() - 30000) } },

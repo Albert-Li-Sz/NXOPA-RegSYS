@@ -171,6 +171,8 @@ watch([filter, search, season], list.reset);
 }
 .view-button {
   width: 100%;
+  margin-left: 0;
+  box-sizing: border-box;
   height: 39px;
   font-size: 15px;
 }

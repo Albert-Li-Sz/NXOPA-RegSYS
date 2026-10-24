@@ -216,7 +216,7 @@ try {
   manifest.images = [...new Set([...current.images, ...images])].sort();
   manifest.capturedAt = new Date().toISOString();
   manifest.source =
-    'Actual local development UI and isolated Hydro 5.0.7 / DOMjudge 9.0.1 pages; fictitious contest and financial examples; no credentials or invitation tokens displayed.';
+    'Actual local development UI; fictitious contest and financial examples; no credentials or invitation tokens displayed.';
   await writeFile(`${folder}/capture.json`, JSON.stringify(manifest, null, 2) + '\n');
   console.log(`Tutorial screenshots: ${images.size} captured; ${mode} complete`);
 } finally {

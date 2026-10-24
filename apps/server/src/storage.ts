@@ -46,6 +46,12 @@ export async function reconcileStorage(now = Date.now()) {
     (await db.admissionDocument.count({ where: { storageKey: key, storageBackend: backend } })) ||
     (await db.job.count({
       where: { kind: 'PDF_PREVIEW', result: { path: ['storageKey'], equals: key } },
+    })) ||
+    (await db.admissionBatch.count({
+      where: {
+        expiresAt: { gt: new Date() },
+        result: { path: ['files'], array_contains: [{ storageKey: key }] },
+      },
     }));
   await mkdir(config.storage, { recursive: true, mode: 0o700 });
   for (const entry of await readdir(config.storage, { withFileTypes: true })) {
@@ -277,13 +283,13 @@ export async function putBlob(
     sha256: hash(bytes),
   };
 }
-export async function readBlob(ref: StorageRef) {
+export async function readBlob(ref: StorageRef, maxBytes = 50 * 1024 * 1024) {
   const key = safeKey(ref.storageKey);
   let bytes: Buffer;
   if (!ref.storageBackend || ref.storageBackend === 'LOCAL') {
     const file = await open(path.join(config.storage, key), 'r');
     try {
-      if ((await file.stat()).size > 50 * 1024 * 1024)
+      if ((await file.stat()).size > maxBytes)
         throw new BadRequestException('存储文件超出大小限制');
       bytes = await file.readFile();
     } finally {
@@ -296,13 +302,14 @@ export async function readBlob(ref: StorageRef) {
       const value = await s3.send(
         new GetObjectCommand({ Bucket: profile.bucket, Key: objectKey(profile, key) }),
       );
-      if ((value.ContentLength ?? 0) > 50 * 1024 * 1024)
+      if ((value.ContentLength ?? 0) > maxBytes)
         throw new BadRequestException('存储文件超出大小限制');
       bytes = Buffer.from(await value.Body!.transformToByteArray());
     } finally {
       s3.destroy();
     }
   }
+  if (bytes.length > maxBytes) throw new BadRequestException('存储文件超出大小限制');
   if (ref.sha256 && hash(bytes) !== ref.sha256) throw new BadRequestException('文件摘要校验失败');
   return bytes;
 }

@@ -48,6 +48,7 @@ test.afterAll(async () => {
   await db.contest.deleteMany({ where: { id: { in: contestIds } } });
   await db.emailToken.deleteMany({ where: { userId: { in: userIds } } });
   await db.adminGrant.deleteMany({ where: { userId: { in: userIds } } });
+  await db.identityRequest.deleteMany({ where: { userId: { in: userIds } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
   await db.$disconnect();
   await redis.quit();

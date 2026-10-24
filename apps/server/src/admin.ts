@@ -260,7 +260,7 @@ export class AdminService {
       ...new Set(rows.map((row) => row.resourceId).filter((id) => uuid.test(id))),
     ];
     const actorIds = [...new Set(rows.map((row) => row.actorId).filter((id) => uuid.test(id)))];
-    const [contests, registrations, tickets, instances, users, actors] = await Promise.all([
+    const [contests, registrations, tickets, users, actors] = await Promise.all([
       db.contest.findMany({
         where: { id: { in: resourceIds } },
         select: { id: true, title: true },
@@ -278,10 +278,6 @@ export class AdminService {
         where: { id: { in: resourceIds } },
         select: { id: true, title: true },
       }),
-      db.platformInstance.findMany({
-        where: { id: { in: resourceIds } },
-        select: { id: true, name: true },
-      }),
       db.user.findMany({ where: { id: { in: resourceIds } }, select: { id: true, name: true } }),
       db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } }),
     ]);
@@ -297,7 +293,6 @@ export class AdminService {
       ),
     );
     tickets.forEach((row) => names.set(row.id, `工单：${row.title}`));
-    instances.forEach((row) => names.set(row.id, row.name));
     users.forEach((row) => names.set(row.id, row.name));
     const actorNames = new Map(actors.map((row) => [row.id, row.name]));
     const items = rows.map((row) => ({

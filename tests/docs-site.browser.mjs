@@ -116,15 +116,14 @@ try {
   checks.push(
     'PDF, source ZIP and LaTeX downloads have the exact hashes of the delivered artifacts',
   );
-  await expect(page.locator('#hydro')).toContainText('onsiteImport');
-  await expect(page.locator('#hydro')).toContainText('学号');
-  await expect(page.locator('#hydro')).toContainText('报名 UUID');
-  await expect(page.locator('#hydro')).toContainText('A01、A100');
+  await expect(page.locator('#registration-exports')).toContainText('Excel');
+  await expect(page.locator('#chapter-nav a[href="#hydro"]')).toHaveCount(0);
+  await expect(page.locator('#chapter-nav')).not.toContainText('Hydro');
+  await expect(page.locator('#competition-accounts')).toContainText('account.username');
+  await expect(page.locator('#admission-batches')).toContainText('跨页勾选');
   await expect(page.locator('#exam-sites')).toContainText('考场编号');
-  await expect(page.locator('#domjudge')).toContainText('accounts.json');
-  await expect(page.getByText('Hydro 插件下载', { exact: true })).toHaveCount(0);
   checks.push(
-    'Hydro Onsite Toolkit and DOMjudge manual import tutorials replace the retired bridge download',
+    'Registration spreadsheets, independent credentials and admission batch tutorials match the current product',
   );
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -134,10 +133,10 @@ try {
   await page.screenshot({ path: reportDirectory + '/docs-site-mobile.png', fullPage: false });
   await page.locator('#menu-toggle').click();
   await expect(page.locator('#menu-toggle')).toHaveAttribute('aria-expanded', 'true');
-  await page.locator('#chapter-nav a[href="#domjudge"]').click();
+  await page.locator('#chapter-nav a[href="#competition-accounts"]').click();
   await expect(page.locator('#menu-toggle')).toHaveAttribute('aria-expanded', 'false');
   await expect(
-    page.getByRole('heading', { name: '导出 DOMjudge 导入文件', exact: true }),
+    page.getByRole('heading', { name: '配置独立比赛账号', exact: true }),
   ).toBeInViewport();
   await page.locator('#menu-toggle').click();
   await page.keyboard.press('Escape');

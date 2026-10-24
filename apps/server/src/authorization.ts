@@ -64,16 +64,6 @@ export async function ensurePermanentAdministrator(
 }
 export async function revokeIssuedAuthorizationInvitations(tx: Tx, userId: string) {
   const authority = await effectiveAuthorization(userId, tx);
-  if (!authority.isSystemAdmin) {
-    await tx.apiToken.updateMany({
-      where: { createdBy: userId, revoked: false },
-      data: { revoked: true },
-    });
-    await tx.webhook.updateMany({
-      where: { privateApprovedBy: userId },
-      data: { enabled: false, privateApprovedBy: null, version: { increment: 1 } },
-    });
-  }
   const kinds = !authority.isAdmin
     ? ['ACCOUNT', 'SYSTEM_ADMIN', 'SENIOR_ADMIN', 'CONTEST_ADMIN', 'COACH_ROLE']
     : !authority.isSystemAdmin

@@ -66,7 +66,7 @@ const profileFields = computed<FieldDefinition[]>(() => {
     .filter((f) => !['student_id', 'class_name'].includes(f.key) || !teacher.value)
     .map((f) => ({
       ...f,
-      required: ['student_id', 'class_name', 'college', 'gender'].includes(f.key),
+      required: ['school', 'student_id', 'class_name', 'college', 'gender'].includes(f.key),
     }));
   return teacher.value
     ? [

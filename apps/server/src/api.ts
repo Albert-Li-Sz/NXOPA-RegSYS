@@ -23,20 +23,14 @@ import archiver from 'archiver';
 import { AuthService, user, csrf, type AuthRequest } from './auth.js';
 import { RegistrationService } from './registrations.js';
 import { removeContest } from './contest-removal.js';
-import { platformExport } from './platform-export.js';
-import { registrationCsv } from './registration-export.js';
+import { registrationExport } from './registration-export.js';
+import { AdmissionBatchService } from './admission-batches.js';
 import { SeatingService } from './seating.js';
 import { FinanceService } from './finance.js';
 import { SupportService } from './support.js';
 import { AdmissionService } from './admissions.js';
 import { FileService } from './files.js';
-import {
-  IntegrationService,
-  apiPrincipal,
-  apiContest,
-  apiRegistration,
-  scopedEnvelope,
-} from './integrations.js';
+import { JobService } from './jobs.js';
 import { AdminService } from './admin.js';
 import { InvitationService } from './invitations.js';
 import { MailService } from './mail.js';
@@ -64,7 +58,7 @@ export class ApiController {
     @Inject(SupportService) private support: SupportService,
     @Inject(AdmissionService) private admissions: AdmissionService,
     @Inject(FileService) private files: FileService,
-    @Inject(IntegrationService) private integrations: IntegrationService,
+    @Inject(JobService) private jobsService: JobService,
     @Inject(AdminService) private admin: AdminService,
     @Inject(InvitationService) private invitations: InvitationService,
     @Inject(MailService) private mail: MailService,
@@ -441,37 +435,6 @@ export class ApiController {
   ) {
     return this.seating.clear(user(r), id, b);
   }
-  @Get('integrations/revocations') revocations(
-    @Req() r: AuthRequest,
-    @Query('contestId') id?: string,
-  ) {
-    if (id) requireManager(user(r), z.string().uuid().parse(id), 'INTEGRATIONS');
-    else requireAdmin(user(r));
-    return db.remoteRevocation.findMany({
-      where: { contestId: id },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-  @Post('integrations/revocations/:id/complete') async completeRevocation(
-    @Req() r: AuthRequest,
-    @Param('id') id: string,
-  ) {
-    return db.$transaction(async (tx) => {
-      await lock(tx, `revocation:${id}`);
-      const item = await tx.remoteRevocation.findUniqueOrThrow({ where: { id } });
-      requireManager(user(r), item.contestId, 'INTEGRATIONS');
-      if (item.state === 'COMPLETED') return item;
-      if (item.state !== 'PENDING')
-        throw new BadRequestException('该撤权待办已因重新同步失效，请刷新列表');
-      const changed = await tx.remoteRevocation.updateMany({
-        where: { id, state: 'PENDING' },
-        data: { state: 'COMPLETED', handledBy: user(r).id, completedAt: new Date() },
-      });
-      if (!changed.count) throw new BadRequestException('该撤权待办状态已更新，请刷新列表');
-      await audit(tx, user(r).id, 'REMOTE_REVOCATION_COMPLETE', id, { contestId: item.contestId });
-      return tx.remoteRevocation.findUniqueOrThrow({ where: { id } });
-    });
-  }
   @Get('finance/accounts') financeAccounts(
     @Req() r: AuthRequest,
     @Query() q: Record<string, string>,
@@ -538,18 +501,18 @@ export class ApiController {
     @Res() res: Response,
     @Query() query: Record<string, string> = {},
   ) {
-    const content = await registrationCsv(
+    const result = await registrationExport(
       this.registrations,
       user(r),
       z.string().uuid().parse(id),
       query,
     );
     res
-      .type('text/csv')
-      .setHeader('Content-Disposition', 'attachment; filename="registrations.csv"');
+      .type(result.mime)
+      .setHeader('Content-Disposition', `attachment; filename="registrations.${result.format}"`);
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.send(content);
+    res.send(result.content);
   }
 
   @Get('registrations/:id') detail(
@@ -740,6 +703,38 @@ export class ApiController {
   ) {
     return this.support.reply(user(r), id, b);
   }
+  @Post('contests/:id/admission-batches/preview') admissionBatchPreview(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return new AdmissionBatchService().preview(user(r), z.string().uuid().parse(id), body);
+  }
+  @Post('contests/:id/admission-batches') admissionBatchStart(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return new AdmissionBatchService().start(user(r), z.string().uuid().parse(id), body);
+  }
+  @Get('admission-batches/:id/files/:part') async admissionBatchFile(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Param('part') part: string,
+    @Res() res: Response,
+  ) {
+    const file = await new AdmissionBatchService().file(
+      user(r),
+      z.string().uuid().parse(id),
+      z.coerce.number().int().min(0).parse(part),
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res
+      .type('application/zip')
+      .setHeader('Content-Disposition', `attachment; filename="${file.name}"`)
+      .send(file.buffer);
+  }
   @Get('admissions/templates') templates(@Req() r: AuthRequest, @Query('contestId') id?: string) {
     return this.admissions.templates(user(r), id);
   }
@@ -835,57 +830,11 @@ export class ApiController {
       .setHeader('X-Content-Type-Options', 'nosniff')
       .send(d.buffer);
   }
-  @Post('contests/:id/platform-exports') async exportPlatform(
-    @Req() r: AuthRequest,
-    @Param('id') id: string,
-    @Body() body: unknown,
-    @Res() res: Response,
-  ) {
-    const bundle = await platformExport(user(r), z.string().uuid().parse(id), body);
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${bundle.filename}"`);
-    res.setHeader('Cache-Control', 'no-store');
-    const archive = archiver('zip', { zlib: { level: 6 } });
-    archive.on('error', (error) => res.destroy(error));
-    res.on('close', () => archive.abort());
-    archive.pipe(res);
-    for (const [name, content] of Object.entries(bundle.files)) archive.append(content, { name });
-    await archive.finalize();
-  }
   @Get('admin/jobs') jobs(@Req() r: AuthRequest, @Query() query: Record<string, string>) {
-    return this.integrations.jobs(user(r), query);
+    return this.jobsService.jobs(user(r), query);
   }
   @Post('admin/jobs/:id/retry') retry(@Req() r: AuthRequest, @Param('id') id: string) {
-    return this.integrations.retry(user(r), id);
-  }
-  @Get('admin/tokens') tokens(@Req() r: AuthRequest) {
-    return this.integrations.tokens(user(r));
-  }
-  @Post('admin/tokens') token(@Req() r: AuthRequest, @Body() b: unknown) {
-    return this.integrations.token(user(r), b);
-  }
-  @Delete('admin/tokens/:id') revokeToken(@Req() r: AuthRequest, @Param('id') id: string) {
-    return this.integrations.revokeToken(user(r), id);
-  }
-  @Post('admin/webhooks') webhook(@Req() r: AuthRequest, @Body() b: unknown) {
-    return this.integrations.webhook(user(r), b);
-  }
-  @Get('admin/webhooks') webhooks(@Req() r: AuthRequest, @Query('contestId') id?: string) {
-    return this.integrations.webhooks(user(r), id);
-  }
-  @Put('admin/webhooks/:id') changeWebhook(
-    @Req() r: AuthRequest,
-    @Param('id') id: string,
-    @Body() b: unknown,
-  ) {
-    return this.integrations.changeWebhook(user(r), id, b);
-  }
-  @Delete('admin/webhooks/:id') deleteWebhook(
-    @Req() r: AuthRequest,
-    @Param('id') id: string,
-    @Body() b: unknown,
-  ) {
-    return this.integrations.changeWebhook(user(r), id, b, true);
+    return this.jobsService.retry(user(r), id);
   }
   @Get('admin/users') users(@Req() r: AuthRequest, @Query() query: Record<string, string>) {
     return this.admin.users(user(r), query);
@@ -938,132 +887,5 @@ export class ApiController {
   }
   @Get('admin/metrics') metrics(@Req() r: AuthRequest) {
     return this.admin.metrics(user(r));
-  }
-  @Get('integrations/field-templates') async fieldTemplates(@Req() r: AuthRequest) {
-    user(r);
-    return (await import('@contest-center/contracts')).platformTemplates;
-  }
-}
-@ApiTags('Automation / Federation')
-@Controller('api')
-export class ExternalController {
-  @Get('automation/v1/contests') async contests(@Req() r: Request) {
-    const t = await apiPrincipal(r, 'contests:read');
-    return db.contest.findMany({
-      where: { id: { in: t.contestIds as string[] } },
-      select: { id: true, title: true, opensAt: true, closesAt: true, published: true },
-    });
-  }
-  @Get('automation/v1/registrations') async registrations(
-    @Req() r: Request,
-    @Query('contestId') id?: string,
-    @Query('cursor') cursor?: string,
-  ) {
-    const t = await apiPrincipal(r, 'registrations:read');
-    if (id) apiContest(t, id);
-    const rows = await db.registration.findMany({
-      where: { contestId: id ?? { in: t.contestIds as string[] } },
-      include: registrationInclude,
-      orderBy: { id: 'asc' },
-      take: 500,
-      ...(cursor ? { cursor: { id: z.string().uuid().parse(cursor) }, skip: 1 } : {}),
-    });
-    return rows.map((x) => apiRegistration(x, t.fields as string[]));
-  }
-  @Get('automation/v1/registrations/:id') async registration(
-    @Req() r: Request,
-    @Param('id') id: string,
-  ) {
-    const t = await apiPrincipal(r, 'registrations:read');
-    const row = await db.registration.findUniqueOrThrow({
-      where: { id },
-      include: registrationInclude,
-    });
-    apiContest(t, row.contestId);
-    return apiRegistration(row, t.fields as string[]);
-  }
-  @Get('automation/v1/finance') async finance(@Req() r: Request, @Query('contestId') id: string) {
-    const t = await apiPrincipal(r, 'finance:read');
-    apiContest(t, id);
-    return db.$transaction(async (tx) => {
-      const [active, historical] = await Promise.all([
-        tx.registration.aggregate({
-          where: { contestId: id },
-          _sum: { feeCents: true },
-          _count: true,
-        }),
-        tx.financeAccount.aggregate({
-          where: { contestId: id },
-          _sum: { netPaidCents: true },
-          _count: true,
-        }),
-      ]);
-      return {
-        contestId: id,
-        registrations: active._count,
-        financialAccounts: historical._count,
-        receivableCents: active._sum.feeCents ?? 0,
-        netReceivedCents: historical._sum.netPaidCents ?? 0,
-      };
-    });
-  }
-  @Get('automation/v1/support/:id') async ticket(@Req() r: Request, @Param('id') id: string) {
-    const t = await apiPrincipal(r, 'support:read');
-    const row = await db.supportTicket.findUniqueOrThrow({
-      where: { id },
-      include: { messages: true },
-    });
-    if (!row.contestId) throw new ForbiddenException();
-    apiContest(t, row.contestId);
-    return {
-      id: row.id,
-      contestId: row.contestId,
-      registrationId: row.registrationId,
-      title: row.title,
-      category: row.category,
-      status: row.status,
-      version: row.version,
-      messages: row.messages.map((m) => ({
-        id: m.id,
-        createdAt: m.createdAt,
-        ...((t.fields as string[]).includes('SUPPORT.text') ? { text: m.text } : {}),
-        ...((t.fields as string[]).includes('SUPPORT.attachments')
-          ? { attachments: m.attachments }
-          : {}),
-      })),
-    };
-  }
-  @Get('integration/v1/contests') async federationContests(@Req() r: Request) {
-    const t = await apiPrincipal(r, 'integration:read');
-    return db.contest.findMany({
-      where: { id: { in: t.contestIds as string[] } },
-      select: {
-        id: true,
-        title: true,
-        startsAt: true,
-        opensAt: true,
-        closesAt: true,
-        published: true,
-      },
-    });
-  }
-  @Get('integration/v1/registrations') async eligible(
-    @Req() r: Request,
-    @Query('contestId') id: string,
-    @Query('cursor') cursor?: string,
-  ) {
-    const t = await apiPrincipal(r, 'integration:read');
-    apiContest(t, id);
-    return Promise.all(
-      (
-        await db.registration.findMany({
-          where: { contestId: id, eligible: true },
-          include: registrationInclude,
-          orderBy: { id: 'asc' },
-          take: 500,
-          ...(cursor ? { cursor: { id: z.string().uuid().parse(cursor) }, skip: 1 } : {}),
-        })
-      ).map((row) => scopedEnvelope(row, t.fields as string[])),
-    );
   }
 }

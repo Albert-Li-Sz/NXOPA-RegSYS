@@ -32,7 +32,6 @@ test.beforeAll(async () => {
     published: true,
     policy: policySchema.parse({
       allowUnofficial: true,
-      platformProfiles: ['HYDRO_5_0_7', 'DOMJUDGE_9_0_1'],
       coachMode: 'DISABLED',
       manualReview: false,
     }),
@@ -90,7 +89,7 @@ test('Markdown renders tables and code safely and preserves plaintext mode', asy
   await expect(page.getByRole('textbox', { name: '活动介绍', exact: true })).toHaveValue(markdown);
   await page.screenshot({ path: '.runtime/reports/enhancements-markdown.png', fullPage: true });
 });
-test('unofficial individual application requires review and basic organization fields', async ({
+test('unofficial individual application requires review and uses verified institution', async ({
   page,
 }) => {
   const r = await admin.api('/registrations', 'POST', { contestId });
@@ -98,8 +97,12 @@ test('unofficial individual application requires review and basic organization f
   await page.goto(`/registrations/${r.id}`);
   await editRegistration(page);
   await page.locator('.el-radio').filter({ hasText: '非正式参赛' }).click();
-  await page.locator('#organization-name').fill('南京晓庄学院');
-  await page.locator('#organization-short').fill('晓庄');
+  await expect(page.locator('#organization-name, #organization-short')).toHaveCount(0);
+  await expect(
+    page
+      .locator('.card')
+      .filter({ has: page.getByRole('heading', { name: '参赛性质与代表单位' }) }),
+  ).toContainText('示例大学');
   await Promise.all([
     page.waitForResponse(
       (response) =>

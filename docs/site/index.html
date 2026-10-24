@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#2080F0" />
     <meta
       name="description"
-      content="南晓开放原子社在线报名系统配置教程。通过实际页面截图，完成部署、邮件、链接授权、Hydro 与 DOMjudge 联动和准考证配置。"
+      content="南晓开放原子社在线报名系统配置教程。通过实际页面截图，完成部署、邮件、实名与授权、报名导出、比赛账号和准考证配置。"
     />
     <title>配置教程 · 南晓开放原子社在线报名系统</title>
     <link rel="icon" href="assets/club-logo.jpg" />
@@ -44,12 +44,11 @@
       <aside class="sidebar">
         <nav id="chapter-nav" aria-label="教程章节">
           <p class="nav-heading">配置指南</p>
-          <a href="#hydro">Hydro 导入教程</a>
           <a href="#overview" class="active" aria-current="location"><span>↗</span>教程概览</a>
           @@NAV@@
         </nav>
         <div class="sidebar-note">
-          <span class="status-dot"></span> 中文 · v0.9.2<br />更新于 2026 年 10 月 23 日
+          <span class="status-dot"></span> 中文 · v1.0.0<br />更新于 2026 年 10 月 24 日
         </div>
       </aside>
       <main id="content" tabindex="-1">
@@ -57,7 +56,7 @@
           <p class="eyebrow">系统管理员操作手册</p>
           <h1 id="overview-title">系统配置教程<span>从首次部署，到顺利报名。</span></h1>
           <p class="lead">
-            跟着实际页面完成配置：搭建站点、设置邮件、通过链接授予身份，接入评测平台，再准备竞赛和准考证。
+            跟着实际页面完成配置：搭建站点、设置邮件、通过链接授予身份，配置报名导出和比赛账号，再准备竞赛与准考证。
           </p>
           <div class="hero-actions">
             <a class="primary-button" href="#deployment"
@@ -75,8 +74,8 @@
           <div class="callout">
             <strong>先设置邮件，再邀请用户。</strong>
             <p>
-              建议顺序：部署与初始化 → 站点和邮件 → 链接授权 → 评测平台 → 竞赛与字段 → 准考证 →
-              测试与备份。系统管理员维护全站配置，竞赛管理员管理获得授权的竞赛。
+              建议顺序：部署与初始化 → 站点和邮件 → 实名与授权 → 竞赛与字段 → 报名导出和比赛账号 →
+              准考证 → 测试与备份。系统管理员维护全站配置，竞赛管理员管理获得授权的竞赛。
             </p>
           </div>
           <figure class="overview-image">

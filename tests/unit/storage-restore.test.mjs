@@ -8,6 +8,7 @@ const fixture = vi.hoisted(() => ({
   files: [],
   documents: [],
   previews: [],
+  batches: [],
   update: vi.fn(),
   disconnect: vi.fn(),
 }));
@@ -17,8 +18,15 @@ vi.mock('../../apps/server/src/db.js', () => ({
     attachment: { findMany: async () => fixture.files, update: fixture.update },
     admissionDocument: { findMany: async () => fixture.documents, update: fixture.update },
     job: { findMany: async () => fixture.previews, update: fixture.update },
+    admissionBatch: {
+      findMany: async () => fixture.batches,
+      findUniqueOrThrow: async ({ where }) =>
+        fixture.batches.find((batch) => batch.id === where.id),
+      update: fixture.update,
+    },
     $disconnect: fixture.disconnect,
   },
+  json: (value) => value,
 }));
 vi.mock('../../apps/server/src/storage.js', () => ({ readBlob: vi.fn() }));
 const originalArgs = [...process.argv];
@@ -31,6 +39,7 @@ beforeEach(async () => {
   fixture.files = [];
   fixture.documents = [];
   fixture.previews = [];
+  fixture.batches = [];
   fixture.config.storage = await mkdtemp(path.join(tmpdir(), 'nxopa-storage-restore-'));
   directory = path.join(fixture.config.storage, '.s3-backup');
   await mkdir(directory);
@@ -76,4 +85,42 @@ it('validates content before writing and recomputes missing historical hashes', 
   expect(await readFile(path.join(fixture.config.storage, `restored-attachment-${id}`))).toEqual(
     bytes,
   );
+});
+it('requires and restores every batch ZIP part while preserving its target snapshot', async () => {
+  const file = {
+    storageKey: 'archive',
+    storageBackend: 'S3',
+    name: 'admissions-1.zip',
+    targets: [{ id, version: 3 }],
+  };
+  fixture.batches = [{ id, result: { files: [file], items: [] } }];
+  await writeFile(path.join(directory, 'manifest.json'), '[]');
+  await expect(import('../../apps/server/src/storage-cli.ts')).rejects.toThrow('incomplete');
+  expect(fixture.update).not.toHaveBeenCalled();
+  vi.resetModules();
+  const bytes = Buffer.from('PK archive bytes');
+  const batchName = `batch-${id}-0`;
+  await writeFile(path.join(directory, batchName), bytes);
+  await writeFile(
+    path.join(directory, 'manifest.json'),
+    JSON.stringify([{ kind: 'batch', id, part: 0, name: batchName }]),
+  );
+  await import('../../apps/server/src/storage-cli.ts');
+  expect(fixture.update).toHaveBeenCalledWith({
+    where: { id },
+    data: {
+      result: {
+        files: [
+          {
+            ...file,
+            storageKey: `restored-${batchName}`,
+            storageBackend: 'LOCAL',
+            storageConfigId: null,
+            sha256: createHash('sha256').update(bytes).digest('hex'),
+          },
+        ],
+        items: [],
+      },
+    },
+  });
 });

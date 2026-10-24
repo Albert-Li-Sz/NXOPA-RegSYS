@@ -116,7 +116,7 @@ await writeFile(
       },
       latex: {
         image:
-          process.env.PLATFORM_TEST_LATEX_IMAGE || 'ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.2.2',
+          process.env.PLATFORM_TEST_LATEX_IMAGE || 'ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.3.5',
         volumes: [`${env.LATEX_SPOOL}:/jobs`],
         environment: { LATEX_SPOOL: '/jobs' },
       },
@@ -423,6 +423,16 @@ try {
   await admin.api('/admin/storage/test', 'POST');
   assert.equal(await (await student.raw(`/files/${local.id}`)).text(), 'historical local file');
   passed('MinIO 真实写入读取删除、历史本地迁移、头像、切换桶后旧对象可读、私有文件越权拒绝');
+  const registrationIdentity = await student.api('/auth/identity', 'POST', {
+    kind: 'STUDENT',
+    name: student.user.name,
+    profile: student.user.profile,
+    version: student.user.version,
+  });
+  await admin.api(`/admin/identities/${registrationIdentity.id}/review`, 'POST', {
+    decision: 'APPROVED',
+  });
+  await student.refresh();
   const contest = await admin.api('/contests', 'POST', {
     title: '平台功能测试赛',
     season: '2026',
@@ -528,13 +538,7 @@ try {
   });
   await teacher.refresh();
   assert.ok(teacher.user.isSeniorAdmin);
-  for (const route of [
-    '/admin/mail',
-    '/admin/storage',
-    '/admin/github',
-    '/admin/tokens',
-    '/admin/mail/templates',
-  ])
+  for (const route of ['/admin/mail', '/admin/storage', '/admin/github', '/admin/mail/templates'])
     assert.equal((await teacher.raw(route)).status, 403, route);
   assert.equal(
     (await teacher.raw('/admin/site', 'PUT', { ...(await admin.api('/site')) })).status,
@@ -765,6 +769,28 @@ try {
   );
   assert.equal((await teacher.raw(`/admissions/${documentId}/download`)).status, 403);
   assert.equal((await student.api('/admissions/mine')).length, 1);
+  const archivePreview = await admin.api(
+    `/contests/${contest.id}/admission-batches/preview`,
+    'POST',
+    {
+      action: 'DOWNLOAD',
+      scope: { mode: 'SELECTED', registrationIds: [reg.id] },
+    },
+  );
+  const archiveTask = await admin.api(`/contests/${contest.id}/admission-batches`, 'POST', {
+    previewId: archivePreview.previewId,
+  });
+  const archiveJob = await until(
+    () => admin.api(`/jobs/${archiveTask.jobId}`),
+    (job) => ['SUCCESS', 'FAILED'].includes(job.state),
+    60000,
+  );
+  assert.equal(archiveJob.state, 'SUCCESS', archiveJob.error);
+  const archiveUrl = archiveJob.result.files[0].downloadUrl.replace(/^\/api\/v1/, '');
+  const archiveResponse = await admin.raw(archiveUrl);
+  assert.equal(archiveResponse.status, 200);
+  const archiveBytes = Buffer.from(await archiveResponse.arrayBuffer());
+  assert.equal(archiveBytes.subarray(0, 2).toString(), 'PK');
   passed('真实 LaTeX 生成准考证存入 S3、发放下载与他人访问拒绝');
   const closure = await admin.raw('/auth/account', 'DELETE', {
     confirmation: '注销账号',
@@ -825,7 +851,14 @@ try {
     await sql(`SELECT "storageBackend" FROM "Attachment" WHERE id='${local.id}'`),
     'LOCAL',
   );
-  passed('S3 文件导出与恢复为本地副本，不依赖原存储端点');
+  assert.equal(
+    await sql(
+      `SELECT result->'files'->0->>'storageBackend' FROM "AdmissionBatch" WHERE id='${archivePreview.previewId}'`,
+    ),
+    'LOCAL',
+  );
+  assert.deepEqual(Buffer.from(await (await admin.raw(archiveUrl)).arrayBuffer()), archiveBytes);
+  passed('S3 附件、准考证及批量 ZIP 导出并恢复为内容一致的本地副本');
   const webTail = productionWeb
     ? start(['exec', 'node', path.join(stage, 'server.mjs')], { ...env, PORT: String(staticPort) })
     : start(

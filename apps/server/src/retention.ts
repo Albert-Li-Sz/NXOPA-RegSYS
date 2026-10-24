@@ -28,6 +28,14 @@ export async function retainTemporaryData() {
     week = new Date(Date.now() - 7 * 86400000),
     month = new Date(Date.now() - 30 * 86400000);
   await cleanSpool();
+  const expiredBatches = await db.admissionBatch.findMany({
+    where: { expiresAt: { lt: now }, state: { notIn: ['RUNNING', 'QUEUED'] } },
+    take: 100,
+  });
+  for (const batch of expiredBatches) {
+    for (const file of (batch.result as any)?.files ?? []) await removeBlob(file);
+    await db.admissionBatch.delete({ where: { id: batch.id } });
+  }
   await db.session.deleteMany({ where: { expiresAt: { lt: now } } });
   await db.emailToken.deleteMany({ where: { expiresAt: { lt: week } } });
   await db.registrationVerification.deleteMany({ where: { expiresAt: { lt: week } } });

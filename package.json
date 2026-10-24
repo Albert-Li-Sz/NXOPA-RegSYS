@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "0.9.2",
+  "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -23,8 +23,6 @@
     "test:integration": "tsx tests/integrations/business.ts",
     "test:e2e": "playwright test",
     "test:load": "tsx tests/integrations/load.ts",
-    "test:mcp": "tsx tests/contracts/mcp.ts",
-    "test:oj": "tsx tests/integrations/platform-imports.ts",
     "backup": "bash scripts/backup.sh",
     "restore": "bash scripts/restore.sh",
     "test:auth": "tsx tests/integrations/auth.ts",
@@ -36,7 +34,6 @@
     "test:accounts": "tsx tests/integrations/account-management.ts",
     "test:invitations": "tsx tests/integrations/invitations.ts",
     "test:mail": "tsx tests/integrations/mail-settings.ts",
-    "fixtures:domjudge": "tsx scripts/prepare-domjudge.ts",
     "test:boundaries": "tsx tests/integrations/boundaries.ts",
     "test:deployment": "tsx tests/integrations/deployment.ts",
     "test:install": "pnpm test:install-cli && tsx tests/integrations/install.ts",
@@ -61,17 +58,15 @@
     "test:bugs": "tsx tests/integrations/bug-regressions.ts",
     "test:activity-workflows": "tsx tests/integrations/activity-workflows.ts",
     "test:exam-sites": "tsx tests/integrations/exam-sites.ts",
-    "test:workflow-upgrade": "tsx tests/integrations/workflow-upgrade.ts",
     "test:security": "tsx tests/integrations/security-audit.ts",
     "test:whole-audit": "tsx tests/integrations/whole-project-audit.ts",
     "test:audit-20261022": "tsx tests/integrations/audit-20261022.ts",
     "test:audit-fixes": "tsx tests/integrations/audit-fixes.ts",
     "test:backup-security": "node --test tests/backup-security.test.mjs tests/backup-lifecycle.test.mjs tests/restore-lifecycle.test.mjs",
     "audit:runtime": "node scripts/audit-runtime.mjs",
-    "test:platform-exports": "tsx tests/integrations/platform-exports.ts"
+    "test:registration-exports": "tsx tests/integrations/registration-exports.ts"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "1.32.1",
     "@playwright/test": "1.64.0",
     "@types/node": "^24.0.0",
     "dotenv": "^17.2.0",
@@ -79,7 +74,8 @@
     "prettier": "3.9.10",
     "tsx": "4.23.15",
     "typescript": "~5.9.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "exceljs": "4.4.0"
   },
   "type": "module"
 }

@@ -27,7 +27,7 @@ const route = useRoute(),
     teamName: string;
     teamEnglishName: string;
     participationType: string;
-    organization: { name: string; shortName: string; country: string; icpcId: string };
+    organization: { name: string };
     answers: Data;
     people: PersonView[];
     coaches: Data[];
@@ -36,7 +36,7 @@ const route = useRoute(),
     teamName: '',
     teamEnglishName: '',
     participationType: 'OFFICIAL',
-    organization: { name: '', shortName: '', country: 'CHN', icpcId: '' },
+    organization: { name: '' },
     answers: {},
     people: [],
     coaches: [],
@@ -44,8 +44,7 @@ const route = useRoute(),
   tab = ref(String(route.query.tab ?? 'registration')),
   busy = ref(false),
   loadError = ref(''),
-  link = ref(''),
-  exportNote = '比赛账号由主办方导入评测平台后另行发放。';
+  link = ref('');
 const edit = useEditSession(form),
   router = useRouter(),
   reviewOpen = ref(false);
@@ -84,9 +83,6 @@ const manager = computed(() => !!r.value && canManage(r.value.contestId, 'REGIST
 const financeManager = computed(() => !!r.value && canManage(r.value.contestId, 'FINANCE'));
 const financeReviewer = computed(() => financeManager.value && !ownUser(r.value?.ownerId ?? ''));
 const admissionManager = computed(() => !!r.value && canManage(r.value.contestId, 'ADMISSIONS'));
-const integrationManager = computed(
-  () => !!r.value && canManage(r.value.contestId, 'INTEGRATIONS'),
-);
 const editor = computed(
   () =>
     manager.value ||
@@ -95,16 +91,6 @@ const editor = computed(
 );
 const policy = computed(() =>
   r.value ? policySchema.parse(r.value.policySnapshot ?? r.value.contest.policy) : undefined,
-);
-const platformProfiles = computed(() =>
-  !r.value?.contest.modules.integrations
-    ? []
-    : [
-        ...new Set([
-          ...(policy.value?.platformProfiles ?? []),
-          ...((r.value ? policySchema.parse(r.value.contest.policy).platformProfiles : []) ?? []),
-        ]),
-      ],
 );
 const invoicePolicy = computed(() =>
   r.value ? policySchema.parse(r.value.contest.policy) : undefined,
@@ -160,7 +146,7 @@ async function refresh() {
         teamName: x.teamName,
         teamEnglishName: x.teamEnglishName,
         participationType: x.participationType,
-        organization: x.organization ?? { name: '', shortName: '', country: 'CHN', icpcId: '' },
+        organization: x.organization ?? { name: '' },
         answers: { registration: {}, team: {}, ...x.answers },
         people: x.people,
         coaches: x.coaches,
@@ -203,7 +189,6 @@ async function save() {
   try {
     await api(`/registrations/${r.value!.id}`, 'PUT', {
       ...form.value,
-      organization: form.value.organization?.name ? form.value.organization : null,
       version: r.value!.version,
     });
     await refresh();
@@ -438,9 +423,6 @@ async function memberSave(id: string, index: number) {
         v-if="r.canReadFinanceDetails"
         label="财务"
         name="finance" /><el-tab-pane
-        v-if="r.contest.modules.integrations"
-        label="比赛账号"
-        name="accounts" /><el-tab-pane
         :label="policy?.mode === 'TEAM' ? '队伍附件' : '报名附件'"
         name="files" /><el-tab-pane label="邮件通知" name="mail"
     /></el-tabs>
@@ -532,52 +514,22 @@ async function memberSave(id: string, index: number) {
             :closable="false"
           />
         </div>
-        <el-alert
-          v-if="platformProfiles.length && !r.organization"
-          title="评测平台基础信息待补充"
-          description="请补充代表学校／单位与联系人邮箱。历史报名保留原表单；修改资料后需要重新提交审核。"
-          type="info"
-          :closable="false"
-        />
-        <div class="card" v-if="policy?.allowUnofficial || platformProfiles.length">
+        <div class="card">
           <h3>参赛性质与代表单位</h3>
-          <div class="form-grid">
-            <el-form-item label="参赛性质" v-if="policy?.allowUnofficial"
-              ><el-radio-group v-model="form.participationType" :disabled="!canSave"
-                ><el-radio value="OFFICIAL">正式参赛</el-radio
-                ><el-radio value="UNOFFICIAL">非正式参赛</el-radio></el-radio-group
-              ></el-form-item
-            ><template v-if="platformProfiles.length || form.organization?.name"
-              ><el-form-item label="代表学校／单位全称" required for="organization-name"
-                ><el-input
-                  id="organization-name"
-                  v-model="form.organization.name"
-                  :disabled="!canSave" /></el-form-item
-              ><el-form-item label="学校／单位简称" required for="organization-short"
-                ><el-input
-                  id="organization-short"
-                  v-model="form.organization.shortName"
-                  :disabled="!canSave" /></el-form-item
-              ><el-form-item label="国家／地区代码" required for="organization-country"
-                ><el-input
-                  id="organization-country"
-                  v-model="form.organization.country"
-                  :disabled="!canSave"
-                  placeholder="CHN"
-                  maxlength="3" /></el-form-item
-              ><el-form-item label="学校 ICPC 编号（可选）" for="organization-icpc"
-                ><el-input
-                  id="organization-icpc"
-                  v-model="form.organization.icpcId"
-                  :disabled="!canSave" /></el-form-item
-            ></template>
-          </div>
-          <p class="form-help" v-if="form.participationType === 'UNOFFICIAL'">
-            非正式参赛须经管理员审核，缴费、老师关联和准考证规则相同。
-          </p>
-          <p class="form-help" v-if="platformProfiles.length">
-            代表单位用于平台导入文件的学校信息；成员个人学校资料单独填写。
-          </p>
+          <el-form-item label="参赛性质" v-if="policy?.allowUnofficial">
+            <el-radio-group v-model="form.participationType" :disabled="!canSave">
+              <el-radio value="OFFICIAL">正式参赛</el-radio
+              ><el-radio value="UNOFFICIAL">非正式参赛</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="代表学校／单位">
+            <span>{{
+              r.organization?.name || '本人／队长须先通过实名认证，并完善学校／单位'
+            }}</span>
+          </el-form-item>
+          <router-link v-if="!r.organization?.name" to="/me/profile?tab=identity"
+            >前往实名认证</router-link
+          >
         </div>
         <div class="card" v-if="policy?.mode === 'TEAM'">
           <h3>队伍信息</h3>
@@ -1190,12 +1142,6 @@ async function memberSave(id: string, index: number) {
           ></PaginatedTable
         >
       </div>
-    </div>
-    <div v-if="tab === 'accounts' && r.contest.modules.integrations" class="panel">
-      <div class="notice">{{ exportNote }}</div>
-      <RouterLink v-if="integrationManager" :to="`/admin/contests/${r.contestId}?tab=integrations`"
-        >前往平台文件导出</RouterLink
-      >
     </div>
     <el-dialog
       v-model="invoiceApplication"

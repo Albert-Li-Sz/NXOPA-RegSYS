@@ -501,40 +501,6 @@ try {
     assert.equal((await finance.raw(endpoint, 'POST', body, key)).status, 403);
   });
   await check(
-    'M5/M7: webhook management rotates, disables, revokes approval and deletes',
-    async () => {
-      const c = await contest(),
-        hook = await admin.api('/admin/webhooks', 'POST', {
-          contestId: c.id,
-          url: 'https://8.8.8.8/hook',
-        });
-      const list = await admin.api(`/admin/webhooks?contestId=${c.id}`);
-      assert.equal(list[0].secret, undefined);
-      const rotated = await admin.api(`/admin/webhooks/${hook.id}`, 'PUT', {
-        version: list[0].version,
-        rotateSecret: true,
-        enabled: false,
-      });
-      assert.notEqual(rotated.secret, hook.secret);
-      assert.equal((await db.webhook.findUniqueOrThrow({ where: { id: hook.id } })).enabled, false);
-      await admin.api(`/admin/webhooks/${hook.id}`, 'DELETE', { version: rotated.version });
-      assert.equal(await db.webhook.count({ where: { id: hook.id } }), 0);
-      await db.contest.update({
-        where: { id: c.id },
-        data: { modules: { admissions: true, rooms: false, integrations: false } },
-      });
-      assert.equal(
-        (
-          await admin.raw('/api/v1/admin/webhooks', 'POST', {
-            contestId: c.id,
-            url: 'https://8.8.8.8/hook',
-          })
-        ).status,
-        400,
-      );
-    },
-  );
-  await check(
     'M12: SMTP password reuse is bound to endpoint and preserves sender-only edits',
     async () => {
       const initial = await admin.api('/admin/mail');
@@ -640,39 +606,10 @@ try {
       await assert.rejects(access(path.join(config.storage, owned.storageKey)));
     },
   );
-  await check('M6: token issuer expiry immediately revokes consumer access', async () => {
-    const c = await contest(),
-      grant = await admin.api('/admin/grants', 'POST', {
-        userId: finance.user.id,
-        level: 'SYSTEM',
-        expiresAt: new Date(Date.now() + 60000).toISOString(),
-      });
-    const issuer = await new Client().login('bob');
-    const token = await issuer.api('/admin/tokens', 'POST', {
-      name: 'issuer-expiry',
-      contestIds: [c.id],
-      scopes: ['contests:read'],
-      expiresAt: new Date(Date.now() + 3600000).toISOString(),
-    });
-    assert.equal(
-      (await db.apiToken.findUniqueOrThrow({ where: { id: token.id } })).createdBy,
-      issuer.user.id,
-    );
-    const query = () =>
-      fetch(`${base}/api/automation/v1/contests`, {
-        headers: { Authorization: `Bearer ${token.token}` },
-      });
-    assert.equal((await query()).status, 200);
-    await db.adminGrant.update({
-      where: { id: grant.id },
-      data: { expiresAt: new Date(Date.now() - 1000) },
-    });
-    assert.equal((await query()).status, 401);
-  });
-  await check('M8: integration permission cannot retry admission jobs', async () => {
+  await check('M8: file permission cannot retry admission jobs', async () => {
     const c = await contest(),
       r = await registration(c),
-      g = await grant(c.id, ['INTEGRATIONS']);
+      g = await grant(c.id, ['FILES']);
     const job = await db.job.create({
       data: {
         kind: 'ADMISSION',
@@ -865,7 +802,7 @@ try {
   await writeFile(
     '.runtime/reports/audit-20261022.json',
     JSON.stringify(
-      { success: checks.length === 17 && !failures.length, checks, failures },
+      { success: checks.length === 15 && !failures.length, checks, failures },
       null,
       2,
     ),
@@ -873,5 +810,5 @@ try {
   await redis.quit();
   await db.$disconnect();
 }
-assert.equal(checks.length, 17, failures.join('\n'));
+assert.equal(checks.length, 15, failures.join('\n'));
 assert.deepEqual(failures, []);

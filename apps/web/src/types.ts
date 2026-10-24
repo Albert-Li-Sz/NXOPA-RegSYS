@@ -19,7 +19,9 @@ export interface ExamSiteView {
 }
 export interface ContestView {
   kind: 'ACTIVITY' | 'COMPETITION';
-  modules: { admissions: boolean; rooms: boolean; integrations: boolean };
+  modules: { admissions: boolean; rooms: boolean };
+  accountSettings: { enabled: boolean; prefix: string; showOnAdmission: boolean };
+  accountPrefixLocked?: boolean;
   seatingMode: 'REGISTRATION' | 'PERSON';
   id: string;
   title: string;
@@ -86,7 +88,7 @@ export interface RegistrationView {
   teamName: string;
   teamEnglishName: string;
   participationType: 'OFFICIAL' | 'UNOFFICIAL';
-  organization?: { name: string; shortName: string; country: string; icpcId: string } | null;
+  organization?: { name: string } | null;
   invoiceReservedCents: number;
   invoiceIssuedCents: number;
   answers: Data;
@@ -108,6 +110,5 @@ export interface RegistrationView {
   refunds: Data[];
   invoices: Data[];
   admissions: Data[];
-  mappings: Data[];
   invitations: Data[];
 }

@@ -785,6 +785,7 @@ try {
     await db.contest.updateMany({ where: { id: { in: contestIds } }, data: { archived: true } });
   if (userIds.length) {
     await db.emailToken.deleteMany({ where: { userId: { in: userIds } } });
+    await db.identityRequest.deleteMany({ where: { userId: { in: userIds } } });
     await db.user.deleteMany({ where: { id: { in: userIds } } });
   }
   await mkdir('.runtime/reports', { recursive: true });

@@ -98,6 +98,7 @@ try {
     return i;
   }
   async function registration(owner: Client, contestId: string) {
+    await owner.ensureIdentity();
     const r = await owner.api('/registrations', 'POST', { contestId });
     registrationIds.push(r.id);
     return r;
@@ -443,6 +444,7 @@ try {
     await db.contest.deleteMany({ where: { id: { in: contestIds } } });
     await db.emailToken.deleteMany({ where: { userId: { in: userIds } } });
     await db.adminGrant.deleteMany({ where: { userId: { in: userIds } } });
+    await db.identityRequest.deleteMany({ where: { userId: { in: userIds } } });
     await db.user.deleteMany({ where: { id: { in: userIds } } });
   }
   await mkdir('.runtime/reports', { recursive: true });

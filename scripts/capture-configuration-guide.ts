@@ -39,15 +39,6 @@ async function shot(name: string, locator: Locator, lastControl?: Locator) {
   images.push(name);
 }
 try {
-  for (const [name, localized] of [
-    ['Local HYDRO acceptance', '本地在线评测系统验收'],
-    ['Local DOMJUDGE acceptance', '本地程序设计竞赛评测系统验收'],
-  ]) {
-    await db.platformInstance.updateMany({
-      where: { name },
-      data: { name: localized!, version: { increment: 1 } },
-    });
-  }
   const initial = await admin.api('/admin/mail');
   await admin.api('/admin/mail', 'PUT', {
     ...initial,
@@ -74,7 +65,6 @@ try {
       minMembers: 3,
       maxMembers: 3,
       allowUnofficial: true,
-      platformProfiles: ['HYDRO_5_0_7', 'DOMJUDGE_9_0_1'],
       invoiceTypes: ['NORMAL', 'SPECIAL'],
       feeMode: 'FIXED',
       feeCents: 15000,
@@ -137,12 +127,6 @@ try {
   await expect(recipientPage.getByRole('button', { name: '确认接受', exact: true })).toBeVisible();
   await shot('06-role-confirmation', recipientPage.locator('.invitation-card'));
   await recipientPage.close();
-  await page.goto('http://localhost:5173/admin/platforms');
-  await page.locator('#export-contest').click();
-  await page.getByRole('option', { name: contest.title, exact: true }).click();
-  await shot('07-platform-hydro-export', page.locator('.platform-exports'));
-  await page.getByText('DOMjudge 9.x', { exact: true }).click();
-  await shot('08-platform-domjudge-export', page.locator('.platform-exports'));
   await page.goto(`http://localhost:5173/admin/contests/${contestId}`);
   await expect(page.locator('#contest-title')).toHaveValue(contest.title);
   await shot('10-contest-policy', page.locator('.panel .card').nth(1));

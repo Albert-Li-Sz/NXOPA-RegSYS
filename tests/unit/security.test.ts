@@ -14,7 +14,6 @@ import {
   hmac,
 } from '../../apps/server/src/security.js';
 import { config } from '../../apps/server/src/config.js';
-import { publicWebhookAddress, webhookTarget } from '../../apps/server/src/webhook-http.js';
 
 describe('secret compatibility and separation', () => {
   it('uses separate keys and authenticated contexts', () => {
@@ -46,53 +45,5 @@ describe('secret compatibility and separation', () => {
     expect(checkOtp(otpHash(body), body)).toBe(true);
     expect(checkOtp(hmac(config.encryptionKey, body), body)).toBe(true);
     expect(checkOtp(otpHash(body), 'token:123457')).toBe(false);
-  });
-});
-describe('independent webhook egress policy', () => {
-  it('rejects non-public IPv4 and IPv6 addresses', () => {
-    for (const value of [
-      '0.0.0.0',
-      '127.0.0.1',
-      '10.1.2.3',
-      '172.20.0.1',
-      '192.168.1.1',
-      '169.254.169.254',
-      '100.64.0.1',
-      '198.18.0.1',
-      '224.0.0.1',
-      '::1',
-      '::ffff:127.0.0.1',
-      'fc00::1',
-      'fe80::1',
-      '2001:db8::1',
-      '2002:7f00:1::',
-    ])
-      expect(publicWebhookAddress(value), value).toBe(false);
-    expect(publicWebhookAddress('8.8.8.8')).toBe(true);
-    expect(publicWebhookAddress('2606:4700:4700::1111')).toBe(true);
-  });
-  it('rejects a hostname if any DNS answer is private', async () => {
-    await expect(
-      webhookTarget('https://hooks.example.test', {
-        lookup: async () => [
-          { address: '8.8.8.8', family: 4 },
-          { address: '127.0.0.1', family: 4 },
-        ],
-      }),
-    ).rejects.toThrow('Webhook');
-  });
-  it('only explicitly approved private endpoints are admitted; metadata stays blocked', async () => {
-    await expect(webhookTarget('http://127.0.0.1')).rejects.toThrow('Webhook');
-    expect((await webhookTarget('http://127.0.0.1', { allowPrivate: true })).address.address).toBe(
-      '127.0.0.1',
-    );
-    for (const url of [
-      'http://169.254.169.254',
-      'http://100.100.100.200',
-      'http://[fd00:ec2::254]',
-      'http://[fd20:ce::254]',
-      'http://[::ffff:100.100.100.200]',
-    ])
-      await expect(webhookTarget(url, { allowPrivate: true })).rejects.toThrow('Webhook');
   });
 });

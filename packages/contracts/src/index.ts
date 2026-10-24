@@ -11,11 +11,6 @@ export {
   mailTemplateError,
   type MailTemplateContext,
 } from './mail-template.js';
-export {
-  platformTemplates,
-  requiredPlatformFields,
-  mergePlatformFields,
-} from './platform-fields.js';
 
 export const defaultSite = {
   name: '南晓开放原子社在线报名系统',
@@ -53,7 +48,6 @@ export const adminPermissions = [
   'FILES',
   'SUPPORT',
   'STUDENTS',
-  'INTEGRATIONS',
 ] as const;
 export type AdminPermission = (typeof adminPermissions)[number];
 export const adminPermissionLabels: Record<AdminPermission, string> = {
@@ -65,7 +59,6 @@ export const adminPermissionLabels: Record<AdminPermission, string> = {
   FILES: '附件分发与删除',
   SUPPORT: '工单处理',
   STUDENTS: '学生与教师视图',
-  INTEGRATIONS: '平台文件导出',
 };
 export const adminLevelLabels = {
   SYSTEM: '系统管理员',
@@ -83,16 +76,7 @@ export interface PageResult<T> {
   pageSize: number;
 }
 export const participationSchema = z.enum(['OFFICIAL', 'UNOFFICIAL']);
-export const organizationSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  shortName: z.string().trim().min(1).max(80),
-  country: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z]{3}$/, '国家使用三位代码，例如 CHN'),
-  icpcId: z.string().trim().max(40).default(''),
-});
+export const organizationSchema = z.object({ name: z.string().trim().min(1).max(200) });
 export type OrganizationInfo = z.infer<typeof organizationSchema>;
 export const invoiceRequiredKeys = [
   'contactName',
@@ -274,7 +258,6 @@ export const policySchema = z
     maxCoaches: z.number().int().min(0).max(10).default(1),
     manualReview: z.boolean().default(true),
     allowUnofficial: z.boolean().default(false),
-    platformProfiles: z.array(z.enum(['HYDRO_5_0_7', 'DOMJUDGE_9_0_1'])).default([]),
     feeMode: z.enum(['FREE', 'FIXED', 'PER_PERSON']).default('FREE'),
     feeCents: z.number().int().min(0).max(100_000_000).default(0),
     capacity: z.number().int().min(0).max(1_000_000).default(0),
@@ -300,10 +283,24 @@ export const policySchema = z
       ctx.addIssue({ code: 'custom', message: '必需老师时至少允许一位老师' });
   });
 export type ContestPolicy = z.infer<typeof policySchema>;
+export const accountSettingsSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    prefix: z
+      .string()
+      .trim()
+      .max(30)
+      .regex(/^[A-Za-z0-9_-]*$/, '前缀只允许字母、数字、下划线和连字符')
+      .default(''),
+    showOnAdmission: z.boolean().default(true),
+  })
+  .refine((s) => !s.enabled || !!s.prefix, {
+    message: '开启比赛账号后请填写账号前缀',
+    path: ['prefix'],
+  });
 export const activityModulesSchema = z.object({
   admissions: z.boolean().default(true),
   rooms: z.boolean().default(false),
-  integrations: z.boolean().default(true),
 });
 export const contestDeletionSchema = z.object({ version: z.number().int().positive() });
 export const examSiteSchema = z.object({
@@ -330,7 +327,11 @@ export const contestSchema = z
     modules: activityModulesSchema.default(() => ({
       admissions: true,
       rooms: false,
-      integrations: true,
+    })),
+    accountSettings: accountSettingsSchema.default(() => ({
+      enabled: false,
+      prefix: '',
+      showOnAdmission: true,
     })),
     seatingMode: z.enum(['REGISTRATION', 'PERSON']).default('REGISTRATION'),
     title: z.string().min(2).max(200),
@@ -373,7 +374,6 @@ export const registrationSchema = z.object({
   teamName: z.string().trim().max(100).default(''),
   teamEnglishName: z.string().max(100).default(''),
   participationType: participationSchema.optional(),
-  organization: organizationSchema.nullable().optional(),
   answers: answersSchema.default({}),
   people: z.array(personSchema).min(1).max(30),
   coaches: z
@@ -487,62 +487,6 @@ export function registrationEligible(
     r.netPaidCents >= r.feeCents
   );
 }
-export interface RegistrationEnvelopeV1 {
-  schemaVersion: 1;
-  sourceInstance: string;
-  registrationId: string;
-  registrationVersion: number;
-  contest: { id: string; title: string; mode: 'INDIVIDUAL' | 'TEAM' };
-  teamName: string;
-  teamEnglishName?: string;
-  participationType?: 'OFFICIAL' | 'UNOFFICIAL';
-  organization?: OrganizationInfo;
-  people: { id?: string; name?: string; captain: boolean; email?: string; answers?: Answers }[];
-  form?: { version: number; fields: FieldDefinition[]; answers: Answers };
-  coaches?: { id: string; name?: string; email?: string; answers: Answers }[];
-  qualification?: { eligible: boolean; review: string; feeCents?: number; netPaidCents?: number };
-}
-export const registrationEnvelopeSchema = z.object({
-  schemaVersion: z.literal(1),
-  sourceInstance: uuid,
-  registrationId: uuid,
-  registrationVersion: z.number().int(),
-  contest: z.object({ id: uuid, title: z.string(), mode: z.enum(['INDIVIDUAL', 'TEAM']) }),
-  teamName: z.string(),
-  teamEnglishName: z.string().optional(),
-  participationType: participationSchema.optional(),
-  organization: organizationSchema.optional(),
-  people: z.array(
-    z.object({
-      id: uuid.optional(),
-      name: z.string().optional(),
-      captain: z.boolean(),
-      email: z.string().optional(),
-      answers: answersSchema.optional(),
-    }),
-  ),
-  form: z
-    .object({ version: z.number().int(), fields: fieldsSchema, answers: answersSchema })
-    .optional(),
-  coaches: z
-    .array(
-      z.object({
-        id: uuid,
-        name: z.string().optional(),
-        email: z.string().optional(),
-        answers: answersSchema,
-      }),
-    )
-    .optional(),
-  qualification: z
-    .object({
-      eligible: z.boolean(),
-      review: z.string(),
-      feeCents: z.number().int().optional(),
-      netPaidCents: z.number().int().optional(),
-    })
-    .optional(),
-});
 export interface PaymentProvider {
   createPayment(order: { id: string; amountCents: number }): Promise<{ url: string }>;
   verifyCallback(payload: unknown, signature: string): Promise<boolean>;
@@ -550,21 +494,6 @@ export interface PaymentProvider {
   refund(id: string, amountCents: number): Promise<string>;
 }
 
-export const platformExportSchema = z.object({
-  platform: z.enum(['HYDRO', 'DOMJUDGE']),
-  includeUnofficial: z.boolean().default(true),
-  importMode: z.enum(['FOLLOW', 'FORCE_UNOFFICIAL']).default('FOLLOW'),
-  officialGroupId: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9_-]{1,64}$/)
-    .optional(),
-  unofficialGroupId: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9_-]{1,64}$/)
-    .optional(),
-});
 export const defaultFields: FieldDefinition[] = fieldsSchema.parse([
   { key: 'school', label: '学校 / 单位', scope: 'PERSON', type: 'text' },
   {
@@ -613,6 +542,9 @@ export const defaultTemplate = String.raw`\documentclass[UTF8,fontset=fandol,a4p
 比赛时间：{{contest.startsAt}}\\[3mm]
 考点：{{admission.location}}\quad 考场：{{admission.room}}\quad 座位：{{admission.seat}}\\[3mm]
 {{#if team.name}}队伍名称：{{team.name}}\\[3mm]{{/if}}
+代表单位：{{registration.organization.name}}\\[3mm]
+{{#if account.username}}比赛账号：{{account.username}}\\[3mm]
+比赛密码：{{account.password}}\\[3mm]{{/if}}
 \begin{longtable}{|p{25mm}|p{65mm}|p{35mm}|}\hline
 姓名 & 学校 / 单位 & 队长\\\hline
 {{#each team.members}}{{this.name}} & {{this.answers.school}} & {{this.captainLabel}}\\\hline

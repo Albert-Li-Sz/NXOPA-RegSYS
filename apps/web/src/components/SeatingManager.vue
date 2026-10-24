@@ -405,11 +405,10 @@ async function closeRoom(done: () => void) {
           id="room-code"
           v-model="room.code"
           maxlength="20"
-          placeholder="例如 A、B；留空时 Hydro 导出空座位"
+          placeholder="例如 A、B（可选）"
         />
         <p class="form-help">
-          可选，支持字母、数字、下划线和连字符，保存后统一为大写，同一活动内不可重复。Hydro
-          座位示例：A01。
+          可选，支持字母、数字、下划线和连字符，保存后统一为大写，同一活动内不可重复。
         </p> </el-form-item
       ><el-form-item v-if="data.examSites.length" label="所属考点" required for="room-exam-site">
         <el-select

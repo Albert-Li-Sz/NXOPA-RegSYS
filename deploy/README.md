@@ -1,8 +1,8 @@
 # 一键部署
 
-V0.6.3 使用仓库根目录的单一入口 `install.sh`，支持安装、更新、卸载和日常维护。旧 `install` 目录不再使用；Compose 配置、示例及辅助函数放在 `deploy`，不需要逐个运行脚本。宿主机需要 Docker、Compose 2.24.4 以上、Bash、OpenSSL、curl 和 tar，无需 Node.js、pnpm、PostgreSQL 或 LaTeX。
+V1.0.0 使用仓库根目录的单一入口 `install.sh`，支持安装、更新、卸载和日常维护。Compose 配置、示例及辅助函数放在 `deploy`，不需要逐个运行脚本。宿主机需要 Docker、Compose 2.24.4 以上、Bash、OpenSSL、curl 和 tar，无需 Node.js、pnpm、PostgreSQL 或 LaTeX。
 
-从 v0.4.x 或更早版本升级时，先保留更新器生成的加密备份及原加密密钥。本版迁移独立财务账户，并永久清理历史取消报名及专属资料，收款、账簿、退款、发票和财务附件继续保留。升级后核对财务单据与余额；永久清理后的回退必须恢复升级前数据库及文件备份，不能只切回旧镜像。详情见 [平台指南](../docs/PLATFORM_GUIDE.md)。
+本版面向全新部署，不提供 v0.x 平台账号、已移除接口或历史报名的兼容适配。旧实例先独立备份数据库、附件及原加密密钥，再以新目录、新 Compose 项目名及新数据卷安装；不要将旧备份直接恢复到新实例。详情见 [v1.0 部署说明](../docs/releases/v1.0.0.md#部署)。
 
 ## 首次安装
 
@@ -19,7 +19,7 @@ bash install.sh --dir /opt/my-registration
 
 菜单提供安装、更新、卸载与状态；也可执行 `bash install.sh install`。向导选择项目名、镜像版本、Caddy 的本机端口与邮件链接的站点地址，生成随机数据库密码和 32 字节加密密钥，保存为权限 `600` 的 `deploy/.env`，启动后交互创建管理员。密码输入不显示，正式实例不创建演示账号。
 
-从 Release 下载的 `nxopa-regsys-v0.9.2-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
+从 Release 下载的 `nxopa-regsys-v1.0.0-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
 
 ## 更新与卸载
 
@@ -32,7 +32,7 @@ bash /opt/nxopa-regsys/install.sh uninstall
 
 卸载默认只移除当前项目的容器和网络，保留所有数据卷，重新安装可恢复。永久删除必须准确输入 `DELETE 项目名`，只清理此项目的卷。配置和备份保留，旧备份解密需要原加密密钥。
 
-已有 v0.1.x 实例在原安装包根目录运行新入口，或用 `--dir` 指向原根目录。单文件启动会先调用旧安装器备份，并将原 `install/.env` 复制到 `deploy/.env`；项目名、密钥和数据卷保持一致。不要为旧实例生成新密钥。既有 `external` 双上游或公网 `caddy` 模式继续保留。源码部署更新前先取得完整新版源码。
+以上维护操作适用于当前 v1.x 实例，同一实例的项目名、密钥和数据卷保持一致。既有 `external` 双上游或公网 `caddy` 代理模式可以继续使用。源码部署更新前先取得完整新版源码。
 
 ## 反向代理
 
@@ -45,10 +45,9 @@ PUBLIC_URL=https://reg.example.org
 REVERSE_PROXY_MODE=gateway
 GATEWAY_PORT=8080
 GATEWAY_BIND_ADDRESS=127.0.0.1
-ALLOW_PRIVATE_INTEGRATIONS=true
 ```
 
-新安装默认允许内网 Hydro/DOMjudge；已有配置若明确为 `false`，按需改为 `true` 后重新启动。邮件、站点公网地址和 GitHub 登录设置可在管理中心保存。
+外接平台与通用开放接口已移除。邮件、站点公网地址和 GitHub 登录设置可在管理中心保存。
 
 外层 Nginx 将整个站点转发到 Caddy，完整示例为 [nginx.conf.example](nginx.conf.example)：
 
@@ -79,7 +78,7 @@ bash install.sh compose ps
 
 多个实例用 `INSTALL_ENV_FILE=/absolute/path/.env` 选择配置。`init` 保留已有文件，`up` 按配置构建或拉取，`update --yes` 按已保存版本先备份再更新。不要公开 `.env` 或完整 `compose config`，其中包含密钥。
 
-业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v0.9.2`，支持 amd64/arm64。所有安装服务使用固定版本标签：PostgreSQL 为 `postgres:17.6-alpine`，Redis 为 `redis:7.4.5-alpine`，Caddy 为 `caddy:2.10.2-alpine`；按 Docker 服务端选择平台，不附加 `@sha256`。`IMAGE_TAG` 必须为完整版本号，不能填写 `latest` 或浮动小版本。
+业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v1.0.0`，支持 amd64/arm64。所有安装服务使用固定版本标签：PostgreSQL 为 `postgres:17.6-alpine`，Redis 为 `redis:7.4.5-alpine`，Caddy 为 `caddy:2.10.2-alpine`；按 Docker 服务端选择平台，不附加 `@sha256`。`IMAGE_TAG` 必须为完整版本号，不能填写 `latest` 或浮动小版本。
 
 从 `main` 获取的新 `install.sh` 会在校验下载包后转换旧包的哈希覆盖，也会处理已有安装目录中的旧材料。新版安装、更新、备份和恢复不再自动加载遗留的 `compose.digest.yaml`；发布记录 `images.json` 仍保留摘要供核验，安装包 SHA-256 校验继续执行。保持原数据库版本和卷名；`content descriptor ... not found` 时检查具体镜像及镜像代理，不能把拉取失败当成安装完成。
 

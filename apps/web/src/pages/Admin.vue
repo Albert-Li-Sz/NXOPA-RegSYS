@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import PaginatedTable from '../components/PaginatedTable.vue';
 import DeleteContestButton from '../components/DeleteContestButton.vue';
-import RemoteRevocations from '../components/RemoteRevocations.vue';
 import PaginatedList from '../components/PaginatedList.vue';
 import { ref, onMounted, watch, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -14,7 +13,6 @@ import {
 import type { Data, ContestView } from '../types';
 import { useEditSession, mayLeaveEdits } from '../composables/useEditSession';
 import EditActions from '../components/EditActions.vue';
-import PlatformExports from '../components/PlatformExports.vue';
 import MailSettings from '../components/MailSettings.vue';
 import GithubSettings from '../components/GithubSettings.vue';
 import FeishuSettings from '../components/FeishuSettings.vue';
@@ -37,7 +35,6 @@ const tabs = computed(() => centerTabs(center.key, auth.user));
 const allowedTabs = computed(() => tabs.value.map((item) => item.name));
 const requestedTab = typeof route.query.tab === 'string' ? route.query.tab : allowedTabs.value[0]!;
 const userDetailId = ref('');
-const revocationsView = ref<InstanceType<typeof RemoteRevocations>>();
 const peopleView = ref<InstanceType<typeof StudentsView>>();
 const jobsPage = usePagedList('jobs', () => '/admin/jobs'),
   contestsPage = usePagedList<ContestView>(
@@ -118,12 +115,8 @@ const tab = ref(allowedTabs.value.includes(requestedTab) ? requestedTab : allowe
   contests = ref<ContestView[]>([]),
   jobs = jobsPage.items,
   users = usersPage.items,
-  tokens = ref<Data[]>([]),
   logs = logsPage.items,
   site = ref<Data>({}),
-  tokenDialog = ref(false),
-  secret = ref(''),
-  token = ref<Data>({}),
   templates = ref<Data[]>([]),
   templateSource = ref(defaultTemplate),
   templateName = ref('全局准考证模板'),
@@ -148,17 +141,15 @@ const invitationStates: Record<string, string> = {
 };
 const jobKinds: Record<string, string> = {
   MAIL: '邮件通知',
-  SYNC: '历史平台同步（已停用）',
   ADMISSION: '准考证生成',
+  ADMISSION_BATCH: '准考证批次',
+  ACCOUNT_BACKFILL: '比赛账号生成',
   PDF_PREVIEW: '模板预览',
-  WEBHOOK: '事件推送',
 };
 async function refresh() {
   loadError.value = '';
   try {
-    if (tab.value === 'revocations') await revocationsView.value?.refresh();
-    if (['instances', 'users', 'tokens', 'audit'].includes(tab.value))
-      contests.value = await api('/contests?all=true');
+    if (['users', 'audit'].includes(tab.value)) contests.value = await api('/contests?all=true');
     if (tab.value === 'contests') await contestsPage.load();
     if (tab.value === 'jobs') {
       await jobsPage.load();
@@ -171,7 +162,6 @@ async function refresh() {
         api<string[]>('/admin/user-tags').then((tags) => (tagOptions.value = tags)),
       ]);
     if (tab.value === 'audit') await logsPage.load();
-    if (tab.value === 'tokens') tokens.value = await api('/admin/tokens');
     if (tab.value === 'site') {
       const [settings, nextTemplates, nextFields] = await Promise.all([
         api('/admin/site'),
@@ -200,42 +190,11 @@ async function reloadAll() {
   if (await mayLeaveEdits()) await refresh();
 }
 watch(tab, (value) => router.replace({ path: route.path, query: { ...route.query, tab: value } }));
-const managedContests = () =>
-  contests.value.filter((c) => auth.user?.isAdmin || auth.user?.contestIds.includes(c.id));
 onMounted(refresh);
 onMounted(() => {
   if (route.query.tab !== undefined && route.query.tab !== tab.value)
     void router.replace({ path: route.path, query: { ...route.query, tab: tab.value } });
 });
-async function revokeToken(id: string) {
-  try {
-    await ElMessageBox.confirm(
-      '撤销后，使用此 Token 的集成将无法访问系统。确认继续？',
-      '撤销 API Token',
-      { type: 'warning' },
-    );
-  } catch {
-    return;
-  }
-  await api(`/admin/tokens/${id}`, 'DELETE');
-  await refresh();
-}
-function newToken() {
-  token.value = {
-    name: '',
-    contestIds: [],
-    scopes: ['contests:read', 'registrations:read', 'finance:read', 'support:read'],
-    fields: ['PERSON.name'],
-    expiresAt: new Date(Date.now() + 90 * 86400000).toISOString(),
-  };
-  tokenDialog.value = true;
-}
-async function createToken() {
-  const x = await api('/admin/tokens', 'POST', token.value);
-  secret.value = x.token;
-  tokenDialog.value = false;
-  await refresh();
-}
 function inviteRole(kind: AccountInvitationInput['kind'] = 'ACCOUNT', user?: Data) {
   authorization.value = { kind, userId: user?.id, targetEmail: '', expiresInDays: 7 };
   recipientMode.value = user ? 'account' : 'email';
@@ -370,16 +329,6 @@ async function saveGlobalField() {
   fieldDialog.value = false;
   await refresh();
 }
-const allowPrivateWebhook = ref(false);
-async function webhook() {
-  const { value } = await ElMessageBox.prompt('填写接收报名资格事件的 URL', '配置全局 Webhook');
-  const x = await api('/admin/webhooks', 'POST', {
-    url: value,
-    allowPrivate: allowPrivateWebhook.value,
-  });
-  allowPrivateWebhook.value = false;
-  secret.value = `Webhook HMAC-SHA256 密钥：${x.secret}`;
-}
 </script>
 <template>
   <el-dialog v-model="tagDialog" :title="`编辑 ${taggedUser.name || ''} 的标签`" width="520px">
@@ -430,7 +379,6 @@ async function webhook() {
   <UserDetail :id="userDetailId" @close="userDetailId = ''" @changed="refresh" />
   <IdentityReviews v-if="tab === 'identities' && auth.user?.isAdmin" />
   <AdminGrants v-if="tab === 'grants' && auth.user?.isAdmin" />
-  <RemoteRevocations v-if="tab === 'revocations' && auth.user?.isAdmin" ref="revocationsView" />
   <div class="panel" v-if="tab === 'contests'">
     <div class="toolbar">
       <el-input
@@ -476,7 +424,7 @@ async function webhook() {
           ></el-table-column
         ><el-table-column label="操作" width="250"
           ><template #default="{ row }"
-            ><div class="table-actions">
+            ><div class="table-actions contest-list-actions">
               <router-link :to="`/admin/contests/${row.id}`">编辑配置</router-link>
               <router-link :to="`/admin/contests/${row.id}?tab=registrations`"
                 >报名管理</router-link
@@ -774,50 +722,6 @@ async function webhook() {
       />
     </div>
   </div>
-  <div class="panel" v-if="tab === 'instances'">
-    <div class="notice">
-      管理员可为获授权的活动导出合格报名，在目标评测平台手动导入。本站账号与比赛账号分别管理。
-    </div>
-    <PlatformExports :contests="managedContests()" />
-  </div>
-  <div class="panel" v-if="tab === 'tokens'">
-    <div class="actions">
-      <el-button type="primary" @click="newToken">签发范围 Token</el-button
-      ><el-button @click="webhook">配置签名 Webhook</el-button
-      ><a
-        href="https://github.com/Albert-Li-Sz/NXOPA-RegSYS/blob/main/docs/API.md"
-        target="_blank"
-        rel="noopener"
-        ><el-button>API 接入文档</el-button></a
-      >
-    </div>
-    <el-checkbox v-model="allowPrivateWebhook"
-      >授权下一个 Webhook 访问内网（仅系统管理员）</el-checkbox
-    >
-    <div v-if="secret" class="notice">
-      密钥只展示一次，请复制保存：<code>{{ secret }}</code
-      ><el-button text @click="secret = ''">隐藏</el-button>
-    </div>
-    <div class="card">
-      <PaginatedTable page-key="admin-tokens" :data="tokens"
-        ><el-table-column label="名称" prop="name" /><el-table-column label="范围" min-width="200"
-          ><template #default="{ row }">{{
-            row.contestIds.map((id: string) => id.slice(0, 8)).join('、')
-          }}</template></el-table-column
-        ><el-table-column label="权限" min-width="250"
-          ><template #default="{ row }">{{ row.scopes.join('、') }}</template></el-table-column
-        ><el-table-column label="到期" min-width="170"
-          ><template #default="{ row }">{{ date(row.expiresAt) }}</template></el-table-column
-        ><el-table-column label="操作" width="100"
-          ><template #default="{ row }"
-            ><el-button v-if="!row.revoked" text type="danger" @click="revokeToken(row.id)"
-              >撤销</el-button
-            ><span v-else>已撤销</span></template
-          ></el-table-column
-        ></PaginatedTable
-      >
-    </div>
-  </div>
   <div class="panel" v-if="tab === 'site'">
     <div class="card">
       <h3>站点设置</h3>
@@ -1084,54 +988,6 @@ async function webhook() {
       ></template
     >
   </el-dialog>
-  <el-dialog v-model="tokenDialog" title="创建 API Token" width="580px"
-    ><el-form label-position="top"
-      ><el-form-item label="名称"><el-input v-model="token.name" /></el-form-item
-      ><el-form-item label="授权竞赛"
-        ><el-select v-model="token.contestIds" multiple style="width: 100%" filterable
-          ><el-option
-            v-for="c in contests"
-            :key="c.id"
-            :value="c.id"
-            :label="c.title" /></el-select></el-form-item
-      ><el-form-item label="权限"
-        ><el-select v-model="token.scopes" multiple style="width: 100%" filterable
-          ><el-option
-            v-for="s in [
-              'contests:read',
-              'registrations:read',
-              'finance:read',
-              'support:read',
-              'integration:read',
-            ]"
-            :key="s"
-            :value="s" /></el-select></el-form-item
-      ><el-form-item label="可读资料字段"
-        ><el-select v-model="token.fields" multiple allow-create filterable style="width: 100%"
-          ><el-option
-            v-for="s in [
-              'PERSON.name',
-              'PERSON.email',
-              'COACH.name',
-              'COACH.email',
-              'REGISTRATION.organization',
-              'REGISTRATION.participationType',
-              'SUPPORT.text',
-              'SUPPORT.attachments',
-              'FINANCE.summary',
-              ...fields.map((f) => `${f.definition.scope}.${f.key}`),
-            ]"
-            :key="s"
-            :value="s" /></el-select></el-form-item
-      ><el-form-item label="到期时间"
-        ><el-date-picker
-          v-model="token.expiresAt"
-          type="datetime"
-          value-format="YYYY-MM-DDTHH:mm:ssZ" /></el-form-item></el-form
-    ><template #footer
-      ><el-button type="primary" @click="createToken">签发</el-button></template
-    ></el-dialog
-  >
   <el-dialog :before-close="closeField" v-model="fieldDialog" title="全局字段" width="560px"
     ><el-form label-position="top"
       ><el-form-item label="键名"><el-input v-model="field.key" /></el-form-item

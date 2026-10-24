@@ -70,6 +70,9 @@ try {
     'deploy/README.md',
     'deploy/ACCEPTANCE.md',
     'docs/PLATFORM_GUIDE.md',
+    'docs/REGISTRATION_EXPORTS.md',
+    'docs/ADMISSIONS.md',
+    `docs/releases/${tag}.md`,
     'infra/caddy/Caddyfile',
     'infra/caddy-gateway/Caddyfile',
     'infra/minio/Dockerfile',
@@ -153,12 +156,10 @@ try {
     assert.equal(report.imageTag, tag);
     assert.equal(report.platform, 'linux');
     assert.equal(report.architecture, arch === 'amd64' ? 'x64' : 'arm64');
-    assert.ok(report.checks.length >= 12);
-    assert.equal(report.upgradeFrom, 'v0.1.1', `${arch} must exercise the prior release upgrade`);
-    assert.ok(
-      report.checks.some((check) => check.includes('遗留的验证与重置链接失效')),
-      `${arch} must invalidate legacy mailbox links during upgrade`,
-    );
+    assert.ok(report.checks.length >= 13);
+    assert.equal(report.upgradeFrom, null, `${arch} must exercise a fresh 1.0 installation`);
+    assert.ok(report.checks.some((check) => check.includes('从空数据卷')));
+    assert.ok(report.checks.some((check) => check.includes('加密备份与恢复')));
     await writeFile(join(output, `installation-${arch}.json`), JSON.stringify(report, null, 2));
     const interactive = JSON.parse(
       await readFile(
@@ -168,7 +169,7 @@ try {
     );
     assert.equal(interactive.success, true);
     assert.equal(interactive.targetTag, tag);
-    assert.equal(interactive.initialTag, 'v0.1.5');
+    assert.equal(interactive.initialTag, tag);
     assert.equal(interactive.platform, 'linux');
     assert.equal(interactive.architecture, arch === 'amd64' ? 'x64' : 'arm64');
     assert.ok(interactive.checks.length >= 4);
@@ -229,27 +230,6 @@ try {
     await writeFile(join(output, 'full-regression.json'), JSON.stringify(report, null, 2));
   } catch (error) {
     throw error;
-  }
-  for (const platform of ['hydro', 'domjudge']) {
-    try {
-      const report = JSON.parse(
-        await readFile(
-          join(root, `dist/feature-reports/platform-imports-${platform}.json`),
-          'utf8',
-        ),
-      );
-      assert.equal(report.success, true);
-      assert.equal(report.commit, commit);
-      assert.equal(report.sourceDirty, false);
-      assert.equal(report.reports[0].platform, platform.toUpperCase());
-      assert.equal(report.reports[0].actualLoginAndContestAccess, true);
-      await writeFile(
-        join(output, `platform-imports-${platform}.json`),
-        JSON.stringify(report, null, 2),
-      );
-    } catch (error) {
-      throw error;
-    }
   }
   const names = (await readdir(output)).sort();
   const checksums = await Promise.all(

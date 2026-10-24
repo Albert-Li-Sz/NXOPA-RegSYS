@@ -1,4 +1,5 @@
-import { rateLimit } from './auth.js';
+import { ensureCompetitionAccount, competitionCredentials } from './competition-accounts.js';
+import { rateLimit, publicUser } from './auth.js';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
@@ -62,7 +63,12 @@ export function admissionContext(
         hour12: false,
       }),
     },
-    registration: { id: r.id, answers: snapshot.answers ?? r.answers, examSite: r.examSite },
+    registration: {
+      id: r.id,
+      organization: snapshot.organization ?? r.organization,
+      answers: snapshot.answers ?? r.answers,
+      examSite: r.examSite,
+    },
     participant: people[0],
     team: {
       name: snapshot.teamName ?? r.teamName,
@@ -77,7 +83,7 @@ export async function admissionMaterial(
   r: Registration,
   a: { number: string; location: string; room: string; seat: string },
 ) {
-  const context = admissionContext(r, a);
+  const context = { ...admissionContext(r, a), account: await competitionCredentials(r.id, true) };
   const fields = fieldsSchema.parse((r.snapshot as Record<string, unknown>)?.fields ?? []);
   const assets: Record<string, string> = {};
   let bytes = 0;
@@ -265,7 +271,8 @@ export class AdmissionService {
     const source = renderTemplate(b.source, {
       contest: { title: '示例程序设计竞赛', startsAt: '2026/10/18 09:00' },
       participant: { name: '示例选手', answers: { school: '示例大学' }, assets: {} },
-      registration: { answers: {} },
+      registration: { answers: {}, organization: { name: '示例大学' } },
+      account: { username: 'contest_0001', password: 'ExamplePassword123' },
       team: {
         name: '示例队伍',
         members: [
@@ -299,10 +306,13 @@ export class AdmissionService {
       return { id: job.id, state: job.state };
     });
   }
-  async generate(u: Principal, body: unknown) {
+  async generate(u: Principal, body: unknown, batch = false) {
     const b = z
       .object({
         registrationIds: z.array(z.string().uuid()).min(1).max(100),
+        expectedVersions: z.record(z.string(), z.number().int()).optional(),
+        expectedContestVersion: z.number().int().optional(),
+        expectedTemplateId: z.string().uuid().optional(),
         location: z.string().max(300).default(''),
         room: z.string().max(100).default(''),
         seat: z.string().max(100).default(''),
@@ -316,7 +326,7 @@ export class AdmissionService {
       })
       .parse(body);
     const results = [];
-    await rateLimit(`admission-generate:${u.id}`, 10);
+    if (!batch) await rateLimit(`admission-generate:${u.id}`, 10);
     if (
       b.seats?.some((s) => !b.registrationIds.includes(s.registrationId)) ||
       (b.seats && new Set(b.seats.map((s) => s.registrationId)).size !== b.seats.length)
@@ -387,7 +397,9 @@ export class AdmissionService {
         const a = await db.$transaction(async (tx) => {
           await lock(tx, id);
           await lock(tx, `seating:${r.contestId}`);
+          if (batch) requireManager(await publicUser(u.id, tx), r.contestId, 'ADMISSIONS');
           await lock(tx, `admission-budget:${r.contestId}`);
+          await ensureCompetitionAccount(tx, id);
           const queued = await tx.job.count({
             where: {
               kind: 'ADMISSION',
@@ -407,7 +419,11 @@ export class AdmissionService {
           const currentContest = await tx.contest.findUniqueOrThrow({ where: { id: r.contestId } });
           if (!modulesFor(currentContest).admissions)
             throw new BadRequestException('此活动已关闭准考证');
-          if (currentContest.version !== r.contest.version)
+          if (
+            currentContest.version !== r.contest.version ||
+            (b.expectedContestVersion !== undefined &&
+              currentContest.version !== b.expectedContestVersion)
+          )
             throw new BadRequestException('活动配置已改变，请刷新后重新生成');
           const seats = await tx.seatAssignment.findMany({
             where: { registrationId: id },
@@ -446,10 +462,16 @@ export class AdmissionService {
               .join('；');
           }
           const current = await tx.registration.findUniqueOrThrow({ where: { id } });
-          if (!current.eligible || current.version !== r.version)
+          if (
+            !current.eligible ||
+            current.version !== r.version ||
+            (b.expectedVersions && current.version !== b.expectedVersions[id])
+          )
             throw new BadRequestException('报名资料已改变');
           const template = await activeTemplate(r.contestId, tx);
           if (!template) throw new BadRequestException('请先配置准考证模板');
+          if (b.expectedTemplateId && b.expectedTemplateId !== template.id)
+            throw new BadRequestException('准考证模板已改变');
           let document = await tx.admissionDocument.upsert({
             where: {
               registrationId_registrationVersion_templateId: {
@@ -538,13 +560,24 @@ export class AdmissionService {
     }
     return { results };
   }
-  async release(u: Principal, id: string) {
+  async release(
+    u: Principal,
+    id: string,
+    expected?: { registrationVersion: number; documentVersion: number; contestVersion: number },
+  ) {
     return db.$transaction(async (tx) => {
       let a = await tx.admissionDocument.findUniqueOrThrow({ where: { id } });
       await lock(tx, a.registrationId);
       a = await tx.admissionDocument.findUniqueOrThrow({ where: { id } });
       const r = await getRegistration(u, a.registrationId);
-      requireManager(u, r.contestId, 'ADMISSIONS');
+      requireManager(expected ? await publicUser(u.id, tx) : u, r.contestId, 'ADMISSIONS');
+      if (
+        expected &&
+        (r.version !== expected.registrationVersion ||
+          a.version !== expected.documentVersion ||
+          r.contest.version !== expected.contestVersion)
+      )
+        throw new BadRequestException('报名、活动或准考证已经改变');
       if (
         !modulesFor(r.contest).admissions ||
         !r.eligible ||
@@ -620,6 +653,20 @@ export class AdmissionService {
   }
   async job(u: Principal, id: string) {
     const j = await db.job.findUniqueOrThrow({ where: { id } });
+    if (j.kind === 'ADMISSION_BATCH') {
+      const batch = await db.admissionBatch.findUniqueOrThrow({ where: { id: j.resourceId } });
+      requireManager(u, batch.contestId, 'ADMISSIONS');
+      if (batch.actorId !== u.id && !u.isAdmin) throw new ForbiddenException();
+      const { batchView } = await import('./admission-batches.js');
+      return {
+        id: j.id,
+        kind: j.kind,
+        state: j.state,
+        attempts: j.attempts,
+        error: j.error,
+        result: batchView(batch),
+      };
+    }
     if (j.resourceId !== u.id && !u.isAdmin) await getRegistration(u, j.resourceId);
     return {
       id: j.id,

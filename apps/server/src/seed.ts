@@ -1,3 +1,5 @@
+import { identitySnapshot } from './people.js';
+import { sha } from './security.js';
 import { hash, argon2id } from 'argon2';
 import {
   defaultFields,
@@ -43,6 +45,29 @@ for (const [username, name, isAdmin, isCoach] of users) {
       },
     },
     update: {},
+  });
+  const identity = identitySnapshot(
+    seeded.kind,
+    seeded.name,
+    seeded.profile as Record<string, unknown>,
+  );
+  const identifier = String(
+    identity.profile[seeded.kind === 'TEACHER' ? 'employee_id' : 'student_id'],
+  );
+  const person = await db.personRecord.upsert({
+    where: { identityKey: sha(`${seeded.kind}:示例大学:${identifier.toLowerCase()}`) },
+    create: {
+      identityKey: sha(`${seeded.kind}:示例大学:${identifier.toLowerCase()}`),
+      kind: seeded.kind,
+      identifier,
+      institution: '示例大学',
+      data: json(identity),
+    },
+    update: {},
+  });
+  await db.user.update({
+    where: { id: seeded.id },
+    data: { personId: person.id, identityStatus: 'VERIFIED' },
   });
   if (
     isAdmin &&
@@ -220,7 +245,6 @@ for (const [
           'FILES',
           'SUPPORT',
           'STUDENTS',
-          'INTEGRATIONS',
         ],
       },
     });
