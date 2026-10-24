@@ -1,6 +1,7 @@
 -- The external platform/open API subsystem is retired. No old account conversion.
 DROP TABLE IF EXISTS "AccountMapping", "PlatformExportAccount", "OrganizationMapping", "PlatformBinding", "PlatformInstance", "RemoteRevocation", "ApiToken", "Webhook" CASCADE;
 ALTER TABLE "Contest" ADD COLUMN "accountSettings" JSONB NOT NULL DEFAULT '{"enabled":false,"prefix":"","showOnAdmission":true}';
+ALTER TABLE "Contest" ADD COLUMN "accountPrefixLocked" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "Contest" ALTER COLUMN modules SET DEFAULT '{"admissions":true,"rooms":false}';
 UPDATE "Contest" SET modules = modules - 'integrations', policy = policy - 'platformProfiles';
 UPDATE "AdminGrant" SET permissions = array_remove(permissions, 'INTEGRATIONS');

@@ -15,6 +15,8 @@ export async function ensureCompetitionAccount(tx: Tx, registrationId: string) {
   const contest = await tx.contest.findUniqueOrThrow({ where: { id: r.contestId } });
   const settings = accountSettings(contest);
   if (!settings.enabled || !r.eligible || r.number === null) return null;
+  if (!contest.accountPrefixLocked)
+    await tx.contest.update({ where: { id: contest.id }, data: { accountPrefixLocked: true } });
   return tx.competitionAccount.upsert({
     where: { registrationId },
     create: {

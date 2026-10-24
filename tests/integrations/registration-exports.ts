@@ -305,6 +305,30 @@ try {
     'Cross-institution teams use the verified captain institution and share one credential across member export rows',
   );
 
+  const removedContest = await contest({
+    accountSettings: { enabled: true, prefix: `retained_${stamp}_`, showOnAdmission: true },
+  });
+  const removedEntry = await entry(alice, removedContest);
+  await alice.api(`/registrations/${removedEntry.id}/cancel`, 'POST', {
+    version: removedEntry.version,
+  });
+  assert.equal(await db.competitionAccount.count({ where: { contestId: removedContest.id } }), 0);
+  const removedState = await admin.api(`/contests/${removedContest.id}`);
+  assert.equal(
+    removedState.accountPrefixLocked,
+    true,
+    'Prefix remains locked after the last account is deleted',
+  );
+  assert.equal(
+    (
+      await admin.raw(`/api/v1/contests/${removedContest.id}`, 'PUT', {
+        ...removedState,
+        accountSettings: { ...removedState.accountSettings, prefix: 'must_stay_locked_' },
+      })
+    ).status,
+    400,
+  );
+
   const frozen = await admin.api(`/contests/${c.id}`);
   assert.equal(frozen.accountPrefixLocked, true);
   assert.equal(

@@ -322,11 +322,7 @@ export class RegistrationService {
     return {
       ...c,
       policy: policySchema.parse(c.policy),
-      accountPrefixLocked: !!(
-        u &&
-        manages(u, id, 'CONTEST') &&
-        (await db.competitionAccount.count({ where: { contestId: id } }))
-      ),
+      accountPrefixLocked: !!(u && manages(u, id, 'CONTEST') && c.accountPrefixLocked),
       forms: undefined,
       _count: undefined,
       ...(u?.isAdmin ? { deletion: contestDeletionAccess(u, c._count) } : {}),
@@ -382,9 +378,13 @@ export class RegistrationService {
             data: { state: 'STALE', releasedAt: null, version: { increment: 1 } },
           });
         await lock(tx, `competition-accounts:${id}`);
+        const accountState = await tx.contest.findUniqueOrThrow({
+          where: { id },
+          select: { accountPrefixLocked: true },
+        });
         if (
           accountSettings(c).prefix !== b.accountSettings.prefix &&
-          (await tx.competitionAccount.count({ where: { contestId: id } }))
+          accountState.accountPrefixLocked
         )
           throw new BadRequestException('比赛账号已生成，不能修改账号前缀');
         if (!isDeepStrictEqual(accountSettings(c), b.accountSettings))
@@ -928,6 +928,9 @@ export class RegistrationService {
       }
       const fee = quoteFee(p, r.people.length);
       const delta = fee - r.feeCents;
+      // Account backfill also writes the durable prefix lock on Contest. Take
+      // its lock before updating the registration counter to keep the same order.
+      await lock(tx, `competition-accounts:${r.contestId}`);
       const number =
         r.number ??
         (

@@ -150,6 +150,7 @@ model Contest {
   kind String @default("COMPETITION")
   modules Json @default("{\"admissions\":true,\"rooms\":false}")
   accountSettings Json @default("{\"enabled\":false,\"prefix\":\"\",\"showOnAdmission\":true}")
+  accountPrefixLocked Boolean @default(false)
   seatingMode String @default("REGISTRATION")
   seatingVersion Int @default(1)
   deletedSubmittedCount Int @default(0)
