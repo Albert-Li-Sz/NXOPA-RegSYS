@@ -98,7 +98,7 @@ test('roster download has separate dynamic columns and yuan amounts', async ({ p
   await login(page);
   await page.goto(`/admin/contests/${c.id}?tab=registrations`);
   const downloading = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出名单', exact: true }).click();
+  await page.getByRole('link', { name: '导出名单', exact: true }).click();
   const download = await downloading;
   const csv = await readFile((await download.path())!, 'utf8');
   const header = csv.split('\r\n')[0]!;

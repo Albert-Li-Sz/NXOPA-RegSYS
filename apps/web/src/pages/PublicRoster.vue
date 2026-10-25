@@ -22,6 +22,8 @@ async function refresh() {
   const current = ++sequence;
   loading.value = true;
   error.value = '';
+  rows.value = [];
+  total.value = 0;
   try {
     const data = await api(
       `/contests/${id}/public-teams?${new URLSearchParams({ page: String(page.value), pageSize: String(size.value), search: search.value })}`,
@@ -57,8 +59,13 @@ watch(search, () => {
       <h1>{{ contest.title || '队伍公示' }}</h1>
       <p class="subtitle">当前竞赛公开的参赛队伍，姓名加粗为队长</p>
     </div>
-    <a :href="`/api/v1/contests/${id}/public-teams/export`"
-      ><el-button type="primary" plain>导出名单</el-button></a
+    <el-button
+      v-if="!loading && !error && contest.id"
+      tag="a"
+      :href="`/api/v1/contests/${id}/public-teams/export`"
+      type="primary"
+      plain
+      >导出名单</el-button
     >
   </div>
   <div class="toolbar">
@@ -70,7 +77,9 @@ watch(search, () => {
       style="max-width: 360px"
     />
   </div>
-  <el-alert v-if="error" :title="error" type="error" :closable="false" />
+  <el-alert v-if="error" :title="error" type="error" :closable="false">
+    <el-button text @click="refresh">重新加载</el-button>
+  </el-alert>
   <el-table :data="rows" v-loading="loading" stripe empty-text="暂无公示队伍">
     <el-table-column prop="teamName" label="队名" min-width="180" />
     <el-table-column prop="teamEnglishName" label="英文队名" min-width="180" />

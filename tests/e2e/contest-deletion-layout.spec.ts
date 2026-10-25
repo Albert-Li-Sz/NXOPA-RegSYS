@@ -102,8 +102,8 @@ test('registration action controls align horizontally or in one vertical column'
     );
     const controls = await page
       .locator('.toolbar')
-      .filter({ has: page.getByRole('button', { name: '导出名单', exact: true }) })
-      .locator('button, input[type="file"]')
+      .filter({ has: page.getByRole('link', { name: '导出名单', exact: true }) })
+      .locator('button, a.el-button, input[type="file"]')
       .evaluateAll((elements) =>
         elements.map((e) => {
           const r = e.getBoundingClientRect();

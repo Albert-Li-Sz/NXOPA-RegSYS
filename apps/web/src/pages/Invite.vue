@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute, useRouter, RouterLink } from 'vue-router';
 import { accountInvitationKinds, adminPermissionLabels } from '@contest-center/contracts';
 import { api, auth, loadAuth, date } from '../api';
 import type { Data } from '../types';
@@ -155,8 +155,12 @@ async function accept() {
         @click="accept"
         >确认接受</el-button
       >
-      <router-link v-else :to="invitation.redirectPath || '/registrations'"
-        ><el-button type="primary">继续前往</el-button></router-link
+      <el-button
+        :tag="RouterLink"
+        v-else
+        :to="invitation.redirectPath || '/registrations'"
+        type="primary"
+        >继续前往</el-button
       >
     </template>
     <el-skeleton v-else-if="!error" :rows="4" />

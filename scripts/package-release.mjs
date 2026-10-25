@@ -154,7 +154,7 @@ try {
     assert.equal(report.platform, 'linux');
     assert.equal(report.architecture, arch === 'amd64' ? 'x64' : 'arm64');
     assert.ok(report.checks.length >= 12);
-    assert.equal(report.upgradeFrom, null, `${arch}: v0.10.0 is verified as a fresh installation`);
+    assert.equal(report.upgradeFrom, null, `${arch}: verify a fresh installation separately`);
     assert.ok(
       report.checks.some((check) => check.includes('加密备份与恢复')),
       `${arch} must exercise this release's backup and recovery`,
@@ -168,10 +168,14 @@ try {
     );
     assert.equal(interactive.success, true);
     assert.equal(interactive.targetTag, tag);
-    assert.equal(interactive.initialTag, tag);
+    assert.equal(interactive.initialTag, 'v0.10.0');
     assert.equal(interactive.platform, 'linux');
     assert.equal(interactive.architecture, arch === 'amd64' ? 'x64' : 'arm64');
     assert.ok(interactive.checks.length >= 4);
+    assert.ok(
+      interactive.checks.some((check) => check.includes('共享比赛凭据')),
+      `${arch} must preserve competition credentials when upgrading v0.10.0`,
+    );
     await writeFile(
       join(output, `installation-interactive-${arch}.json`),
       JSON.stringify(interactive, null, 2),

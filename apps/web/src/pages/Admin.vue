@@ -27,7 +27,7 @@ import AdminGrants from '../components/AdminGrants.vue';
 import { isSystemAdmin, canManage } from '../permissions';
 import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
-import { useRoute } from 'vue-router';
+import { useRoute, RouterLink } from 'vue-router';
 import { useRouter } from 'vue-router';
 import { adminCenters, centerTabs } from '../admin-centers';
 const route = useRoute();
@@ -441,9 +441,7 @@ async function webhook() {
       />
     </div>
     <div class="actions" v-if="auth.user?.isAdmin">
-      <router-link to="/admin/contests/new"
-        ><el-button type="primary">创建竞赛</el-button></router-link
-      >
+      <el-button :tag="RouterLink" to="/admin/contests/new" type="primary">创建竞赛</el-button>
     </div>
     <div class="card">
       <p class="form-help">
@@ -784,11 +782,12 @@ async function webhook() {
     <div class="actions">
       <el-button type="primary" @click="newToken">签发范围 Token</el-button
       ><el-button @click="webhook">配置签名 Webhook</el-button
-      ><a
+      ><el-button
+        tag="a"
         href="https://github.com/Albert-Li-Sz/NXOPA-RegSYS/blob/main/docs/API.md"
         target="_blank"
         rel="noopener"
-        ><el-button>API 接入文档</el-button></a
+        >API 接入文档</el-button
       >
     </div>
     <el-checkbox v-model="allowPrivateWebhook"

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { verifyManifestGraph } from '../scripts/verify-registry.mjs';
 import { validateReleaseImages } from '../scripts/release-images.mjs';
+import { validateLatestPromotion } from '../scripts/release-publication.mjs';
 
 const fixture = JSON.parse(
   await readFile(new URL('./fixtures/postgres-runtime.json', import.meta.url), 'utf8'),
@@ -16,6 +17,25 @@ const fixture = JSON.parse(
 const missing = 'sha256:f9989be93aaf18e0f2ee8da9e8cbaedc1979c5c1aa89e1c8a0dc18524e5eb7f9';
 const hash = (body) => `sha256:${createHash('sha256').update(body).digest('hex')}`;
 const currentTag = `v${JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version}`;
+
+test('Latest 仅允许提升较新稳定草稿或继续当前公开版本', () => {
+  for (const [tag, latestTag, draft] of [
+    ['v0.10.1', 'v0.10.0', true],
+    ['v0.10.10', 'v0.10.9', true],
+    ['v1.0.0', 'v0.99.9', true],
+    ['v0.10.1', 'v0.10.1', false],
+  ])
+    assert.doesNotThrow(() => validateLatestPromotion({ tag, latestTag, draft }));
+  for (const [tag, latestTag, draft] of [
+    ['v0.10.0', 'v0.10.1', true],
+    ['v0.10.1', 'v0.10.1', true],
+    ['v0.10.1', 'v0.10.0', false],
+    ['v0.10.2-rc1', 'v0.10.1', true],
+    ['v00.10.2', 'v0.10.1', true],
+    ['latest', 'v0.10.1', true],
+  ])
+    assert.throws(() => validateLatestPromotion({ tag, latestTag, draft }));
+});
 
 test('发布镜像清单严格核验固定版本、来源提交及五类服务', () => {
   const prefix = 'ghcr.io/example/project',

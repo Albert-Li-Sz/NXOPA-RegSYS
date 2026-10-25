@@ -35,8 +35,14 @@ onMounted(async () => {
         <p class="muted">{{ row.name }} · {{ date(row.createdAt) }}</p>
         <router-link :to="`/registrations/${row.registrationId}`">查看报名</router-link>
       </div>
-      <a :href="`/api/v1/admissions/${row.id}/download`" target="_blank" rel="noopener"
-        ><el-button type="primary" plain>查看 / 下载</el-button></a
+      <el-button
+        tag="a"
+        :href="`/api/v1/admissions/${row.id}/download`"
+        target="_blank"
+        rel="noopener"
+        type="primary"
+        plain
+        >查看 / 下载</el-button
       >
     </div>
   </PaginatedList>

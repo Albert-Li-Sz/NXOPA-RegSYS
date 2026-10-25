@@ -565,7 +565,7 @@ try {
       errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto(webBase + '/login');
-    await expect(page.getByRole('button', { name: '使用 GitHub 登录' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '使用 GitHub 登录' })).toBeVisible();
     await page
       .locator('.auth-card')
       .screenshot({ path: path.join(screenshotRoot, '24-github-login.png') });

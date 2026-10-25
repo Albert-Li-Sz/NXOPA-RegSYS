@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-10-11T21:09:51.168Z",
-  "source": "Actual local development UI and isolated Hydro 5.0.7 / DOMjudge 9.0.1 pages; fictitious contest and financial examples; no credentials or invitation tokens displayed.",
+  "capturedAt": "2026-10-25T12:08:21.807Z",
+  "source": "Local development UI with fictitious examples. Credentials and invitation tokens are not shown.",
   "images": [
     "01-home",
     "02-login",
@@ -9,7 +9,9 @@
     "05-role-invitation",
     "06-role-confirmation",
     "07-hydro-instance",
+    "07-platform-hydro-export",
     "08-domjudge-instance",
+    "08-platform-domjudge-export",
     "09-contest-binding",
     "10-contest-policy",
     "11-contest-finance",
@@ -25,5 +27,22 @@
     "21-invoice-application",
     "22-pagination",
     "23-markdown"
-  ]
+  ],
+  "refreshedImages": [
+    "01-home",
+    "02-login",
+    "03-mail",
+    "04-site",
+    "05-role-invitation",
+    "06-role-confirmation",
+    "07-platform-hydro-export",
+    "08-platform-domjudge-export",
+    "10-contest-policy",
+    "11-contest-finance",
+    "23-markdown",
+    "12-fields",
+    "13-admission-template",
+    "14-jobs"
+  ],
+  "version": "0.10.1"
 }

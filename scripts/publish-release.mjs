@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { validateReleaseImages } from './release-images.mjs';
+import { validateLatestPromotion } from './release-publication.mjs';
 
 const tag = process.env.RELEASE_TAG;
-assert.match(tag, /^v0\.10\.0$/);
+assert.match(tag ?? '', /^v\d+\.\d+\.\d+$/);
 assert.equal(JSON.parse(await readFile('package.json')).version, tag.slice(1));
 const repository = process.env.GITHUB_REPOSITORY;
 assert.equal(repository?.toLowerCase(), 'albert-li-sz/nxopa-regsys');
@@ -16,10 +17,29 @@ const run = (command, args, options = {}) =>
     ...options,
   }).trim();
 const stage = '.runtime/release-publication';
+const release = JSON.parse(
+  run('gh', [
+    'release',
+    'view',
+    tag,
+    '--repo',
+    repository,
+    '--json',
+    'tagName,isDraft,isPrerelease',
+  ]),
+);
+const previousLatest = JSON.parse(run('gh', ['api', `repos/${repository}/releases/latest`]));
+assert.equal(release.tagName, tag);
+assert.equal(release.isPrerelease, false);
+validateLatestPromotion({ tag, latestTag: previousLatest.tag_name, draft: release.isDraft });
 await mkdir(stage, { recursive: true });
 run('gh', ['release', 'download', tag, '--repo', repository, '--dir', stage, '--clobber']);
 run('sha256sum', ['-c', 'SHA256SUMS'], { cwd: stage });
 const commit = run('git', ['rev-parse', 'HEAD']);
+assert.equal(run('git', ['rev-parse', `${tag}^{commit}`]), commit);
+const info = JSON.parse(await readFile(`${stage}/release-info.json`, 'utf8'));
+assert.equal(info.tag, tag);
+assert.equal(info.commit, commit);
 const records = JSON.parse(await readFile(`${stage}/images.json`, 'utf8'));
 validateReleaseImages({ records, tag, commit, prefix });
 run('node', ['scripts/verify-published-images.mjs', tag], {

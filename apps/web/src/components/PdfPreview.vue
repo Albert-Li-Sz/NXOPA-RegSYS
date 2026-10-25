@@ -202,6 +202,10 @@ onBeforeUnmount(() => {
   font-size: 14px;
   color: #606266;
 }
+.pdf-controls > .el-button {
+  inline-size: 7rem;
+  flex: 0 0 7rem;
+}
 .pdf-viewport {
   height: 60vh;
   min-height: 250px;

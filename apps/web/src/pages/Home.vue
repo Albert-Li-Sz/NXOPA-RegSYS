@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RouterLink } from 'vue-router';
 import { ArrowRight } from '@element-plus/icons-vue';
 import { auth } from '../api';
 </script>
@@ -12,14 +13,14 @@ import { auth } from '../api';
           让热爱相聚，让下一程开始。<br />从个人挑战到团队协作，在这里开启你的参赛旅程。
         </p>
         <div class="hero-actions">
-          <router-link to="/contests"
-            ><el-button type="primary" size="large"
-              >进入报名系统 <el-icon><ArrowRight /></el-icon></el-button
-          ></router-link>
-          <router-link :to="auth.user ? '/registrations' : '/login?mode=register'"
-            ><el-button size="large">{{
-              auth.user ? '我的报名' : '创建账号'
-            }}</el-button></router-link
+          <el-button :tag="RouterLink" to="/contests" type="primary" size="large"
+            >进入报名系统 <el-icon><ArrowRight /></el-icon
+          ></el-button>
+          <el-button
+            :tag="RouterLink"
+            :to="auth.user ? '/registrations' : '/login?mode=register'"
+            size="large"
+            >{{ auth.user ? '我的报名' : '创建账号' }}</el-button
           >
         </div>
         <div class="hero-supported">
@@ -107,11 +108,14 @@ import { auth } from '../api';
   margin: 0 0 clamp(30px, 2.5vw, 52px);
 }
 .hero-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  inline-size: fit-content;
+  max-inline-size: 100%;
   gap: 14px;
-  flex-wrap: wrap;
 }
 .hero-actions .el-button {
+  width: 100%;
   height: clamp(50px, 3.2vw, 64px);
   padding: 0 clamp(22px, 1.8vw, 36px);
   font-size: clamp(15px, 1vw, 19px);
@@ -259,7 +263,10 @@ import { auth } from '../api';
   .hero-actions .el-button {
     height: 48px;
     font-size: 14px;
-    padding: 0 18px;
+    padding: 0 14px;
+  }
+  .hero-actions .el-icon {
+    margin-left: 8px;
   }
   .hero-supported {
     gap: 10px;
