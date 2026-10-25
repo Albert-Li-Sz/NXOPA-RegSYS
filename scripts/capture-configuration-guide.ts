@@ -1,5 +1,5 @@
 import { chromium, expect, type Locator } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { defaultFields, policySchema } from '../packages/contracts/src/index.js';
 import { Client, base } from '../tests/integrations/client.js';
@@ -11,6 +11,10 @@ if (
 )
   throw new Error('Tutorial screenshots use local development fixtures only');
 const folder = 'docs/configuration-screenshots';
+const webUrl = process.env.WEB_URL ?? 'http://localhost:5173';
+if (!['localhost', '127.0.0.1'].includes(new URL(webUrl).hostname))
+  throw new Error('Tutorial screenshots use a local web server only');
+const previousCapture = JSON.parse(await readFile(`${folder}/capture.json`, 'utf8'));
 await mkdir(folder, { recursive: true });
 await redis.del('rate:login:::ffff:127.0.0.1', 'rate:login:127.0.0.1');
 const originalMail = await db.setting.findUnique({ where: { key: 'mail' } });
@@ -53,7 +57,7 @@ try {
     ...initial,
     enabled: true,
     host: 'localhost',
-    port: 51025,
+    port: Number(process.env.SMTP_PORT ?? 51025),
     security: 'NONE',
     authEnabled: false,
     fromAddress: 'noreply@example.test',
@@ -84,7 +88,7 @@ try {
     published: false,
   });
   contestId = contest.id;
-  await page.goto('http://localhost:5173/');
+  await page.goto(`${webUrl}/`);
   await shot('01-home', page.locator('.home-hero'));
   await page.locator('.hero-actions').getByRole('link', { name: '进入报名系统' }).click();
   await expect(page.locator('#account')).toBeVisible();
@@ -93,7 +97,7 @@ try {
   await page.locator('#password').fill('DemoContest2026!');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page).toHaveURL((url) => url.pathname === '/contests');
-  await page.goto('http://localhost:5173/admin?tab=mail');
+  await page.goto(`${webUrl}/admin?tab=mail`);
   await expect(page.locator('#mail-host')).toHaveValue('localhost');
   await page.getByRole('button', { name: '检测连接', exact: true }).click();
   await expect(page.getByText('邮件服务器连接及认证正常', { exact: true })).toBeVisible();
@@ -102,7 +106,7 @@ try {
   await shot('03-mail', page.locator('.mail-settings'));
   await page.getByRole('tab', { name: '全局设置', exact: true }).click();
   await shot('04-site', page.locator('.panel .card').first());
-  await page.getByRole('tab', { name: '用户权限', exact: true }).click();
+  await page.goto(`${webUrl}/admin/users?tab=users`);
   await page.getByRole('button', { name: '生成邀请链接', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog
@@ -137,18 +141,20 @@ try {
   await expect(recipientPage.getByRole('button', { name: '确认接受', exact: true })).toBeVisible();
   await shot('06-role-confirmation', recipientPage.locator('.invitation-card'));
   await recipientPage.close();
-  await page.goto('http://localhost:5173/admin/platforms');
+  await page.goto(`${webUrl}/admin/platforms`);
   await page.locator('#export-contest').click();
   await page.getByRole('option', { name: contest.title, exact: true }).click();
   await shot('07-platform-hydro-export', page.locator('.platform-exports'));
   await page.getByText('DOMjudge 9.x', { exact: true }).click();
   await shot('08-platform-domjudge-export', page.locator('.platform-exports'));
-  await page.goto(`http://localhost:5173/admin/contests/${contestId}`);
+  await page.goto(`${webUrl}/admin/contests/${contestId}`);
   await expect(page.locator('#contest-title')).toHaveValue(contest.title);
   await shot('10-contest-policy', page.locator('.panel .card').nth(1));
   await shot('11-contest-finance', page.locator('.panel .card').nth(2));
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
   await page.locator('.markdown-editor').getByText('预览', { exact: true }).click();
   await shot('23-markdown', page.locator('.markdown-editor'));
+  await page.getByRole('button', { name: '取消修改', exact: true }).click();
   await page.getByRole('tab', { name: '报名字段', exact: true }).click();
   await shot('12-fields', page.locator('.panel .card'));
   await page.getByRole('tab', { name: '准考证模板', exact: true }).click();
@@ -159,7 +165,7 @@ try {
     page.getByRole('button', { name: '生成预览', exact: true }),
   );
   await page.setViewportSize({ width: 1100, height: 950 });
-  await page.goto('http://localhost:5173/admin?tab=jobs');
+  await page.goto(`${webUrl}/admin/tasks?tab=jobs`);
   await expect(page.locator('.stats .stat').first()).toContainText('运行中');
   await shot('14-jobs', page.locator('.stats'));
   await writeFile(
@@ -169,7 +175,9 @@ try {
         capturedAt: new Date().toISOString(),
         source:
           'Local development UI with fictitious examples. Credentials and invitation tokens are not shown.',
-        images,
+        images: [...new Set([...previousCapture.images, ...images])].sort(),
+        refreshedImages: images,
+        version: JSON.parse(await readFile('package.json', 'utf8')).version,
       },
       null,
       2,

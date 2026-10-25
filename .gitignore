@@ -9,6 +9,7 @@ apps/web/public/pdfjs/
 tmp/
 test-results/
 playwright-report/
+.playwright-mcp/
 coverage/
 *.log
 *.tsbuildinfo

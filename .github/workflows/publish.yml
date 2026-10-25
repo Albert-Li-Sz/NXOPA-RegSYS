@@ -1,15 +1,16 @@
-name: 公开发布 v0.10.0 并下架 V1.0.0
+name: 公开发布已验收版本
 on:
   workflow_dispatch:
     inputs:
-      retire_v1:
-        description: 发布并验证 v0.10.0 后清理已弃用的 V1.0.0
-        type: boolean
-        default: true
+      tag:
+        description: 已完成镜像与安装验收的完整版本标签
+        type: string
+        required: true
+        default: v0.10.1
 permissions:
   contents: read
 concurrency:
-  group: publish-v0.10.0
+  group: publish-latest
   cancel-in-progress: false
 jobs:
   publish:
@@ -19,12 +20,14 @@ jobs:
       contents: write
       packages: write
     env:
-      RELEASE_TAG: v0.10.0
+      RELEASE_TAG: ${{ inputs.tag }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: 校验完整版本号
+        run: '[[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: v0.10.0
+          ref: ${{ inputs.tag }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '24.12.0'
@@ -37,24 +40,10 @@ jobs:
       - run: mkdir -p .runtime/reports
       - name: 核对附件与公开镜像，再更新 Latest
         run: node scripts/publish-release.mjs
-      - name: 清点旧镜像及所有保留引用
-        if: ${{ inputs.retire_v1 }}
-        run: node scripts/retire-v1.mjs prepare .runtime/retire-v1-inventory.json
-      - name: 保留删除前的精确清单
-        if: ${{ inputs.retire_v1 && success() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: retire-v1-inventory
-          path: .runtime/retire-v1-inventory.json
-          retention-days: 90
-      - name: 按清单清理 V1.0.0 专属镜像、Release 与标签
-        if: ${{ inputs.retire_v1 && success() }}
-        run: node scripts/retire-v1.mjs execute .runtime/retire-v1-inventory.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: publication-report
           path: |
             .runtime/reports/publication.json
-            .runtime/reports/retired-v1.json
             .runtime/reports/published-images.json

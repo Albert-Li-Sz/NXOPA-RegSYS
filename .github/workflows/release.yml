@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v0.10.0
+        description: 已存在的版本标签，例如 v0.10.1
         required: true
-        default: v0.10.0
+        default: v0.10.1
         type: string
 
 permissions:
@@ -276,7 +276,7 @@ jobs:
         run: pnpm test:install
       - name: 交互安装、升级及两种卸载流程实际验收
         env:
-          INTERACTIVE_INSTALL_FROM: ${{ env.RELEASE_TAG }}
+          INTERACTIVE_INSTALL_FROM: v0.10.0
           INTERACTIVE_INSTALL_TO: ${{ env.RELEASE_TAG }}
         run: pnpm test:install-interactive
       - name: 核验公开拉取、版本摘要与源码标签

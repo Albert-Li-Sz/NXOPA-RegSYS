@@ -32,7 +32,7 @@ for (const key of [
 ])
   delete env[key];
 const initialTag =
-  process.env.INTERACTIVE_INSTALL_FROM ?? process.env.INSTALL_UPGRADE_FROM ?? 'v0.1.5';
+  process.env.INTERACTIVE_INSTALL_FROM ?? process.env.INSTALL_UPGRADE_FROM ?? 'v0.10.0';
 const targetTag = process.env.INTERACTIVE_INSTALL_TO ?? process.env.IMAGE_TAG ?? defaultTag;
 const checks: string[] = [];
 let success = false;
@@ -160,6 +160,11 @@ try {
   passed('默认内部 Caddy 的空卷交互安装、隐藏密码创建管理员，经外部 Nginx 实际登录');
 
   await admin.completeProfile();
+  admin.user = await admin.api('/auth/profile', 'PUT', {
+    version: admin.user.version,
+    name: admin.user.name,
+    profile: { ...admin.user.profile, student_id: '0020260001' },
+  });
   const contest = await admin.api('/contests', 'POST', {
     title: '交互安装脚本真实验收',
     season: '安装验收',
@@ -180,6 +185,33 @@ try {
   assert.match(attachmentContents, /^offline payment proof [0-9a-f-]{36}$/);
   assert.equal(registration.eligible, true);
 
+  async function competitionCredentials(platform: 'HYDRO' | 'DOMJUDGE') {
+    const response = await admin.raw(`/api/v1/contests/${contest.id}/platform-exports`, 'POST', {
+      platform,
+    });
+    assert.equal(response.status, 201);
+    const zip = path.join(stage, `${platform}.zip`);
+    await writeFile(zip, Buffer.from(await response.arrayBuffer()), { mode: 0o600 });
+    const { stdout } = await exec('unzip', [
+      '-p',
+      zip,
+      platform === 'HYDRO' ? 'teams.json' : 'accounts.json',
+    ]);
+    const rows = JSON.parse(stdout);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, registration.id);
+    const username = platform === 'HYDRO' ? rows[0].name : rows[0].username;
+    assert.equal(username, '0020260001');
+    assert.ok(typeof rows[0].password === 'string' && rows[0].password.length >= 12);
+    if (platform === 'DOMJUDGE') assert.equal(rows[0].team_id, registration.id);
+    return JSON.stringify({ username, password: rows[0].password });
+  }
+  const originalCredential = await competitionCredentials('HYDRO');
+  assert.ok(
+    (await competitionCredentials('DOMJUDGE')) === originalCredential,
+    'The previous release shares one competition credential across platforms',
+  );
+
   console.log(`[交互安装验收] 交互升级至 ${targetTag}……`);
   const updateOutput = await run('update.sh', `${targetTag}\n${backupDir}\ny\n`);
   await startProxy();
@@ -195,12 +227,17 @@ try {
     attachmentContents,
   );
   assert.deepEqual(await volumes(), originalVolumes);
+  for (const platform of ['HYDRO', 'DOMJUDGE'] as const)
+    assert.ok(
+      (await competitionCredentials(platform)) === originalCredential,
+      'Upgrading preserves the student ID and encrypted competition password',
+    );
   const backups = (await readdir(backupDir)).filter((name) => name.endsWith('.ccbak'));
   assert.ok(backups.length > 0);
   for (const name of backups)
     assert.equal((await stat(path.join(backupDir, name))).mode & 0o777, 0o600);
   passed(
-    `${initialTag} 升级至 ${targetTag} 前实际加密备份；旧会话、报名、附件、原密钥和数据卷保留`,
+    `${initialTag} 升级至 ${targetTag} 前实际加密备份；旧会话、报名、附件、共享比赛凭据、原密钥和数据卷保留`,
   );
 
   await run('uninstall.sh', '\ny\nn\n');
@@ -214,6 +251,10 @@ try {
   assert.equal(
     await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),
     attachmentContents,
+  );
+  assert.ok(
+    (await competitionCredentials('HYDRO')) === originalCredential,
+    'Reinstalling with preserved volumes retains competition credentials',
   );
   passed('默认卸载移除容器并保留六个卷；再次交互安装恢复原管理员会话、报名和附件');
 
