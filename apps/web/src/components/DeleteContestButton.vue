@@ -46,6 +46,7 @@ async function remove() {
       <el-button
         :text="text"
         type="danger"
+        :disabled="contest.deletion?.allowed === false"
         :aria-disabled="contest.deletion?.allowed === false"
         :loading="busy"
         @click="remove"

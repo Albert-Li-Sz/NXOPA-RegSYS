@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onScopeDispose } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute, useRouter, RouterLink } from 'vue-router';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { defaultSite } from '@contest-center/contracts';
 import { api, auth, loadAuth } from './api';
@@ -169,8 +169,8 @@ async function logout() {
               ></el-dropdown
             >
           </div>
-          <router-link v-else to="/login"
-            ><el-button type="primary" plain>登录 / 注册</el-button></router-link
+          <el-button :tag="RouterLink" v-else to="/login" type="primary" plain
+            >登录 / 注册</el-button
           >
         </template>
       </div>
@@ -204,7 +204,7 @@ async function logout() {
       :show-close="false"
     >
       <p>当前草稿已保留，请使用原账号重新登录后继续编辑。</p>
-      <el-form @submit.prevent="recoverSession()">
+      <el-form class="session-recovery-form" @submit.prevent="recoverSession()">
         <el-form-item label="账号"
           ><el-input :model-value="auth.expiredUser?.email" readonly
         /></el-form-item>
@@ -222,8 +222,14 @@ async function logout() {
         >
       </el-form>
       <p><a href="/login" target="_blank" rel="noopener">在新窗口使用其他登录方式</a></p>
-      <el-button :disabled="recovering" @click="recoverSession(false)">已登录，恢复编辑</el-button>
-      <el-button :disabled="recovering" @click="leaveExpiredSession">放弃草稿并前往登录</el-button>
+      <div class="button-group session-recovery-actions">
+        <el-button :disabled="recovering" @click="recoverSession(false)"
+          >已登录，恢复编辑</el-button
+        >
+        <el-button :disabled="recovering" @click="leaveExpiredSession"
+          >放弃草稿并前往登录</el-button
+        >
+      </div>
     </el-dialog>
   </div>
 </template>

@@ -164,6 +164,39 @@ const selected = ref<Data[]>([]),
   options = ref('');
 const permission = (item: Parameters<typeof canManage>[1]) =>
   isNew.value ? !!auth.user?.isAdmin : canManage(String(route.params.id), item);
+const availableTabs = computed(() =>
+  [
+    { name: 'settings', label: '活动设置', show: permission('CONTEST') },
+    { name: 'fields', label: '报名字段', show: permission('CONTEST') },
+    { name: 'registrations', label: '报名管理', show: !isNew.value && permission('REGISTRATIONS') },
+    {
+      name: 'templates',
+      label: '准考证模板',
+      show: !isNew.value && permission('ADMISSIONS') && form.value.modules.admissions,
+    },
+    {
+      name: 'integrations',
+      label: '平台文件导出',
+      show: !isNew.value && permission('INTEGRATIONS') && form.value.modules.integrations,
+    },
+    { name: 'files', label: '活动附件', show: !isNew.value && permission('FILES') },
+    {
+      name: 'rooms',
+      label: '考场与座位',
+      show: !isNew.value && permission('ADMISSIONS') && form.value.modules.rooms,
+    },
+    { name: 'finance', label: '财务记录', show: !isNew.value && permission('FINANCE') },
+    {
+      name: 'revocations',
+      label: '平台撤权待办',
+      show: revocations.value.length > 0 && permission('INTEGRATIONS'),
+    },
+  ].filter((item) => item.show),
+);
+function normalizeTab() {
+  if (!availableTabs.value.some((item) => item.name === tab.value))
+    tab.value = availableTabs.value[0]?.name ?? '';
+}
 const filtered = computed(() => rows.value);
 const batchRows = computed(() => (selected.value.length ? selected.value : rows.value));
 const batchIds = computed(() => batchRows.value.filter((r) => r.eligible).map((r) => r.id));
@@ -205,11 +238,11 @@ async function load() {
       savedTitle.value = form.value.title;
       form.value.policy = policySchema.parse(form.value.policy);
       savedModules.value = JSON.stringify(form.value.modules);
-      if (tab.value === 'settings' && !permission('CONTEST')) tab.value = 'registrations';
       if (permission('INTEGRATIONS'))
         revocations.value = await api(`/integrations/revocations?contestId=${route.params.id}`);
-      await refreshModules();
     }
+    normalizeTab();
+    if (!isNew.value) await refreshModules();
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '竞赛配置加载失败';
   } finally {
@@ -224,7 +257,11 @@ async function refreshModules() {
       await roster.load();
       sum.value = await api(`/contests/${route.params.id}/statistics?${roster.query(false)}`);
     }
-    if (['templates', 'registrations'].includes(tab.value) && permission('ADMISSIONS')) {
+    if (
+      ['templates', 'registrations'].includes(tab.value) &&
+      permission('ADMISSIONS') &&
+      form.value.modules.admissions
+    ) {
       templates.value = await api(`/admissions/templates?contestId=${route.params.id}`);
       const active =
         templates.value.find((t) => t.contestId === route.params.id && t.active) ??
@@ -242,7 +279,10 @@ async function refreshModules() {
   }
 }
 watch(tab, () => {
-  if (!isNew.value) refreshModules();
+  if (!isNew.value && !loading.value) refreshModules();
+});
+watch(availableTabs, () => {
+  if (!loading.value) normalizeTab();
 });
 let statisticsSequence = 0;
 watch(
@@ -524,33 +564,14 @@ function insertVariable(v: string) {
       :session="edit"
       :allow="permission('CONTEST')"
     />
-    <el-tabs v-model="tab" :before-leave="mayLeaveEdits"
-      ><el-tab-pane v-if="permission('CONTEST')" label="活动设置" name="settings" /><el-tab-pane
-        v-if="permission('CONTEST')"
-        label="报名字段"
-        name="fields" /><el-tab-pane
-        v-if="!isNew && permission('REGISTRATIONS')"
-        label="报名管理"
-        name="registrations" /><el-tab-pane
-        v-if="!isNew && permission('ADMISSIONS') && form.modules.admissions"
-        label="准考证模板"
-        name="templates" /><el-tab-pane
-        v-if="!isNew && permission('INTEGRATIONS') && form.modules.integrations"
-        label="平台文件导出"
-        name="integrations" /><el-tab-pane
-        v-if="!isNew && permission('FILES')"
-        label="活动附件"
-        name="files" /><el-tab-pane
-        v-if="!isNew && permission('ADMISSIONS') && form.modules.rooms"
-        label="考场与座位"
-        name="rooms" /><el-tab-pane
-        v-if="!isNew && permission('FINANCE')"
-        label="财务记录"
-        name="finance" /><el-tab-pane
-        v-if="revocations.length && permission('INTEGRATIONS')"
-        label="平台撤权待办"
-        name="revocations"
-    /></el-tabs>
+    <el-tabs v-model="tab" :before-leave="mayLeaveEdits">
+      <el-tab-pane
+        v-for="item in availableTabs"
+        :key="item.name"
+        :label="item.label"
+        :name="item.name"
+      />
+    </el-tabs>
     <el-alert v-if="moduleError" :title="moduleError" type="error" :closable="false"
       ><el-button @click="refreshModules">重新加载</el-button></el-alert
     >
@@ -937,10 +958,11 @@ function insertVariable(v: string) {
           ><el-option value="OFFICIAL" label="正式参赛" /><el-option
             value="UNOFFICIAL"
             label="非正式参赛" /></el-select
-        ><a
+        ><el-button
+          tag="a"
           v-if="permission('REGISTRATIONS')"
           :href="`/api/v1/registrations/export?contestId=${route.params.id}&${roster.query(false)}`"
-          ><el-button>导出名单</el-button></a
+          >导出名单</el-button
         ><el-button :disabled="batchBusy" @click="refreshModules">刷新</el-button
         ><el-button
           v-if="permission('ADMISSIONS') && form.modules.admissions"

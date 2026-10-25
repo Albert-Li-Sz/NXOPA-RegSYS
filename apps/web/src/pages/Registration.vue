@@ -3,7 +3,7 @@ import { copyText } from '../copy-text';
 import PaginatedTable from '../components/PaginatedTable.vue';
 import PaginatedList from '../components/PaginatedList.vue';
 import { ref, shallowRef, computed, onMounted, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute, useRouter, RouterLink } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, ApiError, auth, money, date, label, upload } from '../api';
 import type { RegistrationView, PersonView, Data } from '../types';
@@ -394,7 +394,7 @@ async function memberSave(id: string, index: number) {
   <el-result v-if="loadError" icon="warning" title="无法查看报名" :sub-title="loadError"
     ><template #extra
       ><el-button @click="refresh">重新加载</el-button
-      ><router-link to="/"><el-button type="primary">返回首页</el-button></router-link></template
+      ><el-button :tag="RouterLink" to="/" type="primary">返回首页</el-button></template
     ></el-result
   >
   <div v-else-if="!r" class="loading"><el-skeleton :rows="8" animated /></div>
@@ -787,8 +787,12 @@ async function memberSave(id: string, index: number) {
           refresh();
         "
       />
-      <router-link :to="`/support?registrationId=${r.id}&contestId=${r.contestId}`"
-        ><el-button text type="primary">对此报名提起工单</el-button></router-link
+      <el-button
+        :tag="RouterLink"
+        :to="`/support?registrationId=${r.id}&contestId=${r.contestId}`"
+        text
+        type="primary"
+        >对此报名提起工单</el-button
       >
     </div>
     <div class="panel" v-if="tab === 'finance' && r.canReadFinanceDetails">
@@ -1156,12 +1160,13 @@ async function memberSave(id: string, index: number) {
         <el-button type="primary" :disabled="!r.eligible" @click="generate">{{
           r.contest.modules.rooms ? '按排考生成准考证' : '生成准考证'
         }}</el-button
-        ><router-link
+        ><el-button
+          :tag="RouterLink"
           v-if="r.contest.modules.rooms"
           :to="`/admin/contests/${r.contestId}?tab=rooms`"
-          ><el-button>考场与座位</el-button></router-link
-        ><router-link :to="`/admin/contests/${r.contestId}?tab=templates`"
-          ><el-button>配置模板</el-button></router-link
+          >考场与座位</el-button
+        ><el-button :tag="RouterLink" :to="`/admin/contests/${r.contestId}?tab=templates`"
+          >配置模板</el-button
         >
       </div>
       <div class="card">

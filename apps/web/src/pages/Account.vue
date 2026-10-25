@@ -340,7 +340,7 @@ async function revokeSession(id: string) {
           native-type="submit"
           :loading="busy"
           :disabled="mode === 'register' && (!registrationToken || !/^\d{6}$/.test(form.code))"
-          style="width: 100%; height: 42px"
+          class="auth-submit"
           >{{
             mode === 'register'
               ? '注册账号'
@@ -352,17 +352,19 @@ async function revokeSession(id: string) {
           }}</el-button
         >
       </el-form>
-      <a
+      <el-button
+        tag="a"
         v-if="github.enabled && ['login', 'register'].includes(mode)"
         :href="`/api/v1/auth/github?next=${encodeURIComponent(nextPath())}`"
-        class="github-login"
-        ><el-button style="width: 100%; margin-top: 14px">使用 GitHub 登录</el-button></a
+        class="github-login auth-provider"
+        >使用 GitHub 登录</el-button
       >
-      <a
+      <el-button
+        tag="a"
         v-if="feishu.enabled && ['login', 'register'].includes(mode)"
         :href="`/api/v1/auth/feishu?next=${encodeURIComponent(nextPath())}`"
-        class="social-login"
-        ><el-button style="width: 100%; margin-top: 14px">使用飞书登录</el-button></a
+        class="social-login auth-provider"
+        >使用飞书登录</el-button
       >
       <div class="auth-links">
         <el-button text @click="mode = mode === 'register' ? 'login' : 'register'">{{
@@ -375,6 +377,15 @@ async function revokeSession(id: string) {
   <ProfileCenter v-else />
 </template>
 <style scoped>
+.auth-submit,
+.auth-provider {
+  width: 100%;
+  min-height: 42px;
+}
+.auth-provider {
+  margin-top: 14px;
+  margin-inline-start: 0;
+}
 .auth-layout {
   display: grid;
   grid-template-columns: 1fr 440px;

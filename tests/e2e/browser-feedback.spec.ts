@@ -81,6 +81,21 @@ test('PDF attachments preview in place, retain downloads and cannot be read by u
   await expect(dialog).toBeVisible();
   const canvas = dialog.getByRole('img', { name: 'PDF 第 1 页', exact: true });
   await expect(canvas).toHaveAttribute('data-rendered', 'true', { timeout: 15000 });
+  const controls = await dialog.locator('.pdf-controls .el-button').evaluateAll((buttons) =>
+    buttons.map((button) => ({
+      width: button.getBoundingClientRect().width,
+      height: button.getBoundingClientRect().height,
+    })),
+  );
+  expect(controls).toHaveLength(5);
+  expect(
+    Math.max(...controls.map((button) => button.width)) -
+      Math.min(...controls.map((button) => button.width)),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.max(...controls.map((button) => button.height)) -
+      Math.min(...controls.map((button) => button.height)),
+  ).toBeLessThanOrEqual(1);
   expect(
     await canvas.evaluate((element) => {
       const canvas = element as HTMLCanvasElement,

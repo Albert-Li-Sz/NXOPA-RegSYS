@@ -398,7 +398,7 @@ test('personal activity tabs never inherit administrator list scope', async ({ p
   const own = await admin.api('/registrations', 'POST', { contestId: c.id });
   await page.reload();
   await page.getByRole('tab', { name: '报名', exact: true }).click();
-  await expect(page.getByRole('button', { name: '查看报名', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('link', { name: '查看报名', exact: true })).toHaveCount(1);
   await expect(page.locator(`a[href="/registrations/${own.id}"]`)).toBeVisible();
   await expect(page.locator('#pane-registrations')).not.toContainText(alice.user.name);
 });

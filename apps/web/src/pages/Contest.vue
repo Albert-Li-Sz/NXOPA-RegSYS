@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute, useRouter, RouterLink } from 'vue-router';
 import { api, auth, date, money, label } from '../api';
 import FinanceList from '../components/FinanceList.vue';
 import MarkdownContent from '../components/MarkdownContent.vue';
@@ -155,10 +155,11 @@ async function create() {
           <div class="actions">
             <el-button type="primary" :disabled="c.status !== 'OPEN'" @click="create"
               >创建报名</el-button
-            ><router-link
+            ><el-button
+              :tag="RouterLink"
               v-if="auth.user && (auth.user.isAdmin || auth.user.contestIds.includes(c.id))"
               :to="`/admin/contests/${c.id}`"
-              ><el-button>管理竞赛</el-button></router-link
+              >管理竞赛</el-button
             >
           </div>
           <el-empty v-if="!registrations.length" description="您尚未报名此竞赛" />
@@ -169,8 +170,8 @@ async function create() {
                 {{ r.teamName || r.people[0]?.name || '个人报名' }}
                 <el-tag>{{ label(r.status) }}</el-tag>
               </h3>
-              <router-link :to="`/registrations/${r.id}`"
-                ><el-button type="primary" plain>查看报名</el-button></router-link
+              <el-button :tag="RouterLink" :to="`/registrations/${r.id}`" type="primary" plain
+                >查看报名</el-button
               >
             </div>
             <p class="muted">
@@ -193,11 +194,12 @@ async function create() {
           <el-empty v-if="!registrations.length" description="报名后可在此查看准考证" />
           <p v-else class="notice">准考证按报名单位发放，请进入对应报名查看与下载。</p>
           <div class="actions">
-            <router-link
+            <el-button
+              :tag="RouterLink"
               v-for="r in registrations"
               :key="r.id"
               :to="`/registrations/${r.id}?tab=admissions`"
-              ><el-button>{{ r.teamName || r.people[0]?.name }} · 准考证</el-button></router-link
+              >{{ r.teamName || r.people[0]?.name }} · 准考证</el-button
             >
           </div>
         </div></el-tab-pane
@@ -213,8 +215,8 @@ async function create() {
         ><div class="card">
           <h3>遇到报名问题？</h3>
           <p class="muted">提交工单，竞赛管理员将协助处理。</p>
-          <router-link :to="`/support?contestId=${c.id}`"
-            ><el-button type="primary" plain>提交竞赛工单</el-button></router-link
+          <el-button :tag="RouterLink" :to="`/support?contestId=${c.id}`" type="primary" plain
+            >提交竞赛工单</el-button
           >
         </div></el-tab-pane
       >

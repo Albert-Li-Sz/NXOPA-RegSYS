@@ -295,6 +295,14 @@ onBeforeUnmount(() => {
 .overview-controls .el-select {
   width: 230px;
 }
+.overview-controls .button-group {
+  display: flex;
+}
+.overview-controls .button-group > .el-button {
+  inline-size: var(--action-control-width);
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+}
 .overview-metrics {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -516,6 +524,15 @@ onBeforeUnmount(() => {
 @media (max-width: 1280px) {
   .overview-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 1000px) {
+  .overview-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .overview-controls {
+    text-align: left;
   }
 }
 @media (max-width: 760px) {

@@ -231,6 +231,11 @@ test('expired sessions recover with the original account while retaining the uns
   await expect(dialog).toBeVisible();
   await expect(page.locator('main.page')).toHaveAttribute('inert', '');
   await dialog.getByLabel('恢复登录密码', { exact: true }).fill('DemoContest2026!');
+  const recoveryWidths = await dialog
+    .locator('.session-recovery-form > .el-button, .session-recovery-actions > .el-button')
+    .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().width));
+  expect(recoveryWidths).toHaveLength(3);
+  expect(Math.max(...recoveryWidths) - Math.min(...recoveryWidths)).toBeLessThanOrEqual(1);
   await page.screenshot({
     path: '.runtime/reports/ui-audit/session-recovery-mobile.png',
     animations: 'disabled',

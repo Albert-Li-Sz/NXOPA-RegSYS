@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { copyText } from '../copy-text';
 import { ref, computed, onMounted, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, RouterLink } from 'vue-router';
 import FinanceList from '../components/FinanceList.vue';
 import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
@@ -60,9 +60,7 @@ async function createLink() {
       </p>
     </div>
     <el-button v-if="coach" type="primary" plain @click="createLink">创建老师关联链接</el-button
-    ><router-link v-else to="/contests"
-      ><el-button type="primary">浏览活动及竞赛</el-button></router-link
-    >
+    ><el-button :tag="RouterLink" v-else to="/contests" type="primary">浏览活动及竞赛</el-button>
   </div>
   <div v-if="link" class="card">
     <h3>分享关联链接</h3>
@@ -168,8 +166,8 @@ async function createLink() {
             </h3>
             <router-link :to="`/contests/${r.contestId}`">{{ r.contest.title }}</router-link>
           </div>
-          <router-link :to="`/registrations/${r.id}`"
-            ><el-button type="primary" plain>修改及查看</el-button></router-link
+          <el-button :tag="RouterLink" :to="`/registrations/${r.id}`" type="primary" plain
+            >修改及查看</el-button
           >
         </div>
         <p class="muted">
