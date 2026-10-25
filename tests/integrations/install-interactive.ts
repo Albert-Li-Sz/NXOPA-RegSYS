@@ -159,11 +159,19 @@ try {
   assert.equal(originalVolumes.length, 6);
   passed('默认内部 Caddy 的空卷交互安装、隐藏密码创建管理员，经外部 Nginx 实际登录');
 
-  await admin.completeProfile();
+  // Initialize identity fields together; later changes correctly require review.
   admin.user = await admin.api('/auth/profile', 'PUT', {
     version: admin.user.version,
     name: admin.user.name,
-    profile: { ...admin.user.profile, student_id: '0020260001' },
+    profile: {
+      ...admin.user.profile,
+      student_id: '0020260001',
+      class_name: '验收一班',
+      college: '验收学院',
+      gender: '男',
+      school: '验收大学',
+      phone: '00000000000',
+    },
   });
   const contest = await admin.api('/contests', 'POST', {
     title: '交互安装脚本真实验收',
@@ -177,6 +185,10 @@ try {
     fields: [],
   });
   let registration = await admin.api('/registrations', 'POST', { contestId: contest.id });
+  registration = await admin.api(`/registrations/${registration.id}`, 'PUT', {
+    ...registration,
+    organization: { name: '验收大学', shortName: 'TEST', country: 'CHN', icpcId: '' },
+  });
   registration = await admin.api(`/registrations/${registration.id}/submit`, 'POST', {
     version: registration.version,
   });

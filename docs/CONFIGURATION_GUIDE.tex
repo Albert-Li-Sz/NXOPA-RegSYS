@@ -28,7 +28,7 @@
 \fancyhf{}
 \fancyhead[L]{\small\color{muted}南晓开放原子社在线报名系统}
 \fancyhead[R]{\small\color{muted}配置教程}
-\fancyfoot[L]{\small\color{muted}v0.10.1 · 中文 · Asia/Shanghai}
+\fancyfoot[L]{\small\color{muted}v0.10.2 · 中文 · Asia/Shanghai}
 \fancyfoot[R]{\small\color{muted}\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
@@ -76,7 +76,7 @@ curl --fail http://127.0.0.1:8080/api/v1/health
 bash install.sh update
 bash install.sh uninstall
 \end{Code}
-更新先加密备份，再下载新版材料、拉取或构建、迁移并等待健康检查；备份失败中止操作。v0.10.0 可升级至 v0.10.1，保留原数据卷和加密密钥；v0.9.x 与已弃用的 v1.0.0 须使用独立目录和数据卷全新部署。默认卸载保留数据，永久删除须准确输入 \code{DELETE 项目名}。配置和备份保留，备份解密需要原加密密钥。旧版 \code{install/.env} 自动复制到 \code{deploy/.env}，保留项目名、数据库密码、加密密钥与代理模式。恢复会覆盖当前数据库和附件；确认后先验证备份并建立恢复前快照。恢复失败保持业务服务停止。维护命令见 \code{bash install.sh --help}。
+更新先加密备份，再下载新版材料、拉取或构建、迁移并等待健康检查；备份失败中止操作。v0.10.0 可升级至 v0.10.2，保留原数据卷和加密密钥；v0.9.x 与已弃用的 v1.0.0 须使用独立目录和数据卷全新部署。默认卸载保留数据，永久删除须准确输入 \code{DELETE 项目名}。配置和备份保留，备份解密需要原加密密钥。旧版 \code{install/.env} 自动复制到 \code{deploy/.env}，保留项目名、数据库密码、加密密钥与代理模式。恢复会覆盖当前数据库和附件；确认后先验证备份并建立恢复前快照。恢复失败保持业务服务停止。维护命令见 \code{bash install.sh --help}。
 
 \textbf{设置访问地址。}向导保存下列部署项；也可编辑 \code{deploy/.env}。自行完成域名解析、证书与代理配置，参考 \code{deploy/nginx.conf.example}。首次启动使用环境地址作为初始值；登录后在“管理中心 → 全局设置”维护邮件与邀请链接使用的地址。
 \begin{Code}
