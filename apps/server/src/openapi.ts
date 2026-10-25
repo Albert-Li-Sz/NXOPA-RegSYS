@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import {
   contestSchema,
-  admissionBatchPreviewSchema,
-  admissionBatchExecuteSchema,
+  platformExportSchema,
   examSiteSchema,
   contestDeletionSchema,
   roomSchema,
@@ -15,6 +14,7 @@ import {
   registrationActionsSchema,
   registrationSchema,
   fieldSchema,
+  registrationEnvelopeSchema,
   accountInvitationSchema,
   accountInvitationKinds,
   invitationReturnPathSchema,
@@ -79,8 +79,6 @@ export function describeApi(document: OpenAPIObject) {
       pageSize: z.union([z.literal(20), z.literal(50), z.literal(100)]),
     }),
     ContestInput: contestSchema,
-    AdmissionBatchPreviewInput: admissionBatchPreviewSchema,
-    AdmissionBatchExecuteInput: admissionBatchExecuteSchema,
     ExamSite: examSiteSchema,
     RoomInput: roomSchema,
     SeatingRequest: seatingRequestSchema,
@@ -89,6 +87,7 @@ export function describeApi(document: OpenAPIObject) {
     RegistrationActions: registrationActionsSchema,
     RegistrationInput: registrationSchema,
     FieldDefinition: fieldSchema,
+    RegistrationEnvelopeV1: registrationEnvelopeSchema,
     AccountInvitationInput: accountInvitationSchema,
     MailSettingsInput: mailSettingsSchema,
     MailSettingsView: mailSettingsViewSchema,
@@ -113,8 +112,6 @@ export function describeApi(document: OpenAPIObject) {
   for (const [name, s] of Object.entries(named))
     document.components.schemas[name] = schema(s) as never;
   const bodies: Record<string, z.ZodType | string> = {
-    'post /api/v1/contests/{id}/admission-batches/preview': 'AdmissionBatchPreviewInput',
-    'post /api/v1/contests/{id}/admission-batches': 'AdmissionBatchExecuteInput',
     'post /api/v1/auth/reauth': object({
       password: text.max(128).optional(),
       code: z
@@ -122,6 +119,13 @@ export function describeApi(document: OpenAPIObject) {
         .regex(/^\d{6}$/)
         .optional(),
     }),
+    'put /api/v1/admin/webhooks/{id}': object({
+      version,
+      enabled: z.boolean().optional(),
+      rotateSecret: z.boolean().optional(),
+      revokePrivate: z.boolean().optional(),
+    }),
+    'delete /api/v1/admin/webhooks/{id}': object({ version }),
     'post /api/v1/finance/{id}/reconciliation': object({ reason: text.min(1).max(3000) }),
     'post /api/v1/finance/{id}/attribution': object({
       kind: z.enum(['vouchers', 'refunds', 'invoices']),
@@ -352,6 +356,19 @@ export function describeApi(document: OpenAPIObject) {
         )
         .optional(),
     }),
+    'post /api/v1/contests/{id}/platform-exports': platformExportSchema,
+    'post /api/v1/admin/tokens': object({
+      name: text,
+      contestIds: z.array(id),
+      scopes: z.array(text),
+      fields: z.array(text),
+      expiresAt: date,
+    }),
+    'post /api/v1/admin/webhooks': object({
+      contestId: id.optional(),
+      url: z.url(),
+      allowPrivate: z.boolean().default(false),
+    }),
     'post /api/v1/admin/fields': 'FieldDefinition',
     'post /api/v1/admin/roles': object({
       userId: id,
@@ -385,6 +402,7 @@ export function describeApi(document: OpenAPIObject) {
     for (const [method, raw] of Object.entries(item ?? {})) {
       if (!['get', 'post', 'put', 'delete'].includes(method)) continue;
       const op = raw as any;
+      const external = url.startsWith('/api/automation') || url.startsWith('/api/integration');
       const publicPath =
         (method === 'post' &&
           [
@@ -414,8 +432,52 @@ export function describeApi(document: OpenAPIObject) {
         ].includes(url) &&
           method === 'get');
       op.responses ??= {};
-      op.security = publicPath ? [] : [{ cookie: [] }, { hostCookie: [] }];
-      op.tags = [url.split('/')[3] ?? 'System'];
+      op.security = external
+        ? [{ bearer: [] }]
+        : publicPath
+          ? []
+          : [{ cookie: [] }, { hostCookie: [] }];
+      if (
+        external &&
+        [
+          '/api/automation/v1/registrations',
+          '/api/automation/v1/finance',
+          '/api/integration/v1/registrations',
+        ].includes(url)
+      ) {
+        const queries = ['contestId', ...(url.endsWith('/registrations') ? ['cursor'] : [])];
+        op.parameters = [
+          ...(op.parameters ?? []).filter((p: any) => !queries.includes(p.name)),
+          ...queries.map((name) => ({
+            name,
+            in: 'query',
+            required: name === 'contestId' && url !== '/api/automation/v1/registrations',
+            schema: { type: 'string', format: 'uuid' },
+          })),
+        ];
+      }
+      if (method === 'post' && ['/api/v1/admin/tokens', '/api/v1/admin/webhooks'].includes(url)) {
+        const secret = url.endsWith('/tokens') ? 'token' : 'secret';
+        op.responses['201'] = {
+          description: 'Created; secret is returned only once',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['id', secret],
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  [secret]: { type: 'string' },
+                  ...(secret === 'token'
+                    ? { expiresAt: { type: 'string', format: 'date-time' } }
+                    : {}),
+                },
+              },
+            },
+          },
+        };
+      }
+      op.tags = [external ? 'External API' : (url.split('/')[3] ?? 'System')];
       op.responses ??= {};
       for (const status of ['400', '401', '403', '404', '409', '429'])
         op.responses[status] = {
@@ -431,7 +493,7 @@ export function describeApi(document: OpenAPIObject) {
           )[status],
           content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
         };
-      if (method !== 'get' && !publicPath)
+      if (method !== 'get' && !external && !publicPath)
         op.parameters = [
           ...(op.parameters ?? []),
           { name: 'X-CSRF-Token', in: 'header', required: true, schema: { type: 'string' } },
@@ -505,6 +567,15 @@ export function describeApi(document: OpenAPIObject) {
           },
         };
       }
+      if (url === '/api/v1/contests/{id}/platform-exports' && method === 'post') {
+        op.description =
+          'INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Same registration/platform keeps encrypted stable credentials. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay.';
+        op.parameters = op.parameters.filter((p: any) => p.name !== 'Idempotency-Key');
+        op.responses['201'] = {
+          description: 'Platform import ZIP with plaintext competition credentials',
+          content: { 'application/zip': { schema: { type: 'string', format: 'binary' } } },
+        };
+      }
       if (url.endsWith('/seating/preview') || url.endsWith('/seating/commit')) {
         op.description =
           'ADMISSIONS permission required. Preview does not mutate data. Commit requires the preview seatingVersion and registrationVersions; validation errors abort the entire allocation. Rooms must belong to the registration selected exam site. Registrations without a site must be updated before allocation when exam sites are configured.';
@@ -542,28 +613,9 @@ export function describeApi(document: OpenAPIObject) {
       if (url === '/api/v1/finance/vouchers/{id}/review')
         op.description =
           'FINANCE permission required. Confirmation cannot change the declared amount; optional amountCents must match it. A nonempty channel/reference pair is required and cannot be credited twice. Owners and proof uploaders cannot confirm their own vouchers.';
-      if (url === '/api/v1/registrations/export') {
-        op.parameters = [
-          ...(op.parameters ?? []),
-          {
-            name: 'format',
-            in: 'query',
-            schema: { type: 'string', enum: ['csv', 'xlsx'], default: 'csv' },
-          },
-          { name: 'includeCredentials', in: 'query', schema: { type: 'boolean', default: false } },
-        ];
-        op.responses['200'] = {
-          description: 'Registration spreadsheet',
-          content: {
-            'text/csv': { schema: { type: 'string', format: 'binary' } },
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
-              schema: { type: 'string', format: 'binary' },
-            },
-          },
-        };
+      if (url === '/api/v1/registrations/export')
         op.description =
-          'REGISTRATIONS permission required. CSV/XLSX contains one active member per row and preserves identifiers as text. Credentials are opt-in and included only for eligible registrations with account generation enabled. FINANCE permission adds yuan totals on the first member row only. Maximum 10000 members, 500 columns and 25 MB; filters and counts are audited. Responses are private and no-store.';
-      }
+          'REGISTRATIONS permission required. CSV contains one active member per row, separate columns for every current or historical PERSON/TEAM/REGISTRATION/COACH field, and formula-safe escaped cells. FINANCE permission adds yuan totals on the first member row only. Maximum 10000 members, 500 columns and 25 MB per export; export filters and counts are audited.';
       if (url === '/api/v1/registrations/review-queue') {
         op.description =
           'Scoped REGISTRATIONS permission required. Returns all submitted IDs matching the current list filters in review order, independent of page size; defaults to pending review.';
@@ -589,7 +641,7 @@ export function describeApi(document: OpenAPIObject) {
       }
       if (url === '/api/v1/contests/{id}' && method === 'delete') {
         op.description =
-          '仅系统管理员或高级管理员可永久删除无报名、无财务账户的活动。必须提供当前 version；草稿同样阻止删除。保留上传者私有附件和独立工单，撤销活动授权并清理配置、考场。';
+          '仅系统管理员或高级管理员可永久删除无报名、无财务账户的活动。必须提供当前 version；草稿同样阻止删除。保留上传者私有附件和独立工单，撤销活动授权并清理配置、考场及平台关联。';
         op.responses['200'] = {
           description: 'Activity permanently deleted',
           content: {
@@ -598,6 +650,18 @@ export function describeApi(document: OpenAPIObject) {
             },
           },
         };
+      }
+      if (url === '/api/v1/integrations/revocations' && method === 'get') {
+        op.parameters = [
+          {
+            name: 'contestId',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ];
+        op.description =
+          '指定活动需 INTEGRATIONS 权限；不指定活动仅系统管理员与高级管理员可查看全部待办，包含已删除活动。';
       }
       if (url === '/api/v1/files' && method === 'get') {
         op.parameters = [
@@ -723,6 +787,18 @@ export function describeApi(document: OpenAPIObject) {
                 type: 'object',
                 required: ['file'],
                 properties: { file: { type: 'string', format: 'binary' } },
+              },
+            },
+          },
+        };
+      if (url === '/api/integration/v1/registrations' && method === 'get')
+        op.responses['200'] = {
+          description: 'Eligible registrations with field permissions applied',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/RegistrationEnvelopeV1' },
               },
             },
           },

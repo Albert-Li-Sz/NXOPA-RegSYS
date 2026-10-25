@@ -78,15 +78,6 @@ export class Client {
       !('reason' in body)
     )
       body = { ...body, reason: '测试拒绝原因' };
-    // Positive registration fixtures complete the real identity submission/review flow.
-    // Negative identity tests use raw() and therefore never receive this setup.
-    if (
-      method === 'POST' &&
-      /^\/registrations\/[^/]+\/submit$/.test(path) &&
-      this.user &&
-      this.user.identityStatus !== 'VERIFIED'
-    )
-      await this.ensureIdentity();
     const response = await this.raw(`/api/v1${path}`, method, body, key);
     const content = await response.text();
     assert.ok(response.ok, `${method} ${path}: HTTP ${response.status} ${content.slice(0, 300)}`);
@@ -110,33 +101,7 @@ export class Client {
     this.csrf = r.csrf;
     return this;
   }
-  async ensureIdentity(reviewingActor?: Client) {
-    this.user = (await this.api('/auth/me')).user;
-    if (this.user.identityStatus === 'VERIFIED') return;
-    const profile = {
-      school: '验收大学',
-      student_id: `TEST-${this.user.id}`,
-      class_name: '验收一班',
-      college: '验收学院',
-      gender: '男',
-      enrollment_year: 2026,
-      ...this.user.profile,
-    };
-    const state = await this.api('/auth/identity');
-    const request =
-      state.requests.find((r: any) => r.status === 'PENDING') ??
-      (await this.api('/auth/identity', 'POST', {
-        version: this.user.version,
-        name: this.user.name,
-        kind: this.user.kind ?? 'STUDENT',
-        profile,
-      }));
-    const reviewer = reviewingActor ?? (await identityReviewer());
-    await reviewer.api(`/admin/identities/${request.id}/review`, 'POST', { decision: 'APPROVED' });
-    this.user = (await this.api('/auth/me')).user;
-  }
   async completeProfile() {
-    if (this.user.identityStatus === 'VERIFIED') return this;
     this.user = await this.api('/auth/profile', 'PUT', {
       version: this.user.version,
       name: this.user.name,
@@ -174,9 +139,4 @@ export async function until<T>(fn: () => Promise<T>, predicate: (v: T) => boolea
     await new Promise((r) => setTimeout(r, 750));
   }
   throw new Error('Timed out waiting for task');
-}
-
-let reviewer: Promise<Client> | undefined;
-function identityReviewer() {
-  return (reviewer ??= new Client().login('admin'));
 }

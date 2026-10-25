@@ -31,7 +31,8 @@ for (const key of [
   'REVERSE_PROXY_MODE',
 ])
   delete env[key];
-const initialTag = process.env.INTERACTIVE_INSTALL_FROM ?? defaultTag;
+const initialTag =
+  process.env.INTERACTIVE_INSTALL_FROM ?? process.env.INSTALL_UPGRADE_FROM ?? 'v0.1.5';
 const targetTag = process.env.INTERACTIVE_INSTALL_TO ?? process.env.IMAGE_TAG ?? defaultTag;
 const checks: string[] = [];
 let success = false;
@@ -159,18 +160,6 @@ try {
   passed('默认内部 Caddy 的空卷交互安装、隐藏密码创建管理员，经外部 Nginx 实际登录');
 
   await admin.completeProfile();
-  const reviewerPassword = randomBytes(24).toString('base64url');
-  Object.assign(env, {
-    ADMIN_USERNAME: 'interactive_reviewer',
-    ADMIN_EMAIL: 'interactive-reviewer@example.test',
-    ADMIN_PASSWORD: reviewerPassword,
-  });
-  await run('install.sh', '', ['admin']);
-  delete env.ADMIN_USERNAME;
-  delete env.ADMIN_EMAIL;
-  delete env.ADMIN_PASSWORD;
-  const identityReviewer = await new Client().login('interactive_reviewer', reviewerPassword);
-  await admin.ensureIdentity(identityReviewer);
   const contest = await admin.api('/contests', 'POST', {
     title: '交互安装脚本真实验收',
     season: '安装验收',

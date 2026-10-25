@@ -148,9 +148,7 @@ model ExternalIdentity {
 }
 model Contest {
   kind String @default("COMPETITION")
-  modules Json @default("{\"admissions\":true,\"rooms\":false}")
-  accountSettings Json @default("{\"enabled\":false,\"prefix\":\"\",\"showOnAdmission\":true}")
-  accountPrefixLocked Boolean @default(false)
+  modules Json @default("{\"admissions\":true,\"rooms\":false,\"integrations\":true}")
   seatingMode String @default("REGISTRATION")
   seatingVersion Int @default(1)
   deletedSubmittedCount Int @default(0)
@@ -179,6 +177,7 @@ model Contest {
   roles RoleAssignment[]
   forms FormVersion[]
   registrations Registration[]
+  bindings PlatformBinding[]
   rooms ExamRoom[]
   examSites ExamSite[]
   financeAccounts FinanceAccount[]
@@ -233,13 +232,24 @@ model Registration {
   revisions RegistrationRevision[]
   seats SeatAssignment[]
   admissions AdmissionDocument[]
-  competitionAccount CompetitionAccount?
+  mappings AccountMapping[]
+  exportAccounts PlatformExportAccount[]
   @@index([contestId,status,review,eligible])
   @@index([ownerId])
   @@index([examSiteId])
   @@index([contestId,createdAt,id])
   @@unique([contestId,number])
   teamFiles TeamFile[]
+}
+model PlatformExportAccount {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id],onDelete:Cascade)
+  platform String
+  username String @unique
+  credential String
+  createdAt DateTime @default(now())
+  @@unique([registrationId,platform])
 }
 /// active_contest_user and active_contest_identifier are partial unique indexes maintained by SQL migrations. Never use db push.
 model RegistrationPerson {
@@ -500,6 +510,71 @@ model AdmissionDocument {
   createdAt DateTime @default(now())
   @@unique([registrationId,registrationVersion,templateId])
 }
+model PlatformInstance {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  type String
+  baseUrl String
+  credentials String
+  allowedContestIds Json @default("[]")
+  enabled Boolean @default(true)
+  version Int @default(1)
+  bindings PlatformBinding[]
+}
+model PlatformBinding {
+  id String @id @default(uuid()) @db.Uuid
+  contestId String @db.Uuid
+  contest Contest @relation(fields:[contestId],references:[id],onDelete:Cascade)
+  instanceId String @db.Uuid
+  instance PlatformInstance @relation(fields:[instanceId],references:[id])
+  remoteContestId String
+  domainId String @default("system")
+  groupIds Json @default("[]")
+  organizationId String?
+  automatic Boolean @default(true)
+  enabled Boolean @default(true)
+  version Int @default(1)
+  importMode String @default("FOLLOW")
+  includeUnofficial Boolean @default(true)
+  nickname Boolean @default(true)
+  unofficialGroupId String?
+  mappings AccountMapping[]
+  @@unique([contestId,instanceId,remoteContestId])
+}
+model OrganizationMapping {
+  id String @id @default(uuid()) @db.Uuid
+  instanceId String @db.Uuid
+  nameKey String
+  name String
+  shortName String
+  country String
+  icpcId String @default("")
+  remoteId String?
+  status String @default("PENDING")
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([instanceId,nameKey])
+  @@index([instanceId,status])
+}
+model AccountMapping {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields:[registrationId],references:[id])
+  bindingId String @db.Uuid
+  binding PlatformBinding @relation(fields:[bindingId],references:[id])
+  remoteUserId String?
+  remoteTeamId String?
+  username String
+  credential String
+  state String @default("QUEUED")
+  syncJobId String? @db.Uuid
+  syncLeaseUntil DateTime?
+  details Json @default("{}")
+  updatedAt DateTime @updatedAt
+  @@unique([registrationId,bindingId])
+  @@index([bindingId])
+}
 model Job {
   id String @id @default(uuid()) @db.Uuid
   kind String
@@ -530,6 +605,28 @@ model OutboxEvent {
   createdAt DateTime @default(now())
   @@index([deliveredAt,createdAt])
   @@index([deliveredAt,nextAttemptAt,createdAt])
+}
+model ApiToken {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  createdBy String? @db.Uuid
+  tokenHash String @unique
+  contestIds Json
+  scopes Json
+  fields Json
+  expiresAt DateTime
+  revoked Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+model Webhook {
+  id String @id @default(uuid()) @db.Uuid
+  contestId String? @db.Uuid
+  url String
+  privateApprovedBy String? @db.Uuid
+  privateApprovalExpiresAt DateTime?
+  secret String
+  enabled Boolean @default(true)
+  version Int @default(1)
 }
 model AuditEvent {
   id String @id @default(uuid()) @db.Uuid
@@ -617,28 +714,17 @@ model SeatAssignment {
   @@unique([roomId,seat])
   @@unique([registrationId,unitKey])
 }
-
-model CompetitionAccount {
-  id String @id @default(uuid()) @db.Uuid
-  registrationId String @unique @db.Uuid
-  registration Registration @relation(fields:[registrationId],references:[id],onDelete:Cascade)
-  contestId String @db.Uuid
-  username String
-  credential String
-  createdAt DateTime @default(now())
-  @@unique([contestId,username])
-}
-model AdmissionBatch {
+model RemoteRevocation {
+  target Json @default("{}")
   id String @id @default(uuid()) @db.Uuid
   contestId String @db.Uuid
-  actorId String @db.Uuid
-  action String
-  targets Json
-  options Json @default("{}")
-  state String @default("PREVIEW")
-  result Json @default("{}")
-  expiresAt DateTime
+  bindingId String @db.Uuid
+  registrationId String @db.Uuid
+  remoteUserId String?
+  remoteTeamId String?
+  state String @default("PENDING")
+  handledBy String?
   createdAt DateTime @default(now())
-  @@index([contestId,createdAt])
-  @@index([expiresAt])
+  completedAt DateTime?
+  @@index([contestId,state])
 }

@@ -16,7 +16,7 @@ import { ZodError } from 'zod';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { config } from './config.js';
 import { Idempotency } from './idempotency.js';
-import { ApiController } from './api.js';
+import { ApiController, ExternalController } from './api.js';
 import { AuthService, attachPrincipal, checkCsrf, rateLimit, type AuthRequest } from './auth.js';
 import { RegistrationService } from './registrations.js';
 import { SeatingService } from './seating.js';
@@ -24,7 +24,7 @@ import { FinanceService } from './finance.js';
 import { SupportService } from './support.js';
 import { AdmissionService } from './admissions.js';
 import { FileService } from './files.js';
-import { JobService } from './jobs.js';
+import { IntegrationService } from './integrations.js';
 import { AdminService } from './admin.js';
 import { InvitationService } from './invitations.js';
 import { MailService } from './mail.js';
@@ -68,7 +68,7 @@ class Errors implements ExceptionFilter {
   }
 }
 @Module({
-  controllers: [ApiController],
+  controllers: [ApiController, ExternalController],
   providers: [
     AuthService,
     RegistrationService,
@@ -77,7 +77,7 @@ class Errors implements ExceptionFilter {
     SupportService,
     AdmissionService,
     FileService,
-    JobService,
+    IntegrationService,
     AdminService,
     InvitationService,
     MailService,
@@ -144,6 +144,7 @@ const document = describeApi(
       .setTitle(defaultSite.name)
       .setVersion('1.0')
       .addCookieAuth('cc_session')
+      .addBearerAuth()
       .build(),
   ),
 );

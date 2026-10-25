@@ -97,12 +97,8 @@ test('roster download has separate dynamic columns and yuan amounts', async ({ p
   await alice.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version });
   await login(page);
   await page.goto(`/admin/contests/${c.id}?tab=registrations`);
-  await page.getByRole('button', { name: '导出名单', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '导出报名信息', exact: true });
-  await dialog.getByText('CSV', { exact: true }).click();
-  await expect(dialog.getByRole('radio', { name: 'CSV', exact: true })).toBeChecked();
   const downloading = page.waitForEvent('download');
-  await dialog.getByRole('button', { name: '下载', exact: true }).click();
+  await page.getByRole('button', { name: '导出名单', exact: true }).click();
   const download = await downloading;
   const csv = await readFile((await download.path())!, 'utf8');
   const header = csv.split('\r\n')[0]!;

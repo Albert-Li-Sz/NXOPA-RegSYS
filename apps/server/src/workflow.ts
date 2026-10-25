@@ -27,6 +27,7 @@ export function registrationActions(u: Principal, r: Registration) {
     member = r.people.some((p) => p.active && p.userId && owns(u, p.userId)),
     manager = manages(u, r.contestId, 'REGISTRATIONS'),
     reviewPhase = registrationReviewPhase(r),
+    integrationManager = manages(u, r.contestId, 'INTEGRATIONS'),
     team = policySchema.parse(r.policySnapshot ?? r.contest.policy).mode === 'TEAM';
   return {
     edit: editor && open,

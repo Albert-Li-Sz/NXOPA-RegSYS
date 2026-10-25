@@ -331,27 +331,6 @@ try {
   passed('生产浏览器通过 Nginx → Caddy 完成首页进入、登录及刷新，会话保持且无脚本错误');
 
   await admin.completeProfile();
-  const identityReviewerCredentials = {
-    ADMIN_EMAIL: 'identity-reviewer@example.test',
-    ADMIN_USERNAME: 'identity_reviewer',
-    ADMIN_PASSWORD: randomBytes(24).toString('base64url'),
-  };
-  await run(['admin'], identityReviewerCredentials);
-  const identityReviewer = await new Client().login(
-    identityReviewerCredentials.ADMIN_EMAIL,
-    identityReviewerCredentials.ADMIN_PASSWORD,
-  );
-  const identity = await admin.api('/auth/identity', 'POST', {
-    name: admin.user.name,
-    kind: 'STUDENT',
-    version: admin.user.version,
-    profile: { ...admin.user.profile, enrollment_year: 2026 },
-  });
-  await identityReviewer.api(`/admin/identities/${identity.id}/review`, 'POST', {
-    decision: 'APPROVED',
-  });
-  admin.user = (await admin.api('/auth/me')).user;
-
   const contest = await admin.api('/contests', 'POST', {
     title: '独立安装验收竞赛',
     season: '安装验收',

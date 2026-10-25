@@ -159,8 +159,6 @@ const students = {
   class_name: '计算机一班',
   college: '信息工程学院',
   gender: '女',
-  school: '验收大学',
-  enrollment_year: 2026,
 };
 function passed(value: string) {
   checks.push(value);
@@ -206,8 +204,8 @@ class Actor {
     assert.ok(r.ok, `${method} ${route}: ${r.status} ${JSON.stringify(value).slice(0, 200)}`);
     return value;
   }
-  async login(account = 'feature_admin') {
-    const value = await this.api('/auth/login', 'POST', { account, password });
+  async login() {
+    const value = await this.api('/auth/login', 'POST', { account: 'feature_admin', password });
     this.user = value.user;
     this.csrf = value.csrf;
     return this;
@@ -292,16 +290,6 @@ try {
     },
     timeout: 60000,
   });
-  await exec('pnpm', ['bootstrap:admin'], {
-    cwd: root,
-    env: {
-      ...env,
-      ADMIN_USERNAME: 'feature_reviewer',
-      ADMIN_EMAIL: 'feature-reviewer@example.test',
-      ADMIN_PASSWORD: password,
-    },
-    timeout: 60000,
-  });
   const apiTail = started(['--filter', '@contest-center/server', 'start'], env);
   started(['--filter', '@contest-center/server', 'worker'], env);
   try {
@@ -310,17 +298,6 @@ try {
     throw new Error('Feature API failed to start: ' + apiTail());
   }
   const admin = await new Actor().login();
-  const reviewer = await new Actor().login('feature_reviewer');
-  async function approveIdentity(actor: Actor) {
-    const request = await actor.api('/auth/identity', 'POST', {
-      kind: 'STUDENT',
-      name: actor.user.name,
-      profile: actor.user.profile,
-      version: actor.user.version,
-    });
-    await reviewer.api(`/admin/identities/${request.id}/review`, 'POST', { decision: 'APPROVED' });
-    actor.user = (await actor.api('/auth/me')).user;
-  }
   assert.equal(admin.user.profileComplete, false);
   const csrfDenied = await admin.raw('/admin/site', 'PUT', {}, { 'X-CSRF-Token': '' });
   assert.equal(csrfDenied.status, 403);
@@ -347,7 +324,6 @@ try {
   assert.equal(blocked.status, 400);
   assert.match((await blocked.json()).message, /完善.*学号/);
   await admin.complete();
-  await approveIdentity(admin);
   assert.equal(admin.user.profileComplete, true);
   const earlyDraft = await admin.api('/registrations', 'POST', { contestId: contest.id });
   async function student(index: number) {
@@ -379,7 +355,6 @@ try {
       `UPDATE "User" SET "verified"=true WHERE "id"='${actor.user.id}'`,
     ]);
     await actor.complete();
-    await approveIdentity(actor);
     return actor;
   }
   const firstStudent = await student(1);

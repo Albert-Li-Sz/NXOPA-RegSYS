@@ -808,9 +808,9 @@ test('new generic activities default to optional modules off and narrow screens 
   await expect(
     page.getByRole('checkbox', { name: '启用考场与座位', exact: true }),
   ).not.toBeChecked();
-  await expect(page.getByRole('checkbox', { name: '启用平台文件导出', exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole('checkbox', { name: '启用平台文件导出', exact: true }),
+  ).not.toBeChecked();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('#contest-title')).toBeVisible();
   await expect

@@ -1,85 +1,143 @@
 # 部署与维护
 
-v1.0.0 使用 [一键安装入口](../deploy/README.md)，宿主机需要 Docker、Compose 2.24.4 以上、Bash、curl、tar 与 OpenSSL，无需安装 Node.js、pnpm、数据库或 LaTeX。安装使用五类服务的固定版本镜像，支持 amd64 和 arm64；PostgreSQL、Redis 与 Caddy 使用官方固定版本镜像。
+新部署推荐使用 [一键安装说明](../deploy/README.md)：无需在宿主机安装 Node.js / pnpm，独立生成 `deploy/.env`，并提供启动、管理员初始化和加密备份恢复命令。安装包默认由内部 Caddy 提供 `127.0.0.1:8080` HTTP 入口，自有代理将整个站点转发到该入口并负责公网 HTTPS，示例见 `deploy/nginx.conf.example`。所有安装镜像固定版本标签，PostgreSQL 和 Caddy 同时按 Docker 服务端选择平台，不使用 `@sha256`。本文的根目录 Compose 命令继续供已有 Caddy 部署使用；两个入口默认项目名和数据卷不同，切换入口时须保留原项目名、数据库密码与加密密钥。
 
-本版按全新部署使用。已有 v0.x 实例先独立备份数据库、附件和原加密密钥，再使用新的安装目录、Compose 项目名和数据卷安装；不提供旧平台账号、已移除接口或历史报名的兼容适配，不将旧备份直接恢复到新实例。
+## 配置
 
-## 安装与配置
+`pnpm setup` 创建权限为 600 的 `.env` 并生成 32 字节随机 `ENCRYPTION_KEY`。密钥用于加密邮件密码、OJ 密码、Webhook 密钥、幂等结果和备份；请将它与备份分别保存。源码目录包含依赖锁文件和版本化数据库迁移。第七、八个迁移增加参赛性质、组织资料、发票快照、学校映射、平台绑定版本、查询索引与映射外键；旧报名默认为正式参赛，历史表单、发票与远端 ID 保留。
 
-```bash
-curl --proto '=https' --proto-redir '=https' -fsSL https://raw.githubusercontent.com/Albert-Li-Sz/NXOPA-RegSYS/v1.0.0/install.sh -o install.sh
-bash install.sh
+| 变量                                | 用途                                                                   |
+| ----------------------------------- | ---------------------------------------------------------------------- |
+| POSTGRES_PASSWORD                   | 正式 Compose 数据库密码；上线前替换开发默认值                          |
+| DEPLOY_PUBLIC_URL                   | 正式站点初始地址，默认 `http://localhost:8080`；用于邮件与邀请链接     |
+| PUBLIC_URL                          | 原生开发站点初始地址，默认 `http://localhost:5173`                     |
+| SITE_ADDRESS                        | Caddy 地址，本地为 `:80`；HTTPS 部署改为实际域名                       |
+| HTTP_PORT、HTTPS_PORT               | 默认 8080 / 8443；使用公网域名自动签证书时改为 80 / 443                |
+| SMTP_HOST、SMTP_PORT                | 邮件服务器；正式 Compose 可用 DEPLOY_SMTP_HOST / DEPLOY_SMTP_PORT 覆盖 |
+| SMTP_SECURE                         | SMTPS 465 设置 true；STARTTLS 587 使用 false                           |
+| SMTP_USER、SMTP_PASSWORD、SMTP_FROM | 邮件认证和发件人                                                       |
+| ENCRYPTION_KEY                      | 64 位十六进制密钥；需要保持不变才能读取既有凭据与备份                  |
+| ALLOW_PRIVATE_INTEGRATIONS          | 兼容变量，默认 false；当前平台导出不建立 OJ 出站连接                   |
+
+正式部署环境固定 production，Cookie 使用 HttpOnly、SameSite=Lax，HTTPS 请求设置 Secure。写请求检查 CSRF；API Token 与浏览器会话分别授权。内部 Caddy 模式仅向外层代理提供本机 HTTP 入口；external 模式由自有代理分别转发本机 API 3000 和 Web 8081 端口。数据库、Redis、Worker 与编译器不暴露公网端口。
+
+PostgreSQL、Redis 和 Caddy 分别直接使用官方 `postgres:17.6-alpine`、`redis:7.4.5-alpine`、`caddy:2.10.2-alpine` 镜像。前端 `web`、API、Worker 和 LaTeX 各自运行在业务容器内；前端只包含 Vue 构建产物，Caddy 通过只读挂载 `infra/caddy/Caddyfile` 代理 `web:8080` 与 `api:3000`。网络分为前端入口 `edge`、后端出站 `app` 和私有数据库 `data`，前端不连接数据库网络、不读取后端秘密。
+
+线上 `.env` 示例片段：
+
+```dotenv
+DEPLOY_PUBLIC_URL=https://contest.example.org
+SITE_ADDRESS=contest.example.org
+HTTP_PORT=80
+HTTPS_PORT=443
+SMTP_HOST=smtp.example.org
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_FROM=Contest Center <noreply@example.org>
+ALLOW_PRIVATE_INTEGRATIONS=false
 ```
 
-单文件入口下载发布安装包并校验 `SHA256SUMS`。也可直接解压 Release 的安装包，在其根目录运行 `bash install.sh`。向导保存权限为 600 的 `deploy/.env`，生成数据库密码与 32 字节 `ENCRYPTION_KEY`，启动服务并初始化管理员。正式实例不会创建演示账号。
+实际密码保存在本机 `.env`，不写入源码。平台导出仅生成本地文件，不连接 Hydro / DOMjudge。公网 Webhook 使用 HTTPS，私网目标须经系统管理员单独批准。演示数据库固定使用开发密码与独立端口，与正式数据库互不共用。
 
-| 配置                                  | 用途                                                   |
-| ------------------------------------- | ------------------------------------------------------ |
-| `COMPOSE_PROJECT_NAME`                | 当前实例的容器与数据卷前缀，建立后保持不变。           |
-| `PUBLIC_URL`                          | 浏览器访问的站点根地址，也是邮件与邀请链接的初始地址。 |
-| `GATEWAY_PORT`                        | 内部 Caddy 的本机 HTTP 端口，默认 8080。               |
-| `IMAGE_TAG`                           | 完整版本号，本版为 `v1.0.0`，不用浮动标签。            |
-| `POSTGRES_PASSWORD`、`ENCRYPTION_KEY` | 随机生成并在同一实例维护时保留；不要公开配置内容。     |
-| `STORAGE_MODE`                        | 新安装默认内置 MinIO，也可选择本地或第三方 S3。        |
-| `TRUSTED_MANAGEMENT_ORIGINS`          | 可选的额外浏览器来源；也可在后台站点设置维护。         |
-
-`ENCRYPTION_KEY` 用于邮件密码、独立比赛凭据、幂等结果和备份等数据的加密。备份与密钥分开保存，同一实例恢复时使用原密钥。
-
-## 入口与管理员
-
-默认内部 Caddy 仅在 `127.0.0.1:8080` 提供统一 HTTP 入口，自有反向代理负责公网 HTTPS，并将整个站点转发至内部入口。保留 Host、Origin 和原始协议。数据库、队列、Worker 与 LaTeX Runner 不开放公网端口；模板编译容器无网络访问。
+## 初次启动
 
 ```bash
-curl --fail http://127.0.0.1:8080/api/v1/health
-bash install.sh status
+docker compose up -d --build
+docker compose ps
+docker compose run --rm api pnpm bootstrap:admin
+curl --fail http://localhost:8080/api/v1/health
 ```
 
-确认健康接口后，通过实际浏览器完成登录、刷新、报名、文件预览与准考证下载。站点公网地址、SMTP、文件存储、GitHub 与飞书登录在管理中心维护。正式开放注册前配置并测试邮件，确认收件箱实际收到测试邮件。
+初始化任务先为两个私有卷设置 UID 1000 所有权，再执行 Prisma migration deploy。API 和 Worker 使用非 root 用户。管理员初始化命令交互输入邮箱与隐藏密码；自动安装也可通过 `ADMIN_EMAIL`、`ADMIN_USERNAME`、`ADMIN_PASSWORD` 环境变量提供，避免把密码写入命令参数或 shell 历史。
 
-报名可以保存草稿，提交及补正重提要求本人或队长已通过实名审核且单位完整。管理员不能审批自己的实名资料；需要另一位有实名审核权限的管理员处理。团队允许成员来自不同单位，代表单位取队长审核通过的实名资料。
+首次登录后可管理竞赛；以参赛身份报名时先在账号中心完善学号、姓名、班级、学院和性别。账号支持四类身份并存；系统管理员在“用户权限”生成账号或角色邀请 URL，指定账号 / 邮箱、身份、有效期及竞赛，接收者登录、验证邮箱并确认后获得权限。公开邮箱注册继续开放。原有角色保留；首次管理员由初始化命令建立。邮件在“管理中心 → 邮件设置”配置；Hydro / DOMjudge 使用“平台导出”下载导入文件，再由评测管理员在目标平台手动导入。带截图的操作教程见 [PDF](../output/pdf/configuration-guide.pdf)，可编辑的 [LaTeX 源码](CONFIGURATION_GUIDE.tex) 与截图一并提供。
 
-## 报名导出与准考证
+## 后台邮件设置
 
-“报名管理 → 导出名单”可选择 Excel 或 CSV，按当前完整筛选结果导出，每名选手一行。财务列另需财务权限，账号密码默认不导出。活动可选生成独立比赛账号，默认关闭；开启后为合格报名生成账号，密码稳定并默认放在准考证上。
+系统管理员可配置启用状态、主机、端口、连接加密、服务器认证、用户名、密码 / 授权码以及发件地址和名称。提供立即加密、强制升级加密和不加密三种连接模式；不加密用于本地测试。首次未保存时继承上述环境变量，保存后数据库配置优先，Worker 每个邮件任务读取最新配置，无需重启。`SMTP_SECURITY=TLS/STARTTLS/NONE` 可明确设置初始模式；兼容原有 `SMTP_SECURE`。Compose 中的主机名是容器可访问的地址，本机 Mailpit 示例使用 `host.docker.internal`，不能填写容器自己的 `localhost`。
 
-准考证按跨页勾选或完整筛选范围处理。先生成 PDF，由管理员检查后再批量发放。任务展示逐条成功、跳过与失败结果；资料、资格或模板变化后旧文档失效。ZIP 超过容量时自动分包，临时下载包 24 小时后失效。
+密码以 AES-256-GCM 加密，不返回浏览器。留空保留密码；更换主机、端口、加密方式或认证用户名需重新填写，关闭认证并保存清除密码。修改检查配置版本，冲突返回 409；审计记录不含密码或密文。站点公开接口不会返回邮件配置，竞赛管理员与参赛者不能访问邮件配置或测试接口。
 
-详情见 [报名导出与比赛账号](REGISTRATION_EXPORTS.md)、[准考证说明](ADMISSIONS.md) 和 [验收记录](REGISTRATION_EXPORTS_ACCEPTANCE.md)。
+保存后先检测连接，再发送测试邮件，接收者固定为当前管理员。测试经持久化 Outbox / Worker 发送，可查询状态；检测通过与服务器接受邮件之后，还需在收件箱检查实际送达。失败原因使用中文并隐藏服务器原始认证信息。关闭邮件服务后发送任务失败，管理员启用服务后可在“任务”页重试。
+
+邮件配置保存在通用 Setting 表中并包含在数据库备份。数据库、缓存和加密密钥继续使用部署环境变量；公网地址、邮件及私有存储可在后台维护。存储未保存时继承环境配置，保存后以数据库内的有效配置为准。
+
+## 公网地址与域名迁移
+
+系统管理员在“管理中心 → 全局设置”填写根路径地址、核对链接预览并保存。API 与 Worker 每次生成或发送链接时读取数据库的有效地址，用于验证邮箱、找回密码、账号与角色授权、成员与老师邀请、工单通知。未保存时继承环境变量。保存检查版本并记录审计，拒绝账号密码、额外路径、查询参数、片段和非法端口。浏览器写操作允许实际同源、环境初始地址和当前有效公网地址；其他管理来源可在后台“信任的请求来源”填写多个内外网根地址，或在 `TRUSTED_MANAGEMENT_ORIGINS` 中用逗号列出。TLS、域名与访问控制由反向代理负责。
+
+上线时配置域名 A／AAAA 解析、Caddy 的 `SITE_ADDRESS` 和 80／443 端口。更换域名前先完成新域名解析、反向代理及证书，并实际验证登录，然后保存后台公网地址。已经发出的旧链接不会改写，迁移期间继续代理旧域名。
+
+公网地址使用 HTTPS 时，会话及 OAuth 状态 Cookie 默认使用 Secure。内网 HTTP 入口需要显式加入信任来源，才允许该入口使用适合 HTTP 的 Cookie。登录前的写入检查来源，登录后的写入另检查会话 CSRF。若链接地址填错，在保留原数据库连接和加密密钥的运行环境执行：
+
+```bash
+# 原生部署
+pnpm restore:public-url https://reg.example.org
+# Docker 部署
+docker compose exec api pnpm restore:public-url https://reg.example.org
+```
+
+恢复命令保留其他设置、递增版本并记录 `SITE_URL_RECOVERY` 审计，不清空数据库。恢复地址允许根路径 HTTP／HTTPS。
+
+## 运行与更新
+
+```bash
+docker compose logs --tail 100 api worker
+docker compose logs --tail 100 caddy web
+docker compose up -d --build
+```
+
+此前 `web` 同时运行 Caddy 的部署升级后，官方 `caddy` 容器接管原端口和证书卷，`web` 只运行页面服务。保持项目名和 `.env` 不变，先备份再执行上述更新命令，保留数据库、附件和证书；无需重新初始化管理员。
+
+第 5 个迁移将站点名称改为“南晓开放原子社在线报名系统”，保留主色，停用旧第三方认证配置并撤销没有本站密码的旧会话；历史身份数据保留。旧账号可通过邮箱找回密码建立本站密码。
+
+更新前运行备份。数据库迁移只向前执行，回退需要旧源码、对应镜像和更新前备份。后台“任务”页面提供 Worker 心跳、Outbox 积压、失败次数和重试；`/api/v1/admin/metrics` 对系统管理员提供同样数据。
+
+Worker 从 PostgreSQL Outbox 派发任务，Redis 仅承载调度队列；数据库任务记录保留结果、失败原因与尝试次数。失败最多自动尝试四次，管理员可重新触发。中断超过五分钟的 RUNNING 任务会恢复到待执行；远端注册、核账、准考证生成按资源与版本去重。
 
 ## 加密备份与恢复
 
-在实际安装目录执行：
+本次报名流程升级会永久清理历史 `CANCELLED`、`CANCEL_REQUESTED` 报名。必须先备份，再启动新版 API / Worker：数据库迁移先建立独立财务账户、迁移四类财务单据外键并核对余额，API / Worker 在接收请求和处理任务前执行可重试的历史清理，不补发历史取消通知。清理保留财务凭证及共享文件，移除旧资料快照、邀请、准考证与任务中的报名副本。
+
+升级后核对财务账户余额、凭证／账簿／退款／发票数量和财务附件可读性，再检查当前报名数及匿名累计计数。`pnpm test:workflow-upgrade` 会在独立数据库中建立 v0.4.0 数据、备份、执行迁移和重复清理，再实际恢复旧备份核对。永久清理后的回退必须恢复升级前数据库与文件备份，同时恢复对应代码／镜像；仅切回旧镜像不能恢复已删除报名。
 
 ```bash
-bash install.sh backup /srv/contest-backups
-bash install.sh restore /srv/contest-backups/contest-center-YYYYMMDDTHHMMSSZ.ccbak --yes
+bash scripts/backup.sh /srv/contest-backups
+bash scripts/restore.sh /srv/contest-backups/contest-center-YYYYMMDDTHHMMSSZ.ccbak
 ```
 
-备份暂停业务服务，保存数据库、部署配置、本地文件与数据库引用的 S3 对象，并使用原实例密钥加密。附件、准考证和批量 ZIP 均纳入对象备份。备份文件权限为 600。恢复前校验归档与对象摘要并建立恢复前快照；恢复失败保持业务服务停止。
+备份短暂停止 API / Worker，取得同一时间段的 PostgreSQL 自定义格式 dump、私有附件和 `.env`，再用 AES-256-GCM 加密，自动保留最近 30 天备份。备份完成或失败后恢复原有服务，临时明文目录自动删除。恢复失败时保持 API 和 Worker 停止，避免在部分恢复的数据上继续运行。备份与生产目录同样需要限制访问。
 
-S3 对象恢复为本地副本，避免依赖原存储端点；恢复后检查公网地址、邮件和存储，再按需迁移文件。不要丢弃原 `ENCRYPTION_KEY`，也不要将备份用于不同版本的数据结构。
+恢复时使用原始 `ENCRYPTION_KEY`，先确认覆盖操作，再完成认证解密、归档及 S3 manifest / 对象校验，并生成恢复前快照。数据库以单事务恢复，再恢复私有文件。原配置保存到 `.runtime/restored-environment.env` 供比较；恢复脚本不会自动覆盖当前连接配置。源文件、PDF、收款凭证、发票和已存在会话包含在备份中；Redis、运行中的编译目录不包含，任务从数据库恢复。
 
-## v1.x 维护与卸载
+恢复在停止业务服务前检查外层和嵌套文件归档，拒绝越界路径、重复路径、符号／硬链接、特殊文件及损坏数据。默认限制解压总量 100 GiB、最多 100000 项。验证器在 API 镜像内运行，无需宿主机 Node.js。验证失败不会执行数据库恢复。
 
-```bash
-bash install.sh update
-bash install.sh uninstall
-```
+安全升级增加凭证附件唯一占用、退款操作人、平台同步租约及 Webhook 内网审批字段。旧财务单据与账目不自动改写；历史重复凭证生成 `VOUCHER_DUPLICATE_HISTORY` 审计，需人工对账。旧加密密文与验证码仍可读取，新密文使用版本与用途派生密钥。旧版本已销毁的非财务审计无法恢复；缺少来源信息的匿名历史取消数无法准确拆分为用户取消与管理员删除。
 
-维护更新先加密备份，再下载并验证材料、更新服务、执行迁移及健康检查。下载或备份失败会中止；已经执行的数据库迁移不自动回滚，回退时需要当前实例的原配置、密钥和备份。
+安装、更新和恢复使用 `IMAGE_TAG` 指定的完整版本标签（如 `v0.6.7`），不使用 `latest`、浮动小版本或 `@sha256`。从 `main` 获取的新入口兼容旧发布包，会在校验安装包后移除自动摘要覆盖并保留官方镜像原版本；新版安装与备份恢复助手不再加载遗留的 `compose.digest.yaml`。发布清单中的摘要仍用于检查五类镜像的版本、来源提交及公开可拉取性，附件 SHA256 继续验证下载完整性；这些检查不能替代独立可信的发布渠道或离线签名，详见 [安全说明](../SECURITY.md)。
 
-默认卸载保留数据卷，重新安装可以继续使用同一 v1.x 实例；只有准确输入 `DELETE 项目名` 后才永久删除该项目的卷。配置与备份保留。多实例部署时使用不同的目录、Compose 项目名与本机端口。
+在服务器的调度服务中每天调用备份脚本，安装器布局示例为 `bash /opt/nxopa-regsys/install.sh backup /srv/contest-backups`；完整源码根布局才使用 `bash /absolute/path/scripts/backup.sh /srv/contest-backups`。本次实现没有修改宿主机的系统调度。异机恢复时保持数据库版本、源代码 / 镜像版本与加密密钥一致，并先用隔离数据库验证备份。
 
-## 验收与排障
+## 资源与隔离
 
-隔离镜像验收使用：
+验收在 8 CPU / 8 GiB 的 Docker Desktop 虚拟机完成，Hydro 与 DOMjudge 依次运行。LaTeX Runner 无网络、只读根文件系统、无 Docker socket / 生产附件挂载，内存上限 1200 MiB、单核、64 进程；每次编译使用独立 UID 和 700 私有目录，CPU 限制 30 秒、两遍各 45 秒、输出最多 10 MiB。API / Worker 的容器内存限制分别为 1000 / 700 MiB。
 
-```bash
-INSTALL_TEST_MODE=images IMAGE_TAG=v1.0.0 pnpm test:install
-INTERACTIVE_INSTALL_FROM=v1.0.0 INTERACTIVE_INSTALL_TO=v1.0.0 pnpm test:install-interactive
-IMAGE_TAG=v1.0.0 pnpm test:install-proxy
-```
+开发端口：官网 5173、API 3000、PostgreSQL 55432、Redis 56379、Mailpit SMTP 51025 / Web 58025。OJ 独立验收端口只绑定 localhost。
 
-这些流程验证空卷安装、登录、中文 PDF、重启持久化、加密备份恢复、当前版本重部署、卸载保留数据及 HTTPS 代理切换。完整业务回归、导出和批次验收见 README，原始结果在 `.runtime/reports/`。
+## GitHub 登录、用户标签与报名编号
 
-页面打不开时，先检查 `status`、API 健康接口和实际失败容器日志。Caddy 的配置目录须可供 UID 1000 读取，安装器会修正当前挂载的目录与文件权限；实例密钥文件仍保持 600。邮件失败在管理中心查看 SMTP 与投递记录；内部任务失败在日志与任务中心查看对应权限内的错误并重试。
+管理员在“管理中心 → GitHub 登录”配置 OAuth App 的 Client ID、Client Secret 与回调地址。回调默认使用请求站点地址加 `/api/v1/auth/github/callback`，需要与 GitHub 注册的地址一致；也可设置 `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`GITHUB_CALLBACK_URL` 作为初始配置。反向代理传递正确的 Host 与 X-Forwarded-Proto。密钥加密保存且不返回浏览器。
+
+新账号使用 GitHub 已验证邮箱，不自动合并同邮箱的本站账号；已有账号先登录再绑定。所有参赛账号均需完成五项资料。管理员在用户列表编辑标签并筛选；报名按首次正式提交从早到晚分配每个竞赛独立编号，补正保留编号，删除后不重复使用原编号，CSV 同步导出。旧报名升级自动回填序号，旧账号缺失资料需要补填；已取消报名按上述升级规则清理。
+
+## v0.8.0 升级注意事项
+
+先备份数据库、文件和 ENCRYPTION_KEY。升级撤销无签发人信息的历史 API Token，并停用历史私网 Webhook；系统管理员需重新签发和批准。历史疑似重复到账或来源不明的在途单据会暂停退款，按财务对账接口核实，账簿与余额不会自动删除或改写。
+
+HTTPS 会话改用 __Host- Cookie，旧设备可能需要重新登录。预览保留一小时，成功或取消任务保留 30 天，已投递 Outbox 保留七天；验证码邮件投递后删除任务中的原始链接与验证码。定时清理过期会话、验证码、失效 PDF 和编译目录，并对超过一天、带本安装实例归属标记且未引用的对象做存储对账。未标记的历史对象及共享桶中的其他文件保留，需单独人工核对。
+
+发布下载前缀要求 HTTPS；仅受控内网测试可显式设置 NXOPA_ALLOW_INSECURE_MIRROR=1。完整版本镜像与公开 Release 附件不可覆盖，修改发布制品必须增加版本号。
+
+部分唯一索引、CHECK 和 JSON 引用查询索引由 SQL migration 管理。开发和部署只运行 prisma migrate deploy；禁止对持久数据运行 db push，新增迁移必须保留手写约束，并通过审计回归检查 pg_indexes / pg_constraint。
+
+external 双上游兼容模式使用 compose.external.yaml，仅发布回环 API 端口，默认不信任 Docker 桥接来源的转发头。若需要保留客户端 IP，API_TRUSTED_PROXY_CIDRS 必须收敛到实际可信代理地址；网关层的 TRUSTED_PROXY_CIDRS 同样只填写外层代理的具体地址，不信任整个私网。

@@ -35,7 +35,11 @@ export async function removeContest(u: Principal, id: string, body: unknown) {
     checkVersion(c.version, version);
     const access = contestDeletionAccess(u, c._count);
     if (!access.allowed) throw new BadRequestException(access.reason);
-    const resources = [id];
+    const bindings = await tx.platformBinding.findMany({
+      where: { contestId: id },
+      select: { id: true },
+    });
+    const resources = [id, ...bindings.map((b) => b.id)];
     // Files and independent support tickets still belong to their original owners.
     // Removing public access happens in the same transaction as removing the activity.
     const files = await tx.attachment.updateMany({
@@ -51,10 +55,22 @@ export async function removeContest(u: Principal, id: string, body: unknown) {
       where: { contestId: id, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    await tx.webhook.updateMany({
+      where: { contestId: id },
+      data: { enabled: false, version: { increment: 1 } },
+    });
     await tx.invitation.updateMany({
       where: { contestId: id, revoked: false },
       data: { revoked: true },
     });
+    // Remove only this activity from shared scopes without overwriting concurrent changes.
+    await tx.$executeRaw`UPDATE "ApiToken"
+      SET "contestIds" = "contestIds" - ${id},
+          revoked = revoked OR jsonb_array_length("contestIds" - ${id}) = 0
+      WHERE "contestIds" @> ${JSON.stringify([id])}::jsonb`;
+    await tx.$executeRaw`UPDATE "PlatformInstance"
+      SET "allowedContestIds" = "allowedContestIds" - ${id}, version = version + 1
+      WHERE "allowedContestIds" @> ${JSON.stringify([id])}::jsonb`;
     await tx.job.updateMany({
       where: {
         OR: [{ resourceId: { in: resources } }, { payload: { path: ['contestId'], equals: id } }],

@@ -23,7 +23,6 @@ test.beforeAll(async () => {
         student_id: `DRAFT-${stamp}`,
         class_name: '草稿验收班',
         college: '草稿验收学院',
-        school: '草稿验收大学',
         gender: '女',
         enrollment_year: 2026,
       },

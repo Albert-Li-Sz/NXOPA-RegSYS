@@ -83,25 +83,3 @@ export type RegistrationDeletionReceipt = z.infer<typeof registrationDeletionRec
 export type RoomInput = z.infer<typeof roomSchema>;
 export type SeatingRequest = z.infer<typeof seatingRequestSchema>;
 export type SeatingPreview = z.infer<typeof seatingPreviewSchema>;
-
-export const admissionBatchActionSchema = z.enum(['GENERATE', 'RELEASE', 'DOWNLOAD']);
-export const batchScopeSchema = z.discriminatedUnion('mode', [
-  z.object({
-    mode: z.literal('SELECTED'),
-    registrationIds: z.array(z.string().uuid()).min(1).max(10000),
-  }),
-  z.object({ mode: z.literal('FILTERED'), filters: z.record(z.string(), z.string()).default({}) }),
-]);
-export const admissionBatchPreviewSchema = z.object({
-  action: admissionBatchActionSchema,
-  scope: batchScopeSchema,
-  options: z
-    .object({
-      location: z.string().max(300).default(''),
-      room: z.string().max(100).default(''),
-      seat: z.string().max(100).default(''),
-    })
-    .default(() => ({ location: '', room: '', seat: '' })),
-});
-export const admissionBatchExecuteSchema = z.object({ previewId: z.string().uuid() });
-export type BatchScope = z.infer<typeof batchScopeSchema>;

@@ -153,6 +153,7 @@ try {
       coachMode: 'OPTIONAL',
       manualReview: false,
       allowUnofficial: true,
+      platformProfiles: ['HYDRO_5_0_7', 'DOMJUDGE_9_0_1'],
       feeMode: 'FIXED',
       feeCents: 30000,
       paymentSequence: 'PAYMENT_FIRST',
@@ -162,9 +163,10 @@ try {
     fields: [],
   });
   const form = await admin.api(`/contests/${contest.id}`);
-  assert.equal(form.fields.length, 0);
+  assert.equal(form.fields.length, 3);
+  assert.ok(form.fields.every((f: any) => f.locked));
   let r = await alice.api('/registrations', 'POST', { contestId: contest.id });
-  const organization = { name: '伪造单位' };
+  const organization = { name: '南京晓庄学院', shortName: '晓庄', country: 'CHN', icpcId: '' };
   const saveBody = {
     version: r.version,
     teamName: '增强验收团队',
@@ -186,7 +188,7 @@ try {
   assert.equal(r.review, 'PENDING');
   assert.equal(r.eligible, false);
   assert.equal((r.snapshot as any).participationType, 'UNOFFICIAL');
-  assert.equal(r.snapshot.organization.name, '示例大学');
+  assert.equal(r.snapshot.organization.name, organization.name);
   await rejected(admin, `/registrations/${r.id}/review`, 'POST', {
     version: r.version,
     decision: 'APPROVED',

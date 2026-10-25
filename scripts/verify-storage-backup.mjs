@@ -22,9 +22,7 @@ if (!Array.isArray(rows) || new Set(rows.map((r) => r.name)).size !== rows.lengt
   throw new Error('S3 manifest must contain distinct objects');
 for (const row of rows) {
   if (
-    !/^(?:(attachment|admission|preview)-[a-f0-9-]{36}|batch-[a-f0-9-]{36}-\d{1,5})$/i.test(
-      row.name,
-    ) ||
+    !/^(attachment|admission|preview)-[a-f0-9-]{36}$/i.test(row.name) ||
     !/^[a-f0-9]{64}$/i.test(row.sha256)
   )
     throw new Error('Invalid S3 backup entry');

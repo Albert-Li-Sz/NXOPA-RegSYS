@@ -94,8 +94,6 @@ export class PeopleService {
     if (b.kind === 'STUDENT' && b.profile.enrollment_year === undefined)
       throw new BadRequestException('请填写入学年份');
     if (b.kind === 'STUDENT') b.profile.enrollment_year = Number(b.profile.enrollment_year);
-    if (typeof b.profile.school !== 'string' || !b.profile.school.trim())
-      throw new BadRequestException('请填写实名学校／单位');
     const proposed = identitySnapshot(b.kind, b.name, b.profile);
     identityKey(proposed);
     return db.$transaction(async (tx) => {
@@ -156,8 +154,6 @@ export class PeopleService {
       if (target.deactivatedAt) throw new BadRequestException('此账号已经注销');
       const data = request.data as unknown as ReturnType<typeof identitySnapshot>;
       if (b.decision === 'APPROVED') {
-        if (typeof data.profile.school !== 'string' || !data.profile.school.trim())
-          throw new BadRequestException('实名学校／单位缺失，请补全后重新提交审核');
         const identity = identityKey(data);
         await lock(tx, `person:${identity.key}`);
         let person = await tx.personRecord.findUnique({ where: { identityKey: identity.key } });

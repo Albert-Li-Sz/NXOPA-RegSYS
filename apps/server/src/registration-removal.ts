@@ -19,6 +19,65 @@ const objectRef = (file: StorageRef) => ({
   sha256: file.sha256,
 });
 
+export async function recordRemoteRevocation(
+  tx: Tx,
+  m: {
+    bindingId: string;
+    registrationId: string;
+    remoteUserId: string | null;
+    remoteTeamId: string | null;
+  },
+  contestId: string,
+  fallbackTarget: Record<string, unknown> = {},
+) {
+  if (!m.remoteUserId && !m.remoteTeamId) return;
+  const binding = await tx.platformBinding.findUnique({
+    where: { id: m.bindingId },
+    include: { instance: { select: { name: true, baseUrl: true } } },
+  });
+  const target = {
+    platformName: binding?.instance.name,
+    baseUrl: binding?.instance.baseUrl,
+    remoteContestId: binding?.remoteContestId,
+    ...fallbackTarget,
+  };
+  const pending = await tx.remoteRevocation.findMany({
+    where: { bindingId: m.bindingId, registrationId: m.registrationId, state: 'PENDING' },
+  });
+  const prior = pending.find((row) => {
+    const previous = row.target as Record<string, unknown>;
+    return (
+      previous.baseUrl === target.baseUrl &&
+      previous.remoteContestId === target.remoteContestId &&
+      (!m.remoteUserId || !row.remoteUserId || row.remoteUserId === m.remoteUserId) &&
+      (!m.remoteTeamId || !row.remoteTeamId || row.remoteTeamId === m.remoteTeamId)
+    );
+  });
+  if (
+    prior &&
+    (!m.remoteUserId || !prior.remoteUserId || prior.remoteUserId === m.remoteUserId) &&
+    (!m.remoteTeamId || !prior.remoteTeamId || prior.remoteTeamId === m.remoteTeamId)
+  ) {
+    await tx.remoteRevocation.update({
+      where: { id: prior.id },
+      data: {
+        remoteUserId: m.remoteUserId ?? prior.remoteUserId,
+        remoteTeamId: m.remoteTeamId ?? prior.remoteTeamId,
+      },
+    });
+    return;
+  }
+  await tx.remoteRevocation.create({
+    data: {
+      contestId,
+      bindingId: m.bindingId,
+      registrationId: m.registrationId,
+      remoteUserId: m.remoteUserId,
+      remoteTeamId: m.remoteTeamId,
+      target: json(target),
+    },
+  });
+}
 // Callers hold the registration lock. Only settlement data and minimal deletion metadata survive.
 export async function removeRegistration(
   tx: Tx,
@@ -42,6 +101,9 @@ export async function removeRegistration(
     });
   else await tx.financeAccount.delete({ where: { id: r.id } });
 
+  const mappings = await tx.accountMapping.findMany({ where: { registrationId: r.id } });
+  for (const m of mappings) await recordRemoteRevocation(tx, m, r.contestId);
+  await tx.accountMapping.deleteMany({ where: { registrationId: r.id } });
   const documents = await tx.admissionDocument.findMany({ where: { registrationId: r.id } });
   for (const d of documents)
     if (d.storageKey)

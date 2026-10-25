@@ -18,7 +18,7 @@ test.beforeEach(async () => {
 test.afterAll(async () => {
   await db.$disconnect();
 });
-test('ordinary users leave admin routes safely and removed token tools stay absent', async ({
+test('ordinary users leave admin routes safely; cold token page has contest choices', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -29,8 +29,13 @@ test('ordinary users leave admin routes safely and removed token tools stay abse
   await page.context().clearCookies();
   await login(page, 'admin');
   await page.goto('/admin?tab=tokens');
-  await expect(page.getByRole('button', { name: '签发范围 Token', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('tab', { name: 'API 与 Webhook', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '签发范围 Token', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '创建 API Token', exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByText('授权竞赛', { exact: true }).locator('..').locator('.el-select').click();
+  await expect(
+    page.locator('.el-select-dropdown:visible .el-select-dropdown__item').first(),
+  ).toBeVisible();
   expect(errors).toEqual([]);
 });
 test('a failed logout preserves a draft even after confirming discard', async ({ page }) => {

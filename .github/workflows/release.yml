@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v1.0.0
+        description: 已存在的版本标签，例如 v0.9.2
         required: true
-        default: v1.0.0
+        default: v0.9.2
         type: string
 
 permissions:
@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       PLATFORM_TEST_LATEX_IMAGE: nxopa-latex-test:current
+      FULL_REGRESSION_OJ: '1'
     outputs:
       revision: ${{ steps.version.outputs.revision }}
       prefix: ${{ steps.version.outputs.prefix }}
@@ -89,6 +90,8 @@ jobs:
             .runtime/reports/release-features.json
             .runtime/reports/platform-features.json
             .runtime/reports/full-regression.json
+            .runtime/reports/platform-imports-hydro.json
+            .runtime/reports/platform-imports-domjudge.json
             .runtime/reports/ui-audit
           retention-days: 30
 
@@ -264,10 +267,11 @@ jobs:
           INSTALL_TEST_MODE: images
           IMAGE_PREFIX: ${{ needs.validate.outputs.prefix }}
           IMAGE_TAG: ${{ env.RELEASE_TAG }}
+          INSTALL_UPGRADE_FROM: v0.1.1
         run: pnpm test:install
       - name: 交互安装、升级及两种卸载流程实际验收
         env:
-          INTERACTIVE_INSTALL_FROM: ${{ env.RELEASE_TAG }}
+          INTERACTIVE_INSTALL_FROM: v0.1.5
           INTERACTIVE_INSTALL_TO: ${{ env.RELEASE_TAG }}
         run: pnpm test:install-interactive
       - name: 核验公开拉取、版本摘要与源码标签

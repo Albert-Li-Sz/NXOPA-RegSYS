@@ -172,6 +172,7 @@ async function wait(url: string) {
 }
 let setup = false;
 const saveLogs: (() => Promise<void>)[] = [];
+const ojProjects: { project: string; file: string }[] = [];
 async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
   // Each suite owns an independent rate-limit experiment within the disposable Redis.
   await compose([
@@ -192,7 +193,7 @@ async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
   let checkCount: number | undefined;
   const args = [
     suite,
-    ...(suite === 'test:e2e' && process.env.E2E_SPEC ? process.env.E2E_SPEC.split(/\s+/) : []),
+    ...(suite === 'test:e2e' && process.env.E2E_SPEC ? [process.env.E2E_SPEC] : []),
     ...(suite === 'test:e2e' && process.env.E2E_MAX_FAILURES
       ? [`--max-failures=${process.env.E2E_MAX_FAILURES}`]
       : []),
@@ -285,6 +286,39 @@ try {
   const suites = (process.env.FULL_REGRESSION_SUITES ?? fullRegressionSuites.join(','))
     .split(',')
     .filter(Boolean);
+  if (process.env.FULL_REGRESSION_OJ === '1') {
+    for (const mode of ['hydro', 'domjudge']) {
+      const file = `infra/fixtures/${mode}/compose.yaml`,
+        name = `${project}-${mode}`;
+      if (mode === 'domjudge') {
+        try {
+          await exec('docker', ['image', 'inspect', 'contest-center-domjudge:9.0.1']);
+        } catch {
+          await exec('pnpm', ['fixtures:domjudge'], {
+            cwd: root,
+            timeout: 1200000,
+            maxBuffer: 5 * 1024 * 1024,
+          });
+        }
+      }
+      ojProjects.push({ project: name, file });
+      await exec(
+        'docker',
+        ['compose', '-p', name, '-f', file, 'up', '-d', ...(mode === 'hydro' ? ['--build'] : [])],
+        { cwd: root, timeout: 600000, maxBuffer: 5 * 1024 * 1024 },
+      );
+      await runSuite('test:oj', {
+        ...env,
+        OJ_TYPE: mode.toUpperCase(),
+        DOMJUDGE_TEST_PROJECT: `${project}-domjudge`,
+        HYDRO_TEST_PROJECT: `${project}-hydro`,
+      });
+      await exec('docker', ['compose', '-p', name, '-f', file, 'stop'], {
+        cwd: root,
+        timeout: 120000,
+      });
+    }
+  }
   for (const suite of suites) {
     await runSuite(suite);
   }
@@ -296,13 +330,21 @@ try {
       } catch {}
   await Promise.all(saveLogs.map((save) => save()));
   await compose(['down', '-v', '--remove-orphans']);
+  for (const fixture of ojProjects)
+    await exec(
+      'docker',
+      ['compose', '-p', fixture.project, '-f', fixture.file, 'down', '-v', '--remove-orphans'],
+      { cwd: root, timeout: 120000 },
+    );
   await writeFile(
     path.join(root, '.runtime/reports/full-regression.json'),
     JSON.stringify(
       {
         success: setup && results.length > 0 && results.every((result) => result.success),
         results,
+        ojRun: process.env.FULL_REGRESSION_OJ === '1',
         fullRun:
+          process.env.FULL_REGRESSION_OJ === '1' &&
           !process.env.FULL_REGRESSION_SUITES &&
           !process.env.E2E_SPEC &&
           !process.env.E2E_MAX_FAILURES,

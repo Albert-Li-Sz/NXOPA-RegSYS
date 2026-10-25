@@ -9,6 +9,16 @@ export const adminCenters = [
     tabs: [{ name: 'contests', label: '活动及竞赛管理' }],
   },
   {
+    key: 'platforms',
+    to: '/admin/platforms',
+    label: '平台导出中心',
+    description: '导出评测平台导入文件',
+    tabs: [
+      { name: 'instances', label: '平台文件导出' },
+      { name: 'revocations', label: '撤权待办' },
+    ],
+  },
+  {
     key: 'users',
     to: '/admin/users',
     label: '用户中心',
@@ -44,6 +54,7 @@ export const adminCenters = [
     description: '全局配置与系统服务',
     tabs: [
       { name: 'site', label: '全局设置' },
+      { name: 'tokens', label: 'API 与 Webhook' },
       { name: 'mail', label: '邮件设置' },
       { name: 'mail-templates', label: '邮件模板' },
       { name: 'storage', label: '文件存储' },
@@ -59,7 +70,7 @@ export function centerTabs(key: string, user: Principal | null) {
   if (key === 'settings') return user.isSystemAdmin ? center.tabs : [];
   if (key === 'reviews') return user.isAdmin ? center.tabs : [];
   return center.tabs.filter((tab) => {
-    if (['users', 'grants', 'audit'].includes(tab.name)) return user.isAdmin;
+    if (['users', 'grants', 'audit', 'revocations'].includes(tab.name)) return user.isAdmin;
     if (['students', 'teachers'].includes(tab.name))
       return (
         user.isAdmin ||

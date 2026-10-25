@@ -34,13 +34,20 @@ export class Idempotency implements NestInterceptor {
       pathname.includes('/auth/') ||
       pathname.endsWith('/admissions/batch') ||
       pathname.includes('/seating/') ||
-      pathname.includes('/admission-batches') ||
       pathname.endsWith('/admissions/generate') ||
       pathname.endsWith('/admissions/preview') ||
+      /\/platform-exports$/.test(pathname) ||
       pathname.endsWith('/files') ||
-      !['registrations', 'finance', 'contests', 'admin', 'admissions', 'support', 'files'].includes(
-        pathname.split('/')[3] ?? '',
-      ) ||
+      ![
+        'registrations',
+        'finance',
+        'contests',
+        'admin',
+        'admissions',
+        'integrations',
+        'support',
+        'files',
+      ].includes(pathname.split('/')[3] ?? '') ||
       /\/jobs\/[^/]+\/retry$/.test(pathname)
     )
       return next.handle();
@@ -84,7 +91,15 @@ export class Idempotency implements NestInterceptor {
             }
           }
           if (module === 'admin') {
-            if (resource === 'grants' && req.body?.level && req.body.level !== 'CONTEST')
+            if (resource === 'webhooks') {
+              const hook = resourceId
+                ? await db.webhook.findUnique({ where: { id: resourceId } })
+                : null;
+              const contestId = hook?.contestId ?? req.body?.contestId;
+              if (contestId) requireManager(actor, contestId, 'INTEGRATIONS');
+              else requireSystemAdmin(actor);
+              if (req.body?.allowPrivate) requireSystemAdmin(actor);
+            } else if (resource === 'grants' && req.body?.level && req.body.level !== 'CONTEST')
               requireSystemAdmin(actor);
             else if (['fields', 'users', 'roles', 'invitations', 'grants'].includes(resource ?? ''))
               requireAdmin(actor);
@@ -102,6 +117,16 @@ export class Idempotency implements NestInterceptor {
                     ? 'ADMISSIONS'
                     : 'CONTEST',
               );
+            else requireAdmin(actor);
+          }
+          if (module === 'integrations') {
+            if (resource === 'revocations' && resourceId) {
+              const revocation = await db.remoteRevocation.findUniqueOrThrow({
+                where: { id: resourceId },
+              });
+              requireManager(actor, revocation.contestId, 'INTEGRATIONS');
+            } else if (resource === 'registrations' && resourceId)
+              await getRegistration(actor, resourceId);
             else requireAdmin(actor);
           }
           if (module === 'admissions') {

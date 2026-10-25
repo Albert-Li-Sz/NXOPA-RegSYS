@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { validateBackup } from '../scripts/verify-backup.mjs';
-import { execFileSync } from 'node:child_process';
 function entry(name, body = Buffer.from('fixture'), type = '0', link = '') {
   const header = Buffer.alloc(512);
   header.write(name, 0, 100);
@@ -97,51 +95,3 @@ test('valid long object names are retained', () =>
       assert.equal((await validateBackup(file, 'files')).entries, 1);
     },
   ));
-test('host tar omits platform metadata and produces a strictly valid backup', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'nxopa-backup-host-'));
-  try {
-    const members = ['database.dump', 'files.tgz', 'environment.env'];
-    for (const name of members) await writeFile(path.join(dir, name), 'fixture');
-    if (process.platform === 'darwin')
-      execFileSync('xattr', [
-        '-w',
-        'user.nxopa-test',
-        'unnecessary metadata',
-        path.join(dir, members[0]),
-      ]);
-    const flags = ['--no-xattrs', '--no-acls'];
-    if (/bsdtar/i.test(execFileSync('tar', ['--version'], { encoding: 'utf8' })))
-      flags.push('--no-fflags');
-    const file = path.join(dir, 'backup.tgz');
-    execFileSync('tar', [...flags, '-czf', file, '-C', dir, ...members], {
-      env: { ...process.env, COPYFILE_DISABLE: '1' },
-    });
-    assert.equal((await validateBackup(file, 'outer')).entries, 3);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-test('storage preflight validates batch archive hashes and rejects traversal', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'nxopa-storage-preflight-'));
-  try {
-    const objects = path.join(dir, 'files/.s3-backup');
-    await mkdir(objects, { recursive: true });
-    await writeFile(path.join(dir, 'environment.env'), 'STORAGE_MODE=S3\n');
-    await writeFile(path.join(dir, 'settings.sql'), '');
-    const name = 'batch-11111111-1111-4111-8111-111111111111-0';
-    const bytes = Buffer.from('PK archive');
-    const manifest = path.join(objects, 'manifest.json');
-    const row = { name, sha256: createHash('sha256').update(bytes).digest('hex') };
-    await writeFile(path.join(objects, name), bytes);
-    await writeFile(manifest, JSON.stringify([row]));
-    const verify = () =>
-      execFileSync(process.execPath, ['scripts/verify-storage-backup.mjs', dir], { stdio: 'pipe' });
-    assert.match(verify().toString(), /1 objects/);
-    await writeFile(path.join(objects, name), 'damaged');
-    assert.throws(verify);
-    await writeFile(manifest, JSON.stringify([{ ...row, name: `../${name}` }]));
-    assert.throws(verify);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});

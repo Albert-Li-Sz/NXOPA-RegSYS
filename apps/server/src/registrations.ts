@@ -1,5 +1,3 @@
-import { ensureCompetitionAccount, accountSettings } from './competition-accounts.js';
-import { verifiedOrganization } from './registration-organization.js';
 import { answersSchema } from '@contest-center/contracts';
 import { canManageRegistrationData } from './security.js';
 import {
@@ -26,6 +24,8 @@ import {
   quoteFee,
   registrationEligible,
   contestStatus,
+  mergePlatformFields,
+  organizationSchema,
   participationSchema,
   profileComplete,
   type Principal,
@@ -39,7 +39,6 @@ import {
   lock,
   audit,
   event,
-  enqueue,
   registrationInclude,
   type Registration,
   type Tx,
@@ -61,7 +60,7 @@ import {
 } from './security.js';
 import { ensureFinance } from './finance-accounts.js';
 import { publicUser } from './auth.js';
-import { removeRegistration } from './registration-removal.js';
+import { removeRegistration, recordRemoteRevocation } from './registration-removal.js';
 import {
   registrationActions,
   registrationDisplayState,
@@ -182,7 +181,6 @@ export async function refresh(tx: Tx, id: string) {
       where: { registrationId: id, state: { in: ['READY', 'RELEASED'] } },
       data: { state: 'STALE', releasedAt: null },
     });
-  if (eligible) await ensureCompetitionAccount(tx, id);
   return { ...r, eligible };
 }
 export async function dirty(tx: Tx, r: Registration, u: Principal, reason: string) {
@@ -322,7 +320,6 @@ export class RegistrationService {
     return {
       ...c,
       policy: policySchema.parse(c.policy),
-      accountPrefixLocked: !!(u && manages(u, id, 'CONTEST') && c.accountPrefixLocked),
       forms: undefined,
       _count: undefined,
       ...(u?.isAdmin ? { deletion: contestDeletionAccess(u, c._count) } : {}),
@@ -340,6 +337,7 @@ export class RegistrationService {
       b.modules = {
         admissions: provided.modules?.admissions ?? false,
         rooms: provided.modules?.rooms ?? false,
+        integrations: provided.modules?.integrations ?? false,
       };
       b.policy.coachMode = provided.policy?.coachMode ?? 'DISABLED';
       if (b.policy.coachMode === 'DISABLED') b.policy.maxCoaches = 0;
@@ -367,33 +365,38 @@ export class RegistrationService {
         )
           throw new BadRequestException('请先清空现有排考，再更改排考单位');
         const previousModules = modulesFor(c);
-        const disabled = (['admissions', 'rooms'] as const).filter(
+        const disabled = (['admissions', 'rooms', 'integrations'] as const).filter(
           (key) => previousModules[key] && !b.modules[key],
         );
         if (disabled.length && !b.confirmModuleChanges)
-          throw new BadRequestException('关闭功能会使相关准考证失效，请明确确认后保存');
+          throw new BadRequestException(
+            '关闭功能会使相关准考证或本地平台权限失效，请明确确认后保存',
+          );
         if (disabled.includes('admissions') || disabled.includes('rooms'))
           await tx.admissionDocument.updateMany({
             where: { registration: { contestId: id } },
             data: { state: 'STALE', releasedAt: null, version: { increment: 1 } },
           });
-        await lock(tx, `competition-accounts:${id}`);
-        const accountState = await tx.contest.findUniqueOrThrow({
-          where: { id },
-          select: { accountPrefixLocked: true },
-        });
-        if (
-          accountSettings(c).prefix !== b.accountSettings.prefix &&
-          accountState.accountPrefixLocked
-        )
-          throw new BadRequestException('比赛账号已生成，不能修改账号前缀');
-        if (!isDeepStrictEqual(accountSettings(c), b.accountSettings))
-          await tx.admissionDocument.updateMany({
-            where: { registration: { contestId: id } },
-            data: { state: 'STALE', releasedAt: null, version: { increment: 1 } },
+        if (disabled.includes('integrations')) {
+          await tx.webhook.updateMany({
+            where: { contestId: id },
+            data: { enabled: false, version: { increment: 1 } },
           });
+          await audit(tx, u.id, 'WEBHOOK_MODULE_DISABLE', id);
+          const mappings = await tx.accountMapping.findMany({
+            where: { registration: { contestId: id } },
+          });
+          for (const m of mappings) await recordRemoteRevocation(tx, m, id);
+          await tx.accountMapping.updateMany({
+            where: { registration: { contestId: id } },
+            data: { state: 'REVOKED_LOCALLY' },
+          });
+        }
       }
-      const fields = b.fields;
+      const fields = mergePlatformFields(
+        b.fields,
+        b.modules.integrations ? b.policy.platformProfiles : [],
+      );
       const {
         fields: _,
         version: __,
@@ -421,10 +424,6 @@ export class RegistrationService {
             },
           })
         : await tx.contest.create({ data: { ...data, ...dates, policy: json(p) } });
-      if (b.accountSettings.enabled)
-        await enqueue(tx, 'ACCOUNT_BACKFILL', c.id, `accounts:${c.id}:${c.version}`, {
-          contestId: c.id,
-        });
       if (examSites !== undefined) await saveExamSites(tx, c.id, examSites);
       await tx.formVersion.create({
         data: {
@@ -472,21 +471,6 @@ export class RegistrationService {
       () => db.registration.count({ where: filtered }),
       Math.min(500, Math.max(1, take)),
     );
-  }
-  async batchTargets(u: Principal, contestId: string, query: ListQuery, ids?: string[]) {
-    requireManager(u, contestId, 'ADMISSIONS');
-    const rows = await db.registration.findMany({
-      where: {
-        AND: [await filteredAccess(u, query, contestId), ...(ids ? [{ id: { in: ids } }] : [])],
-      },
-      orderBy: [{ number: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
-      select: { id: true, version: true, eligible: true, teamName: true, number: true },
-      take: 10001,
-    });
-    if (rows.length > 10000) throw new BadRequestException('每批最多 10000 份报名，请缩小筛选范围');
-    if (ids && new Set(ids).size !== rows.length)
-      throw new ForbiddenException('选择包含不存在或不属于此活动的报名');
-    return rows;
   }
   async exportRows(
     u: Principal,
@@ -538,7 +522,6 @@ export class RegistrationService {
             feeCents: true,
             netPaidCents: true,
             examSite: true,
-            seats: { include: { room: true }, orderBy: { seat: 'asc' } },
             people: {
               where: { active: true },
               select: {
@@ -596,43 +579,56 @@ export class RegistrationService {
   async detail(u: Principal, id: string, history = true) {
     const r = await getRegistration(u, id);
     const financeDetails = canReadFinanceRecords(u, r);
-    const [vouchers, ledger, refunds, invoices, admissions, invitations] = await Promise.all([
-      db.paymentVoucher.findMany({
-        take: history && financeDetails ? undefined : 0,
-        where: { registrationId: id },
-        orderBy: { createdAt: 'desc' },
-      }),
-      db.ledgerEntry.findMany({
-        take: history && financeDetails ? undefined : 0,
-        where: { registrationId: id },
-        orderBy: { createdAt: 'desc' },
-      }),
-      db.refund.findMany({
-        take: history && financeDetails ? undefined : 0,
-        where: { registrationId: id },
-      }),
-      db.invoiceRequest.findMany({
-        take: history && financeDetails ? undefined : 0,
-        where: { registrationId: id },
-      }),
-      db.admissionDocument.findMany({
-        where: { registrationId: id },
-        orderBy: { createdAt: 'desc' },
-      }),
-      canEdit(u, r)
-        ? db.invitation.findMany({
-            where: { registrationId: id },
-            select: {
-              id: true,
-              kind: true,
-              targetEmail: true,
-              acceptedBy: true,
-              expiresAt: true,
-              revoked: true,
-            },
-          })
-        : Promise.resolve([]),
-    ]);
+    const [vouchers, ledger, refunds, invoices, admissions, mappings, invitations] =
+      await Promise.all([
+        db.paymentVoucher.findMany({
+          take: history && financeDetails ? undefined : 0,
+          where: { registrationId: id },
+          orderBy: { createdAt: 'desc' },
+        }),
+        db.ledgerEntry.findMany({
+          take: history && financeDetails ? undefined : 0,
+          where: { registrationId: id },
+          orderBy: { createdAt: 'desc' },
+        }),
+        db.refund.findMany({
+          take: history && financeDetails ? undefined : 0,
+          where: { registrationId: id },
+        }),
+        db.invoiceRequest.findMany({
+          take: history && financeDetails ? undefined : 0,
+          where: { registrationId: id },
+        }),
+        db.admissionDocument.findMany({
+          where: { registrationId: id },
+          orderBy: { createdAt: 'desc' },
+        }),
+        db.accountMapping.findMany({
+          where: { registrationId: id },
+          select: {
+            id: true,
+            bindingId: true,
+            username: true,
+            state: true,
+            remoteTeamId: true,
+            remoteUserId: true,
+            details: true,
+          },
+        }),
+        canEdit(u, r)
+          ? db.invitation.findMany({
+              where: { registrationId: id },
+              select: {
+                id: true,
+                kind: true,
+                targetEmail: true,
+                acceptedBy: true,
+                expiresAt: true,
+                revoked: true,
+              },
+            })
+          : Promise.resolve([]),
+      ]);
     const forms = await db.formVersion.findUnique({
       where: {
         contestId_version: {
@@ -670,7 +666,6 @@ export class RegistrationService {
       : [];
     return {
       ...r,
-      organization: r.status === 'DRAFT' ? await verifiedOrganization(db, r) : r.organization,
       canReadFinanceDetails: financeDetails,
       actions: registrationActions(u, r),
       displayState: registrationDisplayState(r),
@@ -693,6 +688,7 @@ export class RegistrationService {
       refunds,
       invoices,
       admissions: admissions.map((a) => ({ ...a, storageKey: undefined })),
+      mappings,
       invitations,
     };
   }
@@ -781,6 +777,7 @@ export class RegistrationService {
         r.teamName === b.teamName &&
         r.teamEnglishName === b.teamEnglishName &&
         r.participationType === participationType &&
+        (b.organization === undefined || isDeepStrictEqual(r.organization, b.organization)) &&
         isDeepStrictEqual(r.answers, b.answers) &&
         (!b.coaches ||
           b.coaches.every((x) => isDeepStrictEqual(coaches.get(x.id)!.answers, x.answers))) &&
@@ -828,6 +825,14 @@ export class RegistrationService {
           teamName: b.teamName,
           teamEnglishName: b.teamEnglishName,
           participationType,
+          ...(b.organization !== undefined
+            ? {
+                organization:
+                  b.organization === null
+                    ? (await import('@prisma/client')).Prisma.DbNull
+                    : json(b.organization),
+              }
+            : {}),
           answers: json(b.answers),
         },
       });
@@ -892,9 +897,12 @@ export class RegistrationService {
       if (p.mode === 'TEAM' && !r.teamName.trim()) throw new BadRequestException('请填写队名');
       if (r.participationType === 'UNOFFICIAL' && !p.allowUnofficial)
         throw new BadRequestException('此竞赛未开放非正式报名');
-      const organization = await verifiedOrganization(tx, r, true);
-      await tx.registration.update({ where: { id }, data: { organization: json(organization) } });
-      r = { ...r, organization };
+      if (p.platformProfiles.length && modulesFor(r.contest).integrations) {
+        if (!r.organization) throw new BadRequestException('请填写代表学校／单位信息');
+        organizationSchema.parse(r.organization);
+        if (r.people.some((x) => !x.email))
+          throw new BadRequestException('平台同步需要成员联系人邮箱');
+      }
       if (
         (p.coachMode === 'REQUIRED' && !r.coaches.length) ||
         r.coaches.length > p.maxCoaches ||
@@ -928,9 +936,6 @@ export class RegistrationService {
       }
       const fee = quoteFee(p, r.people.length);
       const delta = fee - r.feeCents;
-      // Account backfill also writes the durable prefix lock on Contest. Take
-      // its lock before updating the registration counter to keep the same order.
-      await lock(tx, `competition-accounts:${r.contestId}`);
       const number =
         r.number ??
         (
@@ -1124,6 +1129,10 @@ export class RegistrationService {
         await tx.admissionDocument.updateMany({
           where: { registrationId: id },
           data: { state: 'STALE', releasedAt: null },
+        });
+        await tx.accountMapping.updateMany({
+          where: { registrationId: id },
+          data: { state: 'STALE' },
         });
         await event(tx, 'ELIGIBILITY', id, { eligible: false });
       }

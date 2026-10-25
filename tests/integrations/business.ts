@@ -350,6 +350,29 @@ try {
   });
   assert.equal((await alice.api(`/support/${ticket.id}`)).status, 'RESOLVED');
   record('scoped support, attachments, replies and status');
+  const token = await admin.api('/admin/tokens', 'POST', {
+    name: `acceptance-${run}`,
+    contestIds: [free.id],
+    scopes: ['contests:read', 'registrations:read', 'finance:read', 'support:read'],
+    fields: ['PERSON.name'],
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+  });
+  const read = await fetch(`${base}/api/automation/v1/registrations/${r.id}`, {
+    headers: { Authorization: `Bearer ${token.token}` },
+  });
+  const filtered = (await read.json()) as any;
+  assert.equal(filtered.people[0].name, '中文选手 & 100%_#');
+  assert.equal(filtered.people[0].email, undefined);
+  assert.deepEqual(filtered.people[0].answers, {});
+  assert.equal(
+    (
+      await fetch(`${base}/api/automation/v1/registrations/${team.id}`, {
+        headers: { Authorization: `Bearer ${token.token}` },
+      })
+    ).status,
+    403,
+  );
+  record('automation token contest and field boundaries');
   const bad = await admin.api('/admissions/preview', 'POST', {
     source: '\\documentclass{article}\\begin{document}\\undefinedcommand\\end{document}',
   });
@@ -376,6 +399,8 @@ try {
         paid: paid.id,
         freeContest: free.id,
         ticket: ticket.id,
+        token: token.token,
+        tokenId: token.id,
         templateId: templateChange.id,
       },
       null,
@@ -383,7 +408,7 @@ try {
     ),
     { mode: 0o600 },
   );
-  assert.equal(report.length, 13, 'All business cases must complete');
+  assert.equal(report.length, 14, 'All business cases must complete');
   console.log(`Business acceptance: ${report.length} cases passed`);
 } finally {
   await mkdir('.runtime/reports', { recursive: true });

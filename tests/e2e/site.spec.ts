@@ -127,7 +127,9 @@ test('admin and contest configuration pages, financial and support views', async
   await expect(page.getByRole('tab', { name: '认证服务', exact: true })).toHaveCount(0);
   for (const [path, name] of [
     ['/admin/users?tab=users', '用户与邀请'],
+    ['/admin/platforms', '平台文件导出'],
     ['/admin?tab=mail', '邮件设置'],
+    ['/admin?tab=tokens', 'API 与 Webhook'],
     ['/admin?tab=site', '全局设置'],
     ['/admin/tasks', '任务'],
   ]) {
@@ -235,17 +237,11 @@ test('administrator downloads the selected current admission as ZIP in browser',
     .filter({ has: page.locator(`a[href="/registrations/${registration.id}"]`) });
   await expect(row).toBeVisible();
   await row.locator('.el-checkbox').click();
-  await page.getByRole('button', { name: '下载准考证 ZIP', exact: true }).click();
-  await page
-    .getByRole('dialog', { name: '确认准考证批量操作' })
-    .getByRole('button', { name: '确认执行', exact: true })
-    .click();
-  const link = page.locator('.batch-progress').getByRole('link', { name: 'admissions-1.zip' });
-  await expect(link).toBeVisible();
   const pending = page.waitForEvent('download');
-  await link.click();
+  await page.getByRole('button', { name: '下载准考证 ZIP', exact: true }).click();
+  await page.getByRole('button', { name: '确定', exact: true }).click();
   const download = await pending;
-  expect(download.suggestedFilename()).toBe('admissions-1.zip');
+  expect(download.suggestedFilename()).toBe('admissions.zip');
   await download.saveAs('.runtime/reports/browser-admissions.zip');
   expect(await download.failure()).toBeNull();
 });

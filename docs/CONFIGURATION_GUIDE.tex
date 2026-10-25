@@ -28,7 +28,7 @@
 \fancyhf{}
 \fancyhead[L]{\small\color{muted}南晓开放原子社在线报名系统}
 \fancyhead[R]{\small\color{muted}配置教程}
-\fancyfoot[L]{\small\color{muted}v1.0.0 · 中文 · Asia/Shanghai}
+\fancyfoot[L]{\small\color{muted}v0.9.2 · 中文 · Asia/Shanghai}
 \fancyfoot[R]{\small\color{muted}\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
@@ -38,7 +38,7 @@
 \AfterEndEnvironment{Code}{\end{minipage}\par}
 \begin{document}
 \thispagestyle{empty}
-{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 24 日}
+{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 23 日}
 \vspace{9mm}
 
 {\huge\bfseries\color{ink}南晓开放原子社\\[3mm]在线报名系统}
@@ -46,22 +46,22 @@
 {\Large\color{brand}配置教程}
 \vspace{5mm}
 
-本教程从首次部署开始，说明站点与邮件设置、链接授权、报名信息导出与比赛账号、竞赛规则和准考证模板的配置方法。系统管理员维护全站配置，竞赛管理员仅管理获得授权的竞赛。
+本教程从首次部署开始，说明站点与邮件设置、链接授权、评测平台文件导出、竞赛规则和准考证模板的配置方法。系统管理员维护全站配置，竞赛管理员仅管理获得授权的竞赛。
 
 \shot[0.38\textheight]{01-home}{独立首页：点击“进入报名系统”后进入登录或竞赛列表。}
 
 \textbf{建议配置顺序}
 
-部署与初始化管理员 → 站点、GitHub 与邮件 → 账号资料和标签 → 链接授权 → 实名认证 → 竞赛规则与字段 → 准考证 → 测试与备份。
+部署与初始化管理员 → 站点、GitHub 与邮件 → 账号资料和标签 → 链接授权 → 评测平台 → 竞赛规则与字段 → 准考证 → 测试与备份。
 
 截图来自本地运行的实际页面。教程中的邮箱、域名、竞赛和账号均为虚构示例；截图未展示密码、插件密钥或原始邀请令牌。示例竞赛未公开发布，教程所用临时邮件设置已恢复。
 
 \vfill
-{\small\color{muted}功能范围：邮箱密码 / GitHub 登录、必填个人资料、用户标签、按时间编号审核、个人 / 团队报名、线下财务、工单、LaTeX 准考证、Excel / CSV 名单、独立比赛账号及准考证批量发放。}
+{\small\color{muted}功能范围：邮箱密码 / GitHub 登录、必填个人资料、用户标签、按时间编号审核、个人 / 团队报名、线下财务、工单、LaTeX 准考证、Hydro / DOMjudge 导入文件及只读 MCP。}
 
 \newpage
 \section{首次部署与管理员初始化}
-v1.0.0 按全新部署使用。已有 v0.x 实例先独立备份数据库、附件与加密密钥，再使用新的安装目录、Compose 项目名和数据卷安装；不提供旧平台账号或历史报名兼容适配。不要把旧备份直接恢复到新实例。
+安装器在启动 Caddy 前修正当前挂载的配置目录和文件权限，供非 root 网关读取；实例密钥文件仍保持 600。旧版若出现 Caddyfile 的 permission denied，可修正网关配置权限并重启后，再使用新版入口升级。
 
 \textbf{一键安装。}宿主机准备 Docker、Compose 2.24.4 以上、Bash、curl 和 OpenSSL。下载根目录的统一脚本，自动下载并校验发布包；也可解压 Release 安装包后直接运行其根目录脚本：
 \begin{Code}
@@ -84,13 +84,15 @@ PUBLIC_URL=https://contest.example.org
 REVERSE_PROXY_MODE=gateway
 GATEWAY_PORT=8080
 GATEWAY_BIND_ADDRESS=127.0.0.1
+ALLOW_PRIVATE_INTEGRATIONS=false
 \end{Code}
-外层代理将整个站点转发到 \code{http://127.0.0.1:8080}，保留路径、Host 和原始协议；内部 Caddy 分流前端与 API。默认不占用公网 80 / 443、不申请证书。旧配置升级保留原代理模式。安装入口使用 \code{PUBLIC_URL}；旧根目录 Compose 使用 \code{DEPLOY_PUBLIC_URL}。外接平台及通用开放接口已移除，GitHub 和飞书登录继续可用。
+外层代理将整个站点转发到 \code{http://127.0.0.1:8080}，保留路径、Host 和原始协议；内部 Caddy 分流前端与 API。默认不占用公网 80 / 443、不申请证书。旧配置升级保留原代理模式。安装入口使用 \code{PUBLIC_URL}；旧根目录 Compose 使用 \code{DEPLOY_PUBLIC_URL}。平台导出只生成本地文件，不连接 OJ；旧变量默认 false。Webhook 的私网目标须由系统管理员逐一批准。
 
 \textbf{部署环境保留：}数据库、缓存、私有附件及 \code{ENCRYPTION_KEY}。更新须保留原密钥，否则无法读取邮件密码、比赛凭据与备份。浏览器信任来源可在后台维护，环境变量保留恢复入口。
 
-\textbf{管理中心维护：}站点、邮件、用户授权、报名导出、比赛账号、字段与准考证模板。首次登录后先配置并测试邮件。
+\textbf{管理中心维护：}站点、邮件、用户授权、平台文件导出、Token、字段与准考证模板。首次登录后先配置并测试邮件。
 
+\newpage
 \section{首页、登录与站点设置}
 首页 \code{/} 独立展示系统介绍。未登录时点击“进入报名系统”，会跳转登录；直接访问竞赛列表或竞赛详情也会触发登录检查。登录成功后返回原本准备访问的页面，包括详情页参数。
 \shot[0.31\textheight]{02-login}{登录入口：使用本站用户名或邮箱与密码。}
@@ -100,6 +102,7 @@ GATEWAY_BIND_ADDRESS=127.0.0.1
 
 \textbf{公网地址与信任来源。}公网地址用于生成邮件和邀请链接。同源请求与当前公网地址自动允许。系统管理员点击“编辑”，在“信任的请求来源”每行填写一个内外网根地址，也可用逗号分隔，保存后立即生效。例如 \code{https://reg.example.org} 与 \code{http://192.168.1.10:8080}。地址须包含协议及端口（如有），不接受通配符、账号密码、额外路径、查询参数或片段。环境变量 \texttt{TRUSTED\_\allowbreak MANAGEMENT\_\allowbreak ORIGINS} 继续可用，并在后台单独展示。保存检查版本并记录审计；TLS、域名及访问控制由反向代理负责。
 
+\newpage
 \begin{enumerate}
 \item 域名解析：给注册域名添加指向服务器的 A 记录；启用 IPv6 时再配置正确的 AAAA 记录。
 \item 反向代理：默认由自有代理监听 HTTPS，配置证书。整个站点转发到内部 Caddy 的 \code{127.0.0.1:8080} HTTP 入口，保留 Host、Origin 和请求协议。
@@ -115,7 +118,7 @@ docker compose exec api pnpm restore:public-url https://reg.example.org
 恢复命令保留站点其他设置、递增版本并记录审计，不需要清空数据库。
 
 
-公开邮箱注册保留；用户验证邮箱并完善五项资料后才可报名，授权邀请仍需明确确认。修改登录邮箱须再认证并验证新邮箱；验证前仍使用原邮箱，完成后撤销其他会话并通知原邮箱。本站登录密码与独立比赛账号密码分别管理。
+公开邮箱注册保留；用户验证邮箱并完善五项资料后才可报名，授权邀请仍需明确确认。修改登录邮箱须再认证并验证新邮箱；验证前仍使用原邮箱，完成后撤销其他会话并通知原邮箱。本站账号密码与评测平台比赛账号的密码分别管理。
 
 \newpage
 \section{GitHub 登录与账号资料}
@@ -188,24 +191,66 @@ GitHub OAuth App 的真实凭据由部署管理员配置。本版本以独立模
 \end{itemize}
 
 \newpage
-\section{导出 Excel 与 CSV 报名信息}
-在活动的“报名管理”中点击“导出名单”，选择 Excel（.xlsx）或 CSV。默认使用 Excel，导出范围覆盖当前筛选条件下的全部报名，每名选手一行。团队资料重复到各成员行，包含成员、老师、实名单位、动态字段、审核、资格、考点、考场与座位；财务列要求财务权限，金额只在每份报名的首行填写。
+\section{导出 Hydro 导入文件}
+从 v0.7.0 起改用官方 Onsite Toolkit 的 JSON 导入，移除本站桥接插件、实例凭据与自动同步。活动开启“平台文件导出”，管理员选择 Hydro 最新版和报名范围，下载 ZIP 后解压。仅包含已取得资格的报名，密码与本站登录独立且重复导出保持不变。
+\shot[0.42\textheight]{07-platform-hydro-export}{平台导出中心：下载 Hydro Onsite Toolkit 导入包。}
 
-Excel 冻结表头并提供筛选，学号、手机号和账号按文本保存，保留前导零和长编号。CSV 使用带 BOM 的 UTF-8，并转义公式字符。每次最多导出 10000 名成员、500 列和 25 MiB 文件；请用筛选条件缩小超大名单。
+以实际运行 Hydro 的用户安装官方插件并重启实际服务：
+\begin{Code}
+yarn global add @hydrooj/onsite-toolkit@latest
+hydrooj addon add @hydrooj/onsite-toolkit
+pm2 restart hydrooj
+\end{Code}
+在控制面板 → 配置管理启用 \code{extraFields} 和 \code{contestMode}，需要机房 IP 登录时再启用 \code{ipLogin}。容器部署在容器内安装与注册，文件路径和 addon.json 必须属于同一 Hydro 运行环境。
 
-\section{配置独立比赛账号}
-活动设置中的“生成比赛账号”默认关闭。开启后填写账号前缀，例如 \code{nxcpc_}，账号按报名编号生成，如 \code{nxcpc_0001}。个人报名一组，团队全队共享一组，密码随机生成并加密保存，与本站登录密码分开。
+上传包内 teams.json，读取目标比赛地址的 24 位 ObjectId 与域。最新插件参数为文件路径、比赛 ID、头像格式、域 ID；默认域填 system。本站活动 UUID 不能用作比赛 ObjectId，单个比赛 ID 后不要加多余逗号。
+\begin{Code}
+hydrooj cli system onsiteImport /srv/import/teams.json 0123456789abcdef01234567 webp training
+# 同域多个比赛：ObjectId,ObjectId，不加空项
+hydrooj cli system onsiteImport /srv/import/teams.json 0123456789abcdef01234567,1123456789abcdef01234567 webp system
+\end{Code}
+字段包含 id、name、displayName、password、school、members、coach、seat 和 rank。id 固定使用报名 UUID，用于识别对应 onsite.local 账号；name 为个人本人／团队队长报名资料中的学号，按字符串保留前导零并遵循 Hydro 规范化规则；displayName 保留填写的队名／个人姓名。password 为系统生成并加密保存的独立比赛密码。members 只包含有效成员且队长在前，不同时输出 member1 至 member4，四名及更多成员仍使用数组。rank 必须为布尔值，true 为正式，false 为非正式；支持全部按非正式导出。JSON 直接生成，队名 NULL 和中文不会被表格转换丢弃。
 
-报名取得参赛资格后自动生成；中途开启功能会补齐已有合格报名。重复生成、导出或关闭再开启都保留原密码。首个账号生成后前缀锁定。资格失效或关闭功能后停止输出密码，恢复资格后复用原账号。
+seat 使用考场编号加至少两位座位序号，例如 A01、A100，不带活动前缀。未排座或未填编号时为空，不用人工队伍编号或报名编号替代。学号缺失、格式不符或同包重名时整包拒绝，凭据表的学号、密码和座位与 JSON 保持一致。
 
-“准考证显示账号密码”默认开启，模板变量为 \code{account.username} 和 \code{account.password}。导出弹窗另有“包含比赛账号密码”，默认不勾选。修改账号显示配置后，旧准考证失效，需要重新生成、检查和发放。
+\textbf{必须核对的已知问题。}
+\begin{itemize}
+\item 每次比赛清空 Hydro 后导入，不兼容旧导入账号或跨活动账号复用。用户名全站唯一，同包学号按 Hydro 规范化后忽略大小写比较；保留包内报名 UUID。不同报名不能共用非空座位，多条空座位允许导出；一个团队有多个成员座位时先统一平台座位。
+\item 当前插件重导会用 password 覆盖远端旧密码。本站重复导出保持密码不变，远端自行改过密码时先核对；不要使用会重算随机值的 Excel 公式生成密码条。
+\item 部分 XCPCIO／CCS 榜单只显示 name，不显示 displayName，此时会显示学号；赛前检查队名显示。
+\item contestMode 限制账号功能及域访问。使用导出的账号实际登录，核对域、比赛关联、正式／非正式性质与成员。
+\item 需要 IP 登录时先补齐编号和排座，再创建无表头的 seat,ip CSV，seat 使用导出的非空座位；执行下方命令。CSV 不支持含逗号的座位和引号转义。旧 IP 映射只增改，不会随名单缩减自动清除；同时检查代理真实 IP。
+\end{itemize}
+\begin{Code}
+hydrooj cli system setIpLogin /srv/import/seats.csv
+\end{Code}
+头像路径由学校名生成，头像格式参数应与实际文件一致。CCS 在名单／题目最终确定后初始化；单题总时限、SPJ、CRLF/LF、外榜和滚榜需另行赛前检查。完整坑点和赛后清理参见\href{https://www.cnblogs.com/zerc/p/-/cpc#extra-fields}{用户指定的现场赛文章}、\href{https://docs.hydro.ac/zh/docs/Hydro}{Hydro 官方文档}及\href{https://github.com/hydro-dev/Hydro/blob/master/packages/onsite-toolkit/index.ts}{当前插件实现}。2026-10-21 核对 npm 最新发布为 Hydro 5.0.7、Onsite Toolkit 0.1.1。
 
-\section{实名单位与批量准考证}
-学校／单位是实名资料必填项。个人报名引用本人、团队报名引用队长审核通过的单位，只读显示；不再单独填写单位简称、ICPC 编号或国家／地区代码。可以保存报名草稿，但提交及补正重提时，本人／队长必须已经通过实名审核且单位完整。团队允许跨单位成员，代表单位在提交时写入报名快照。
+\newpage
+\section{导出 DOMjudge 导入文件}
+兼容 DOMjudge 9.x。平台导出中心选择 DOMjudge，下载 ZIP，包含 groups.json、organizations.json、teams.json、accounts.json、账号密码表和说明。已有分组可填写外部 ID，否则自动生成活动专属 ID。
+\shot[0.42\textheight]{08-platform-domjudge-export}{DOMjudge 9.x 导出：可配置正式与非正式分组外部 ID。}
 
-报名管理支持跨页勾选，也可显式选择当前筛选条件下的全部报名。改变筛选条件会清空勾选，翻页保留勾选。操作前预览总数、可处理数与跳过原因，并固定目标报名 ID 和版本。
+在目标平台管理员后台打开 Import / export → Import JSON / YAML，依次导入：
+\begin{enumerate}
+\item groups：导入 groups.json。正式与非正式组的 sortorder 分别为 0、1；相同顺序会合并排名，只有组名不同不足以隔离。
+\item organizations：导入 organizations.json。formal\_name 为全称，name 为简称，country 是 ISO 三位国家代码，例如 CHN。
+\item teams：导入 teams.json，绑定 group\_ids 与 organization\_id；组数组仅一个元素，成员与可选英文队名合并写入 members。
+\item accounts：导入 accounts.json，用户 type 固定 team，team\_id 必须对应队伍外部 id。不要选 users，也不要混用旧 TSV。官方支持 accounts.yaml 和 accounts.json。
+\end{enumerate}
+同一学校的信息必须一致，不能用个人学校替代代表单位。队伍编号／座位全局唯一，本站加活动前缀；编号与数据库数字主键不同。导入完成后，在目标比赛允许对应分组参赛，检查激活时间、开始时间与奖项。导入队伍／用户不会自动创建比赛或配置比赛准入。
 
-批量生成完成后，管理员先检查 PDF，再单独执行“批量发放准考证”。发放后开放站内下载并触发通知，重复发放不重复通知。后台显示成功、失败、跳过及进度，资料变化或资格失效的记录不会继续处理。每批最多 10000 份；ZIP 每包最多 1000 份 PDF、源文件合计最多 100 MiB，超出自动分包，下载入口 24 小时有效并重新校验全部文档权限。
+重复导入队伍会按外部 ID 更新；9.x 用户导入可能跳过或拒绝已存在账号，改名、密码与关联必须在 Users 后台核对。查看每个导入结果，使用 team 账号实际登录并确认比赛访问后再发放密码条。格式依据\href{https://www.domjudge.org/documentation}{官方文档}与\href{https://github.com/DOMjudge/domjudge/blob/9.0.1/doc/manual/import.rst}{9.x 批量导入说明}。
+
+\newpage
+\section{平台文件导出与升级}
+可先开放报名，后续启用平台文件导出。平台模板继续收集代表单位、参赛性质和可选平台字段；已有报名缺项需补正并重新审核。导出权限为活动的“平台文件导出”，普通报名者不能获取名单密码。草稿、无资格、已取消报名不会导出，可排除非正式报名或全部按非正式导入。
+
+一个报名对应一个队伍与比赛账号。系统保存加密的独立密码，重复导出保持稳定。包内 credentials.csv 为明文密码表，不公开上传；其公式字符已转义。文件仅描述当前名单，资格撤销、取消／删除报名或停用模块不会删除远端账号，主办方必须在目标平台手动处理。
+
+升级前备份。v0.7.0 停用旧实例与自动绑定、移除旧服务凭据、取消未完成 SYNC 任务；历史映射和人工撤权待办保留。旧配置、同步和回调接口已移除，新导出账号不复用旧同步账号。进行中的比赛请勿直接切换账号体系。
+
+\textbf{验收顺序。}完成报名、审核与费用条件 → 下载文件 → 在平台按教程导入 → 读回队伍、学校、性质和账号关联 → 实际登录目标比赛 → 重复导出／导入验证。导出成功仅表示文件生成完成，不能代替目标平台验收。更完整的步骤、字段与排查见项目 docs/INTEGRATIONS.md。
 
 \newpage
 \section{竞赛报名规则与线下财务}
@@ -227,7 +272,7 @@ Excel 冻结表头并提供筛选，学号、手机号和账号按文本保存�
 
 启用“考场与座位”后，为每个考场选择所属考点。自动、手动及 CSV 排座均限制在报名所选考点内；团队按现有排考模式安排同考点座位。考场已有座位时，先清空座位才能更换所属考点。准考证地点合并考点名称、地址和考场地址；修改考点名称或地址后，应重新生成并发放准考证。
 
-考场另有可选的“考场编号”，支持字母、数字、下划线和连字符，最长 20 字符，去除首尾空格后统一大写，同一活动内唯一。报名导出分别包含考场与座位。修改编号、地点和排考后，相关准考证需要重新生成。
+考场另有可选的“考场编号”，支持字母、数字、下划线和连字符，最长 20 字符，去除首尾空格后统一大写，同一活动内唯一。例如编号 A、座位 1 在 Hydro 中导出为 A01，座位 100 为 A100。已有考场编号为空，不按名称推测；未填编号时 Hydro 导出空座位。新增或修改编号后重新导出导入包，编号修改沿用排考版本和准考证失效流程；排考 CSV 仍使用考场名称。
 
 管理员在报名管理中可查看和筛选考点，导出的名单包含考点名称与地址。报名详情也显示所选考点及地址，便于选手核对。
 
@@ -247,7 +292,7 @@ Excel 冻结表头并提供筛选，学号、手机号和账号按文本保存�
 
 键名用于接口和模板变量，保存后保持稳定。类型使用短文本、长文本、数字、日期、单选、多选、开关、文件或照片。选项字段需要提供选项内容；条件字段只在条件满足时显示。敏感字段在接口查询中需要明确授权。
 
-报名字段按参赛者、队伍、报名和老师划分，支持自定义字段与历史版本。代表单位直接引用已通过审核的实名单位，平台基础模板已移除。
+选择 Hydro 最新版或 DOMjudge 9.x 基础模板后，系统合并重复项并区分参赛者填写、系统生成和管理员配置。固定映射项不可删除或改键名；队伍英文名、ICPC 编号、队伍编号／座位与地点按模板提供，可选资料无需强制填写。代表学校／单位与成员学校分别维护；启用新模板时提示旧报名补充缺项，不覆盖历史提交快照。
 
 \newpage
 \section{发票申请与审核}
@@ -261,7 +306,7 @@ Excel 冻结表头并提供筛选，学号、手机号和账号按文本保存�
 \section{分页、Markdown 与页面使用}
 附件上传期间先等待完成，再保存、取消或退出登录。会话过期时可使用原账号恢复登录，当前草稿会保留。
 
-管理中心的用户、授权邀请、审计与任务，报名名单、工单以及财务历史均支持 20／50／100 条每页。显示总数、页码与跳页；页大小刷新后保留，筛选变化回到第一页。搜索、状态与时间条件同时作用于列表和总数；统计和名单导出始终覆盖完整筛选结果。批量准考证操作使用跨页勾选或显式选择的完整筛选结果，并在执行前确认数量。
+管理中心的用户、授权邀请、审计与任务，报名名单、工单以及财务历史均支持 20／50／100 条每页。显示总数、页码与跳页；页大小刷新后保留，筛选变化回到第一页。搜索、状态与时间条件同时作用于列表和总数；统计和名单导出始终覆盖完整筛选结果。批量准考证操作使用明确选中的报名，未选时作用于当前页符合条件的报名。
 \shot[0.29\textheight]{22-pagination}{中文审计操作与分页：选择每页条数，查看关联对象和详情。}
 
 竞赛介绍可选择纯文本或 Markdown。旧介绍保持纯文本；编辑器提供标题、列表、表格、引用、代码块、链接和图片地址工具与预览。渲染关闭原始 HTML 并净化内容；图片使用可公开访问的 HTTPS 地址。手机号、税号等私人信息不要写入公开介绍。
@@ -292,7 +337,7 @@ Excel 冻结表头并提供筛选，学号、手机号和账号按文本保存�
 预览无误后保存新版本。生成任务失败时查看编译原因，修复后重新生成；失败文件不会向参赛者发放。完整变量、照片字段和座位导入格式见 \code{docs/ADMISSIONS.md}。
 \shot[0.12\textheight]{14-jobs}{任务页：检查后台任务服务、待派发事件和失败任务。}
 
-在“任务”页查看状态、错误和尝试次数，失败任务可重试。邮件测试状态表示服务器已接收邮件，实际送达仍需检查收件箱。批量准考证任务显示逐项进度和结果，权限或资料变化后需要重新核对。网站内部接口说明见 \code{docs/API.md}。
+在“任务”页查看状态、错误和尝试次数，失败任务可重试。邮件测试状态表示服务器已接收邮件，实际送达仍需检查收件箱。接口令牌与签名事件推送在“API 与 Webhook”配置；按竞赛与字段限制权限，只读 MCP 使用专用查询令牌。接口详情见 \code{docs/API.md}。
 
 \begin{Code}
 bash scripts/backup.sh /srv/contest-backups

@@ -55,7 +55,7 @@ for (const filter of ['search', 'review'] as const) {
     await setup(page);
     const generate = page.getByRole('button', { name: '批量生成准考证', exact: true });
     const download = page.getByRole('button', { name: '下载准考证 ZIP', exact: true });
-    await expect(generate).toBeDisabled();
+    await expect(generate).toBeEnabled();
     await page
       .getByRole('row')
       .filter({ hasText: alice.user.name })

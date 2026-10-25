@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 export const fullRegressionSuites = [
   'test:integration',
-  'test:registration-exports',
+  'test:platform-exports',
   'test:auth',
   'test:audit-20261022',
   'test:accounts',
@@ -15,6 +15,7 @@ export const fullRegressionSuites = [
   'test:admissions',
   'test:activity-workflows',
   'test:exam-sites',
+  'test:workflow-upgrade',
   'test:bugs',
   'test:security',
   'test:audit-fixes',
@@ -22,16 +23,18 @@ export const fullRegressionSuites = [
   'test:permissions',
   'test:file-race',
   'test:load',
+  'test:mcp',
   'test:e2e',
 ];
 export const expectedChecks = {
   'test:permissions': 18,
-  'test:whole-audit': 11,
-  'test:security': 18,
-  'test:audit-20261022': 15,
+  'test:whole-audit': 13,
+  'test:security': 20,
+  'test:audit-20261022': 17,
 };
 export function validateFullRegression(report, commit) {
   assert.equal(report.success, true);
+  assert.equal(report.ojRun, true, 'Hydro and DOMjudge import acceptance is required');
   assert.equal(report.fullRun, true, 'Filtered regression cannot authorize a release');
   assert.equal(report.startCommit, commit, 'Tests must start on the released commit');
   assert.equal(report.commit, commit);

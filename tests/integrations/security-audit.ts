@@ -447,6 +447,48 @@ try {
     for (let index = 0; index < additional.length; index++)
       assert.ok(completeCsv.includes(`"批次选手 ${index}"`));
   });
+  await check('webhook-cannot-target-loopback', async () => {
+    const c = await contest();
+    const response = await admin.raw('/api/v1/admin/webhooks', 'POST', {
+      contestId: c.id,
+      url: 'http://127.0.0.1:3000/api/v1/health',
+    });
+    assert.equal(
+      response.status,
+      400,
+      'Private platform integration settings must not permit private webhooks',
+    );
+    await grant(bob, c.id, ['VIEW', 'INTEGRATIONS']);
+    assert.equal(
+      (
+        await bob.raw('/api/v1/admin/webhooks', 'POST', {
+          contestId: c.id,
+          url: 'http://127.0.0.1:3000',
+          allowPrivate: true,
+        })
+      ).status,
+      403,
+    );
+    const approved = await admin.api('/admin/webhooks', 'POST', {
+      contestId: c.id,
+      url: 'http://127.0.0.1:3000',
+      allowPrivate: true,
+    });
+    assert.equal(
+      (await db.webhook.findUniqueOrThrow({ where: { id: approved.id } })).privateApprovedBy,
+      admin.user.id,
+    );
+    assert.equal(
+      (
+        await admin.raw('/api/v1/admin/webhooks', 'POST', {
+          contestId: c.id,
+          url: 'http://169.254.169.254',
+          allowPrivate: true,
+        })
+      ).status,
+      400,
+    );
+  });
   await check('secure-session-uses-public-https-without-proxy-header', async () => {
     const original = config.publicUrl;
     const agent = `security-cookie-${run}`;
@@ -511,6 +553,78 @@ try {
       await redis.del(...keys);
     }
   });
+  await check('retired-platform-sync-never-contacts-remote-or-blocks-removal', async () => {
+    let requests = 0;
+    const server = createServer((_req, res) => {
+      requests++;
+      res.writeHead(503).end();
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const c = await contest();
+    const r = await entry(c);
+    const instance = await db.platformInstance.create({
+      data: {
+        name: `slow-${run}`,
+        type: 'HYDRO',
+        baseUrl: `http://127.0.0.1:${(server.address() as any).port}`,
+        credentials: encrypt('{}'),
+      },
+    });
+    const binding = await db.platformBinding.create({
+      data: { contestId: c.id, instanceId: instance.id, remoteContestId: 'slow', automatic: false },
+    });
+    const mapping = await db.accountMapping.create({
+      data: {
+        registrationId: r.id,
+        bindingId: binding.id,
+        username: `slow-${run}`,
+        credential: encrypt('isolated-test-password'),
+      },
+    });
+    const job = await db.job.create({
+      data: {
+        kind: 'SYNC',
+        resourceId: r.id,
+        dedupeKey: `audit-sync:${run}`,
+        payload: {
+          mappingId: mapping.id,
+          version: r.version,
+          bindingVersion: binding.version,
+          instanceVersion: instance.version,
+          remoteTeamId: 'slow',
+        },
+      },
+    });
+    try {
+      const before = Date.now();
+      await until(
+        async () => {
+          const heartbeat = await db.setting.findUnique({ where: { key: 'workerHeartbeat' } });
+          return new Date(String((heartbeat?.value as any)?.at)).getTime() > before;
+        },
+        Boolean,
+        10000,
+      );
+      assert.equal(requests, 0, 'Retired jobs must never contact the judging platform');
+      assert.equal((await admin.raw(`/api/v1/admin/jobs/${job.id}/retry`, 'POST')).status, 400);
+      const deletion = alice.raw(`/api/v1/registrations/${r.id}/cancel`, 'POST', {
+        version: r.version,
+      });
+      const free = await Promise.race([
+        deletion.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1000)),
+      ]);
+      assert.equal((await deletion).status, 201);
+      assert.equal(free, true, 'Remote I/O must not hold the registration transaction lock');
+      assert.equal(await db.accountMapping.count({ where: { registrationId: r.id } }), 0);
+      assert.notEqual((await db.job.findUniqueOrThrow({ where: { id: job.id } })).state, 'SUCCESS');
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await db.platformInstance.update({ where: { id: instance.id }, data: { enabled: false } });
+    }
+  });
   await check('finance-history-rejects-prototype-key', async () => {
     const r = await entry(await contest());
     assert.equal(
@@ -523,6 +637,7 @@ try {
   });
 } finally {
   await db.adminGrant.deleteMany({ where: { id: { in: grants } } });
+  await db.webhook.updateMany({ where: { contestId: { in: contests } }, data: { enabled: false } });
   await db.contest.updateMany({
     where: { id: { in: contests } },
     data: { published: false, archived: true },
@@ -531,7 +646,7 @@ try {
   await writeFile(
     '.runtime/reports/security-audit.json',
     JSON.stringify(
-      { success: results.length === 18 && results.every((r) => r.status === 'PASS'), results },
+      { success: results.length === 20 && results.every((r) => r.status === 'PASS'), results },
       null,
       2,
     ),
@@ -539,4 +654,4 @@ try {
   await redis.quit();
   await db.$disconnect();
 }
-if (results.length !== 18 || results.some((r) => r.status !== 'PASS')) process.exitCode = 1;
+if (results.length !== 20 || results.some((r) => r.status !== 'PASS')) process.exitCode = 1;

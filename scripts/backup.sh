@@ -35,14 +35,10 @@ compose stop api worker >/dev/null
 compose exec -T postgres pg_dump -U contest -d contest_center -Fc > "$stage/database.dump"
 has_s3_schema="$(compose exec -T postgres psql -U contest -d contest_center -Atqc "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Attachment' AND column_name='storageBackend')")"
 if [[ "$has_s3_schema" == t ]]; then backup_compose run --rm -T --no-deps --user 1000 worker sh -c 'test -f src/storage-cli.ts || { echo "Storage backup helper is missing" >&2; exit 1; }; node --import tsx src/storage-cli.ts export /data/storage/.s3-backup'; fi
-backup_compose run --rm -T --no-deps --user 1000 worker tar --no-xattrs --no-acls -czf - -C /data/storage . > "$stage/files.tgz"
+backup_compose run --rm -T --no-deps --user 1000 worker tar -czf - -C /data/storage . > "$stage/files.tgz"
 backup_compose run --rm -T --no-deps --user 1000 worker sh -c 'if test -f src/storage-cli.ts; then node --import tsx src/storage-cli.ts clean /data/storage/.s3-backup; fi'
 cp "$contest_env_file" "$stage/environment.env"
-# Metadata is unnecessary for a data backup and differs across macOS/libarchive
-# and GNU tar. Do not copy host xattrs/ACLs into the strictly validated archive.
-tar_metadata=(--no-xattrs --no-acls)
-if tar --version | head -n 1 | grep -qi bsdtar; then tar_metadata+=(--no-fflags); fi
-COPYFILE_DISABLE=1 tar "${tar_metadata[@]}" -czf "$stage/raw.tgz" -C "$stage" database.dump files.tgz environment.env
+COPYFILE_DISABLE=1 tar -czf "$stage/raw.tgz" -C "$stage" database.dump files.tgz environment.env
 backup_compose run --rm -T --no-deps --user "$(id -u):$(id -g)" -v "$stage:/backup" -v "$(pwd)/scripts/verify-backup.mjs:/verify-backup.mjs:ro" api node /verify-backup.mjs /backup/raw.tgz outer
 backup_compose run --rm -T --no-deps --user "$(id -u):$(id -g)" -v "$stage:/backup" -v "$(pwd)/scripts/verify-backup.mjs:/verify-backup.mjs:ro" api node /verify-backup.mjs /backup/files.tgz files
 # Host-owned output remains readable and chmod-able for non-root Linux installers.

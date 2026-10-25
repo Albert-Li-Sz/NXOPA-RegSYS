@@ -126,17 +126,6 @@ try {
   await run(['admin'], credentials);
   const admin = await new Client().login(credentials.ADMIN_USERNAME, credentials.ADMIN_PASSWORD);
   await admin.completeProfile();
-  const reviewerCredentials = {
-    ADMIN_USERNAME: 'proxy_reviewer',
-    ADMIN_EMAIL: 'proxy-reviewer@example.test',
-    ADMIN_PASSWORD: randomBytes(24).toString('base64url'),
-  };
-  await run(['admin'], reviewerCredentials);
-  const identityReviewer = await new Client().login(
-    reviewerCredentials.ADMIN_USERNAME,
-    reviewerCredentials.ADMIN_PASSWORD,
-  );
-  await admin.ensureIdentity(identityReviewer);
   const contest = await admin.api('/contests', 'POST', {
     title: '代理切换验收',
     season: '安装验收',

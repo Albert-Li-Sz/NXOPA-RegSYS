@@ -1,20 +1,10 @@
 import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { db, json } from './db.js';
+import { db } from './db.js';
 import { readBlob } from './storage.js';
 import { config } from './config.js';
 const [operation, directory] = process.argv.slice(2);
-async function batchParts() {
-  const batches = await db.admissionBatch.findMany();
-  return batches.flatMap((batch) =>
-    ((batch.result as any)?.files ?? []).flatMap((file: any, part: number) =>
-      file.storageBackend === 'S3' ? [{ ...file, id: batch.id, part }] : [],
-    ),
-  );
-}
-const objectName = (kind: string, id: string, part?: number) =>
-  `${kind}-${id}${kind === 'batch' ? `-${part}` : ''}`;
 if (!directory || path.resolve(directory) !== path.join(config.storage, '.s3-backup'))
   throw new Error('Use the dedicated storage backup directory');
 try {
@@ -38,23 +28,12 @@ try {
           .filter((x) => (x.result as any)?.storageBackend === 'S3')
           .map((x) => ({ id: x.id, ...(x.result as any) })),
       ],
-      ['batch', await batchParts()],
     ] as const)
       for (const row of rows) {
         const ref = row as any;
-        const name = objectName(kind, row.id, ref.part);
-        await writeFile(
-          path.join(directory, name),
-          await readBlob(ref, kind === 'batch' ? 101 * 1024 * 1024 : undefined),
-          { mode: 0o600 },
-        );
-        records.push({
-          kind,
-          id: row.id,
-          ...(kind === 'batch' ? { part: ref.part } : {}),
-          name,
-          sha256: ref.sha256,
-        });
+        const name = `${kind}-${row.id}`;
+        await writeFile(path.join(directory, name), await readBlob(ref), { mode: 0o600 });
+        records.push({ kind, id: row.id, name, sha256: ref.sha256 });
       }
     await writeFile(path.join(directory, 'manifest.json'), JSON.stringify(records), {
       mode: 0o600,
@@ -73,7 +52,6 @@ try {
       ...previews
         .filter((r) => (r.result as any)?.storageBackend === 'S3')
         .map((r) => `preview-${r.id}`),
-      ...(await batchParts()).map((r) => objectName('batch', r.id, r.part)),
     ];
     let rows: any[] = [];
     try {
@@ -90,11 +68,9 @@ try {
     // Validate the complete manifest and every object before mutating restored references.
     for (const row of rows) {
       if (
-        !['attachment', 'admission', 'preview', 'batch'].includes(row.kind) ||
+        !['attachment', 'admission', 'preview'].includes(row.kind) ||
         !/^[a-f0-9-]{36}$/.test(row.id) ||
-        (row.kind === 'batch' &&
-          (!Number.isInteger(row.part) || row.part < 0 || row.part > 10000)) ||
-        row.name !== objectName(row.kind, row.id, row.part) ||
+        row.name !== `${row.kind}-${row.id}` ||
         !expected.includes(row.name)
       )
         throw new Error('Invalid backup object path');
@@ -103,7 +79,9 @@ try {
         throw new Error('Backup object checksum mismatch');
     }
     for (const row of rows) {
-      const key = `restored-${objectName(row.kind, row.id, row.part)}`;
+      if (!/^(attachment|admission|preview)-[a-f0-9-]{36}$/.test(row.name))
+        throw new Error('Invalid backup object path');
+      const key = `restored-${row.kind}-${row.id}`;
       const bytes = await readFile(path.join(directory, row.name));
       if (row.sha256 && createHash('sha256').update(bytes).digest('hex') !== row.sha256)
         throw new Error('Backup object checksum mismatch');
@@ -118,12 +96,7 @@ try {
         await db.attachment.update({ where: { id: row.id }, data: ref });
       else if (row.kind === 'admission')
         await db.admissionDocument.update({ where: { id: row.id }, data: ref });
-      else if (row.kind === 'batch') {
-        const batch = await db.admissionBatch.findUniqueOrThrow({ where: { id: row.id } });
-        const result = batch.result as any;
-        result.files[row.part] = { ...result.files[row.part], ...ref };
-        await db.admissionBatch.update({ where: { id: batch.id }, data: { result: json(result) } });
-      } else await db.job.update({ where: { id: row.id }, data: { result: ref } });
+      else await db.job.update({ where: { id: row.id }, data: { result: ref } });
     }
     console.log(
       `Restored ${rows.length} S3 objects as local copies; the administrator can migrate them to configured S3 storage.`,

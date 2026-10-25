@@ -20,6 +20,12 @@ test.afterAll(async () => {
     where: { contestId: { in: ids }, revokedAt: null },
     data: { revokedAt: new Date() },
   });
+  const fixtures = await db.platformInstance.findMany({
+    where: { name: `删除验收平台 ${run}` },
+    select: { id: true },
+  });
+  await db.platformBinding.deleteMany({ where: { instanceId: { in: fixtures.map((f) => f.id) } } });
+  await db.platformInstance.deleteMany({ where: { id: { in: fixtures.map((f) => f.id) } } });
   await db.$disconnect();
 });
 async function contest() {
@@ -240,13 +246,54 @@ test('deletion retains owned files and support while removing configuration and 
   await db.admissionTemplate.create({
     data: { contestId: c.id, name: '验收模板', source: 'test source', version: 1 },
   });
+  const instance = await db.platformInstance.create({
+    data: {
+      name: `删除验收平台 ${run}`,
+      type: 'HYDRO',
+      baseUrl: 'https://example.test',
+      credentials: 'unused-test-fixture',
+      allowedContestIds: [c.id, other.id],
+    },
+  });
+  await db.platformBinding.create({
+    data: { contestId: c.id, instanceId: instance.id, remoteContestId: 'test' },
+  });
+  const token = await db.apiToken.create({
+    data: {
+      name: 'delete-test',
+      tokenHash: randomUUID(),
+      contestIds: [c.id, other.id],
+      scopes: [],
+      fields: [],
+      expiresAt: new Date(Date.now() + 86400000),
+    },
+  });
+  const single = await db.apiToken.create({
+    data: {
+      name: 'delete-test-single',
+      tokenHash: randomUUID(),
+      contestIds: [c.id],
+      scopes: [],
+      fields: [],
+      expiresAt: new Date(Date.now() + 86400000),
+    },
+  });
   await admin.api(`/contests/${c.id}`, 'DELETE', { version: c.version });
   expect(await db.formVersion.count({ where: { contestId: c.id } })).toBe(0);
   expect(await db.examRoom.count({ where: { contestId: c.id } })).toBe(0);
   expect(await db.admissionTemplate.count({ where: { contestId: c.id } })).toBe(0);
+  expect(await db.platformBinding.count({ where: { contestId: c.id } })).toBe(0);
   expect(
     (await db.adminGrant.findUniqueOrThrow({ where: { id: grant.id } })).revokedAt,
   ).not.toBeNull();
+  expect(
+    (await db.platformInstance.findUniqueOrThrow({ where: { id: instance.id } })).allowedContestIds,
+  ).toEqual([other.id]);
+  expect((await db.apiToken.findUniqueOrThrow({ where: { id: token.id } })).contestIds).toEqual([
+    other.id,
+  ]);
+  expect((await db.apiToken.findUniqueOrThrow({ where: { id: token.id } })).revoked).toBe(false);
+  expect((await db.apiToken.findUniqueOrThrow({ where: { id: single.id } })).revoked).toBe(true);
   expect((await new Client().raw(`/api/v1/files/public/${file.id}`)).status).toBe(403);
   expect((await admin.raw(`/api/v1/files/${file.id}`)).ok).toBe(true);
   expect((await db.attachment.findUniqueOrThrow({ where: { id: file.id } })).contestId).toBeNull();
@@ -279,4 +326,42 @@ test('registration creation and contest deletion cannot leave an orphan or erase
       expect(await db.contest.count({ where: { id: c.id } })).toBe(1);
     }
   }
+});
+
+test('remote revocation tasks remain actionable from the platform center after contest deletion', async ({
+  page,
+}) => {
+  const c = await contest();
+  const todo = await db.remoteRevocation.create({
+    data: {
+      contestId: c.id,
+      bindingId: randomUUID(),
+      registrationId: randomUUID(),
+      remoteUserId: `deleted-activity-${run}`,
+      target: {
+        platformName: '活动删除撤权验收',
+        baseUrl: 'https://example.test',
+        remoteContestId: 'test-deleted',
+      },
+    },
+  });
+  await admin.api(`/contests/${c.id}`, 'DELETE', { version: c.version });
+  const all = await admin.api('/integrations/revocations');
+  expect(all.some((row: any) => row.id === todo.id && row.state === 'PENDING')).toBe(true);
+  expect((await alice.raw('/api/v1/integrations/revocations')).status).toBe(403);
+  await login(page);
+  await page.goto('/admin/platforms?tab=revocations');
+  const row = page
+    .locator('.el-table__body-wrapper tr.el-table__row')
+    .filter({ hasText: todo.remoteUserId! });
+  await expect(row).toHaveCount(1);
+  await row.getByRole('button', { name: '已在外接平台完成撤权', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: '确认远端撤权', exact: true })
+    .getByRole('button', { name: '确定', exact: true })
+    .click();
+  await expect(row).toContainText('已人工确认撤权');
+  expect((await db.remoteRevocation.findUniqueOrThrow({ where: { id: todo.id } })).handledBy).toBe(
+    admin.user.id,
+  );
 });

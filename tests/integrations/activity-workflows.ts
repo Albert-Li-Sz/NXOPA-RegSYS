@@ -414,6 +414,37 @@ try {
   original = await alice.api(`/registrations/${original.id}/submit`, 'POST', {
     version: original.version,
   });
+  const instance = await db.platformInstance.create({
+    data: {
+      name: '清理待办测试',
+      type: 'DOMJUDGE',
+      baseUrl: 'https://fixture.invalid',
+      credentials: encrypt('{}'),
+    },
+  });
+  const binding = await db.platformBinding.create({
+    data: {
+      contestId: idemContest.id,
+      instanceId: instance.id,
+      remoteContestId: 'test',
+      automatic: false,
+    },
+  });
+  await db.accountMapping.create({
+    data: {
+      registrationId: original.id,
+      bindingId: binding.id,
+      username: 'fixture-user',
+      credential: encrypt('fixture'),
+      state: 'VERIFIED',
+      remoteUserId: 'remote-user',
+      remoteTeamId: 'remote-team',
+    },
+  });
+  assert.equal(
+    (await alice.raw(`/api/v1/integrations/registrations/${original.id}/credentials`)).status,
+    404,
+  );
   await alice.api(
     `/registrations/${original.id}/cancel`,
     'POST',
@@ -441,7 +472,34 @@ try {
   );
   assert.equal((await alice.raw(`/api/v1/files/${privateFile.id}`)).status, 404);
   assert.equal(await db.attachment.count({ where: { id: privateFile.id, deletedAt: null } }), 0);
-  pass('永久删除清除专属附件，旧请求重放不返回报名资料');
+  assert.equal(
+    await db.remoteRevocation.count({ where: { registrationId: original.id, state: 'PENDING' } }),
+    1,
+  );
+  assert.equal(
+    (await bob.raw(`/api/v1/integrations/revocations?contestId=${idemContest.id}`)).status,
+    403,
+  );
+  pass('永久删除清除专属附件、旧请求重放不返回报名资料，远端权限进入人工撤权待办');
+  const moduleBinding = await db.platformBinding.create({
+    data: {
+      contestId: memberContest.id,
+      instanceId: instance.id,
+      remoteContestId: 'module-test',
+      automatic: false,
+    },
+  });
+  await db.accountMapping.create({
+    data: {
+      registrationId: members.id,
+      bindingId: moduleBinding.id,
+      username: 'module-user',
+      credential: encrypt('fixture'),
+      state: 'VERIFIED',
+      remoteUserId: 'module-user',
+      details: { registrationVersion: members.version },
+    },
+  });
   const beforeModule = await admin.api(`/contests/${memberContest.id}`);
   const closeModules = {
     ...beforeModule,
@@ -469,7 +527,19 @@ try {
     (await alice.raw(`/api/v1/integrations/registrations/${members.id}/credentials`)).status,
     404,
   );
-  pass('预设切换保留原配置，关闭准考证功能使原文档失效');
+  const todo = await db.remoteRevocation.findFirstOrThrow({
+    where: { registrationId: members.id },
+  });
+  assert.equal((todo.target as any).remoteContestId, 'module-test');
+  await admin.api(`/integrations/revocations/${todo.id}/complete`, 'POST');
+  await admin.api(`/integrations/revocations/${todo.id}/complete`, 'POST');
+  assert.equal(
+    await db.auditEvent.count({
+      where: { resourceId: todo.id, action: 'REMOTE_REVOCATION_COMPLETE' },
+    }),
+    1,
+  );
+  pass('预设切换保留原配置，关闭功能需确认并撤销本地入口，远端待办完成有去重审计');
   const generationContest = await create({
     policy: policySchema.parse({ manualReview: false, coachMode: 'DISABLED' }),
   });

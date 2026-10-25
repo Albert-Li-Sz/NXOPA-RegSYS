@@ -14,6 +14,7 @@ import { db, lock } from '../../apps/server/src/db.js';
 import { redis } from '../../apps/server/src/auth.js';
 import { config } from '../../apps/server/src/config.js';
 import { encrypt } from '../../apps/server/src/security.js';
+import { recordRemoteRevocation } from '../../apps/server/src/registration-removal.js';
 import { policySchema } from '../../packages/contracts/src/index.js';
 import { pdfText } from './pdf-text.js';
 
@@ -479,6 +480,72 @@ try {
       );
     },
   );
+  await check(
+    'platform export requires the current activity permission and never contacts a platform',
+    async () => {
+      const c = await contest(),
+        r = await registration(owner, c);
+      await db.registration.update({
+        where: { id: r.id },
+        data: {
+          organization: { name: '审计大学', shortName: 'AUDIT', country: 'CHN', icpcId: '' },
+        },
+      });
+      const route = `/contests/${c.id}/platform-exports`;
+      await expectStatus(viewer, route, 'POST', { platform: 'HYDRO' }, 403);
+      await grant(viewer, c.id, ['INTEGRATIONS']);
+      const result = await viewer.raw(`/api/v1${route}`, 'POST', { platform: 'HYDRO' });
+      assert.equal(result.status, 201);
+      assert.equal(result.headers.get('cache-control'), 'no-store');
+      await result.arrayBuffer();
+      assert.equal(await db.platformExportAccount.count({ where: { registrationId: r.id } }), 1);
+      await expectStatus(admin, '/integrations/instances', 'POST', {}, 404);
+    },
+  );
+  await check(
+    'eligibility loss records manual remote revocation even if the mapping was already stale',
+    async () => {
+      const c = await contest(),
+        r = await registration(owner, c);
+      const instance = await db.platformInstance.create({
+        data: {
+          name: '资格撤回回归',
+          type: 'HYDRO',
+          baseUrl: 'http://127.0.0.1:9',
+          credentials: encrypt(JSON.stringify({ token: 'a'.repeat(32) })),
+          allowedContestIds: [c.id],
+        },
+      });
+      const binding = await db.platformBinding.create({
+        data: {
+          contestId: c.id,
+          instanceId: instance.id,
+          remoteContestId: 'eligibility',
+          automatic: false,
+        },
+      });
+      const mapping = await db.accountMapping.create({
+        data: {
+          registrationId: r.id,
+          bindingId: binding.id,
+          username: `eligibility-${run}`,
+          credential: encrypt('fixture'),
+          state: 'STALE',
+          remoteUserId: 'eligibility-user',
+        },
+      });
+      await owner.api(`/registrations/${r.id}`, 'PUT', { ...r, teamName: '待补正' });
+      await until(
+        () => db.remoteRevocation.count({ where: { registrationId: r.id, state: 'PENDING' } }),
+        (count) => count > 0,
+      );
+      assert.equal(
+        (await db.accountMapping.findUniqueOrThrow({ where: { id: mapping.id } })).state,
+        'REVOKED_LOCALLY',
+      );
+      await db.platformInstance.update({ where: { id: instance.id }, data: { enabled: false } });
+    },
+  );
 } finally {
   await db.contest.updateMany({
     where: { id: { in: contests } },
@@ -492,7 +559,7 @@ try {
   await writeFile(
     '.runtime/reports/whole-project-audit.json',
     JSON.stringify(
-      { success: checks.length === 11 && failures.length === 0, checks, failures },
+      { success: checks.length === 13 && failures.length === 0, checks, failures },
       null,
       2,
     ),
@@ -504,4 +571,4 @@ try {
 assert.equal(failures.length, 0, failures.join('\n'));
 console.log(`Whole-project audit: ${checks.length} cases passed`);
 
-assert.equal(checks.length, 11, 'Every declared check must execute');
+assert.equal(checks.length, 13, 'Every declared check must execute');
