@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "0.9.2",
+  "version": "0.10.0",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -68,7 +68,8 @@
     "test:audit-fixes": "tsx tests/integrations/audit-fixes.ts",
     "test:backup-security": "node --test tests/backup-security.test.mjs tests/backup-lifecycle.test.mjs tests/restore-lifecycle.test.mjs",
     "audit:runtime": "node scripts/audit-runtime.mjs",
-    "test:platform-exports": "tsx tests/integrations/platform-exports.ts"
+    "test:platform-exports": "tsx tests/integrations/platform-exports.ts",
+    "test:competition-accounts": "tsx tests/integrations/competition-accounts.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

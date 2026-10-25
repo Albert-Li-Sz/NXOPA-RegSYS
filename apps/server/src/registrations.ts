@@ -372,7 +372,11 @@ export class RegistrationService {
           throw new BadRequestException(
             '关闭功能会使相关准考证或本地平台权限失效，请明确确认后保存',
           );
-        if (disabled.includes('admissions') || disabled.includes('rooms'))
+        if (
+          disabled.includes('admissions') ||
+          disabled.includes('rooms') ||
+          previousModules.integrations !== b.modules.integrations
+        )
           await tx.admissionDocument.updateMany({
             where: { registration: { contestId: id } },
             data: { state: 'STALE', releasedAt: null, version: { increment: 1 } },

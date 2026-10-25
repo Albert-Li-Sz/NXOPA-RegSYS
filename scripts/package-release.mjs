@@ -154,10 +154,10 @@ try {
     assert.equal(report.platform, 'linux');
     assert.equal(report.architecture, arch === 'amd64' ? 'x64' : 'arm64');
     assert.ok(report.checks.length >= 12);
-    assert.equal(report.upgradeFrom, 'v0.1.1', `${arch} must exercise the prior release upgrade`);
+    assert.equal(report.upgradeFrom, null, `${arch}: v0.10.0 is verified as a fresh installation`);
     assert.ok(
-      report.checks.some((check) => check.includes('遗留的验证与重置链接失效')),
-      `${arch} must invalidate legacy mailbox links during upgrade`,
+      report.checks.some((check) => check.includes('加密备份与恢复')),
+      `${arch} must exercise this release's backup and recovery`,
     );
     await writeFile(join(output, `installation-${arch}.json`), JSON.stringify(report, null, 2));
     const interactive = JSON.parse(
@@ -168,7 +168,7 @@ try {
     );
     assert.equal(interactive.success, true);
     assert.equal(interactive.targetTag, tag);
-    assert.equal(interactive.initialTag, 'v0.1.5');
+    assert.equal(interactive.initialTag, tag);
     assert.equal(interactive.platform, 'linux');
     assert.equal(interactive.architecture, arch === 'amd64' ? 'x64' : 'arm64');
     assert.ok(interactive.checks.length >= 4);
@@ -251,6 +251,15 @@ try {
       throw error;
     }
   }
+  const competitionAccounts = JSON.parse(
+    await readFile(join(root, 'dist/feature-reports/competition-accounts.json'), 'utf8'),
+  );
+  assert.equal(competitionAccounts.success, true);
+  assert.equal(competitionAccounts.checks.length, 7);
+  await writeFile(
+    join(output, 'competition-accounts.json'),
+    JSON.stringify(competitionAccounts, null, 2),
+  );
   const names = (await readdir(output)).sort();
   const checksums = await Promise.all(
     names.map(

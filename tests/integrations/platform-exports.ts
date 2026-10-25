@@ -78,7 +78,7 @@ try {
   assert.ok(!Object.keys(hydro.teams[0]).some((key) => /^member[1-4]$/.test(key)));
   assert.ok(hydro.get('credentials.csv').includes(`"${f.studentIds[0]}"`));
   assert.notEqual(
-    (await db.platformExportAccount.findFirstOrThrow({ where: { registrationId: f.rows[0]!.id } }))
+    (await db.competitionAccount.findFirstOrThrow({ where: { registrationId: f.rows[0]!.id } }))
       .credential,
     hydro.teams[0].password,
   );
@@ -92,8 +92,8 @@ try {
   assert.deepEqual(again.teams, hydro.teams);
   assert.deepEqual(concurrent.teams, hydro.teams);
   assert.equal(
-    await db.platformExportAccount.count({
-      where: { registration: { contestId: f.contest.id }, platform: 'HYDRO' },
+    await db.competitionAccount.count({
+      where: { contestId: f.contest.id },
     }),
     2,
   );
@@ -284,13 +284,18 @@ try {
     groups = JSON.parse(dom.get('groups.json'));
   assert.equal(accounts[0].type, 'team');
   assert.equal(accounts[0].team_id, dom.teams[0].id);
-  assert.equal(accounts[0].id, accounts[0].username);
-  assert.notEqual(dom.teams[0].id, hydro.teams[0].id);
+  assert.equal(accounts[0].id, f.rows[0]!.id);
+  assert.equal(dom.teams[0].id, hydro.teams[0].id);
+  assert.equal(accounts[0].username, hydro.teams[0].name);
+  assert.equal(accounts[0].password, hydro.teams[0].password);
   assert.notEqual(groups[0].sortorder, groups[1].sortorder);
   assert.equal(dom.teams[1].group_ids[0], groups[1].id);
   assert.equal(JSON.parse(dom.get('organizations.json')).length, 1);
   assert.match(dom.teams[0].label, /^cc_.*-一号考场-101$/);
-  assert.ok(accounts.every((a: any) => /^cc_/.test(a.username)));
+  assert.deepEqual(
+    accounts.map((a: any) => a.username),
+    f.studentIds.slice(0, 2),
+  );
   assert.equal(
     (
       await admin.raw(route, 'POST', {

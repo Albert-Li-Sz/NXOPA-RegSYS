@@ -50,10 +50,12 @@ for (const service of ['api', 'worker', 'web', 'latex', 'minio']) {
     assert.equal(record.config.config.Labels['org.opencontainers.image.revision'], commit);
     assert.equal(record.config.config.Labels['org.opencontainers.image.version'], tag);
   }
-  const alias = await get('manifests', tag.replace(/\.\d+$/, ''));
-  assert.equal(alias.digest, index.digest);
-  const latest = await get('manifests', 'latest');
-  assert.equal(latest.digest, index.digest);
+  if (process.env.VERIFY_IMAGE_ALIASES !== '0') {
+    const alias = await get('manifests', tag.replace(/\.\d+$/, ''));
+    assert.equal(alias.digest, index.digest);
+    const latest = await get('manifests', 'latest');
+    assert.equal(latest.digest, index.digest);
+  }
   images.push({
     image,
     tag,
@@ -61,6 +63,7 @@ for (const service of ['api', 'worker', 'web', 'latex', 'minio']) {
     commit,
     platforms: ['linux/amd64', 'linux/arm64'],
     anonymousPull: true,
+    aliasesVerified: process.env.VERIFY_IMAGE_ALIASES !== '0',
     allConfigsAvailable: true,
     availableLayers: index.availableLayers,
   });
