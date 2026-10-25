@@ -17,10 +17,21 @@ const run = (command, args, options = {}) =>
     ...options,
   }).trim();
 const stage = '.runtime/release-publication';
-const release = JSON.parse(run('gh', ['api', `repos/${repository}/releases/tags/${tag}`]));
+const release = JSON.parse(
+  run('gh', [
+    'release',
+    'view',
+    tag,
+    '--repo',
+    repository,
+    '--json',
+    'tagName,isDraft,isPrerelease',
+  ]),
+);
 const previousLatest = JSON.parse(run('gh', ['api', `repos/${repository}/releases/latest`]));
-assert.equal(release.prerelease, false);
-validateLatestPromotion({ tag, latestTag: previousLatest.tag_name, draft: release.draft });
+assert.equal(release.tagName, tag);
+assert.equal(release.isPrerelease, false);
+validateLatestPromotion({ tag, latestTag: previousLatest.tag_name, draft: release.isDraft });
 await mkdir(stage, { recursive: true });
 run('gh', ['release', 'download', tag, '--repo', repository, '--dir', stage, '--clobber']);
 run('sha256sum', ['-c', 'SHA256SUMS'], { cwd: stage });

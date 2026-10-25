@@ -40,11 +40,17 @@ jobs:
           import { validateLatestPromotion } from './scripts/release-publication.mjs';
           const { GITHUB_REPOSITORY: repository, RELEASE_TAG: tag } = process.env;
           const get = path => JSON.parse(execFileSync('gh', ['api', `repos/${repository}/${path}`], { encoding: 'utf8' }));
-          const release = get(`releases/tags/${tag}`), latest = get('releases/latest');
-          assert.equal(release.prerelease, false);
-          validateLatestPromotion({ tag, latestTag: latest.tag_name, draft: release.draft });
+          const release = JSON.parse(execFileSync('gh', ['release', 'view', tag, '--repo', repository, '--json', 'tagName,isDraft,isPrerelease'], { encoding: 'utf8' }));
+          const latest = get('releases/latest');
+          assert.equal(release.tagName, tag);
+          assert.equal(release.isPrerelease, false);
+          validateLatestPromotion({ tag, latestTag: latest.tag_name, draft: release.isDraft });
           console.log(`Validated ${tag} against Latest ${latest.tag_name}.`);
           NODE
+      - name: 保留已核对的发布工具
+        run: |
+          mkdir -p "$RUNNER_TEMP/nxopa-publisher"
+          cp scripts/publish-release.mjs scripts/release-publication.mjs scripts/release-images.mjs "$RUNNER_TEMP/nxopa-publisher/"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.tag }}
@@ -56,7 +62,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - run: mkdir -p .runtime/reports
       - name: 核对附件与公开镜像，再更新 Latest
-        run: node scripts/publish-release.mjs
+        run: node "$RUNNER_TEMP/nxopa-publisher/publish-release.mjs"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
