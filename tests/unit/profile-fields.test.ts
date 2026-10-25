@@ -60,7 +60,9 @@ describe('participant profile field compatibility', () => {
     );
     expect(source.institutions).toHaveLength(1412);
     expect(source.sha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(source.source).toMatch(/^https:\/\/www.moe.gov.cn\//);
+    const sourceUrl = new URL(source.source);
+    expect(sourceUrl.protocol).toBe('https:');
+    expect(sourceUrl.hostname).toBe('www.moe.gov.cn');
     expect(new Set(source.institutions.map((row: any) => row.code)).size).toBe(1412);
     expect(
       new Set(source.institutions.map((row: any) => normalizeInstitutionName(row.name))).size,
