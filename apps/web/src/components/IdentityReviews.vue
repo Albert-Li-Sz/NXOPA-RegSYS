@@ -12,7 +12,7 @@ const busy = ref(false);
 async function review(row: Data, decision: string) {
   const { value } = await ElMessageBox.prompt(
     decision === 'APPROVED'
-      ? '审核通过后资料生效，并关联同学号 / 工号的历史记录。'
+      ? '审核通过后资料生效，并关联同学号 / 职工号的历史记录。'
       : '请填写审核未通过的原因。',
     '实名审核',
     {

@@ -54,6 +54,7 @@ export const adminCenters = [
     description: '全局配置与系统服务',
     tabs: [
       { name: 'site', label: '全局设置' },
+      { name: 'institutions', label: '院校与单位' },
       { name: 'tokens', label: 'API 与 Webhook' },
       { name: 'mail', label: '邮件设置' },
       { name: 'mail-templates', label: '邮件模板' },

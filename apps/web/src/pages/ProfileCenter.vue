@@ -63,6 +63,7 @@ const stateLabels: Record<string, string> = {
 };
 const profileFields = computed<FieldDefinition[]>(() => {
   const fields = defaultFields
+    .filter((f) => f.key !== 'email')
     .filter((f) => !['student_id', 'class_name'].includes(f.key) || !teacher.value)
     .map((f) => ({
       ...f,
@@ -72,7 +73,7 @@ const profileFields = computed<FieldDefinition[]>(() => {
     ? [
         fieldSchema.parse({
           key: 'employee_id',
-          label: '工号',
+          label: '职工号',
           scope: 'PERSON',
           type: 'text',
           required: true,
@@ -92,7 +93,7 @@ const profileFields = computed<FieldDefinition[]>(() => {
           key: 'enrollment_year',
           label: '入学年份',
           scope: 'PERSON',
-          type: 'number',
+          type: 'year',
           required: true,
           help: '本科或当前学段入学的年份',
         }),
@@ -291,7 +292,7 @@ const contestName = (id: string | null) =>
               v-if="!auth.user.profileComplete"
               :title="
                 teacher
-                  ? '请完善工号、姓名、入职日期、院系和性别后再报名'
+                  ? '请完善职工号、姓名、入职日期、院系和性别后再报名'
                   : '请完善学号、姓名、班级、学院、性别和入学年份后再报名'
               "
               type="warning"
@@ -339,7 +340,7 @@ const contestName = (id: string | null) =>
               />
               <div v-if="locked" class="identity-summary">
                 <p>
-                  {{ teacher ? '工号' : '学号' }}：{{
+                  {{ teacher ? '职工号' : '学号' }}：{{
                     profile.profile[teacher ? 'employee_id' : 'student_id'] || '—'
                   }}
                 </p>
@@ -415,7 +416,7 @@ const contestName = (id: string | null) =>
         <div class="card">
           <h3>实名信息</h3>
           <p class="form-help">
-            学号 / 工号、姓名、班级和院系用于关联报名记录。资料变更需管理员审核，通过后生效。
+            学号 / 职工号、姓名、班级和院系用于关联报名记录。资料变更需管理员审核，通过后生效。
           </p>
           <el-form label-position="top" :disabled="busy" @submit.prevent="submitIdentity"
             ><el-form-item label="姓名" for="identity-name"

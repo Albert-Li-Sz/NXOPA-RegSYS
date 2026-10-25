@@ -77,7 +77,7 @@ async function create() {
               }}</span>
             </div>
             <div class="info-row">
-              <span class="muted">费用</span
+              <span class="muted" aria-label="费用">费　　用</span
               ><span>{{ c.policy.feeMode === 'FREE' ? '免费' : money(c.policy.feeCents) }}</span>
             </div>
             <div class="info-row">
@@ -236,9 +236,14 @@ async function create() {
   margin-bottom: 20px;
 }
 .info-row {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 4em minmax(0, 1fr);
+  column-gap: 20px;
+  align-items: baseline;
   line-height: 2.2;
   font-size: 14px;
+}
+.info-row > span:last-child {
+  overflow-wrap: anywhere;
 }
 </style>

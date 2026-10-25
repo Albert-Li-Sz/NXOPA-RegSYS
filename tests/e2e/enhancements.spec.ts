@@ -1,4 +1,4 @@
-import { editRegistration, approveRegistration } from './workflow-helpers.js';
+import { editRegistration, approveRegistration, chooseInstitution } from './workflow-helpers.js';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { redis } from '../../apps/server/src/auth.js';
@@ -98,7 +98,7 @@ test('unofficial individual application requires review and basic organization f
   await page.goto(`/registrations/${r.id}`);
   await editRegistration(page);
   await page.locator('.el-radio').filter({ hasText: '非正式参赛' }).click();
-  await page.locator('#organization-name').fill('南京晓庄学院');
+  await chooseInstitution(page, '#organization-name', '南京晓庄学院');
   await page.locator('#organization-short').fill('晓庄');
   await Promise.all([
     page.waitForResponse(

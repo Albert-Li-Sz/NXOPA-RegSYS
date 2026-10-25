@@ -28,6 +28,7 @@ import {
   organizationSchema,
   participationSchema,
   profileComplete,
+  normalizeProfileYears,
   type Principal,
   type ContestPolicy,
   type FieldDefinition,
@@ -72,6 +73,8 @@ import { publicLink } from './site-settings.js';
 import { paginated, dateFilter, pageOptions, type ListQuery } from './pagination.js';
 import { contestDeletionAccess } from './contest-removal.js';
 import { examSiteOrder, saveExamSites, validateExamSite } from './exam-sites.js';
+import { contactAnswers, normalizeRegistrationAnswers } from './profile-data.js';
+import { validateInstitution } from './institutions.js';
 
 function registrationAccess(u: Principal, contestId?: string) {
   return {
@@ -291,7 +294,7 @@ export class RegistrationService {
         _count: { registrations: c._count.registrations },
         policy: policySchema.parse(c.policy),
         status: contestStatus(c),
-        fields: c.forms[0]?.fields ?? [],
+        fields: fieldsSchema.parse(c.forms[0]?.fields ?? []),
         forms: undefined,
         ...(managed
           ? {
@@ -323,7 +326,7 @@ export class RegistrationService {
       forms: undefined,
       _count: undefined,
       ...(u?.isAdmin ? { deletion: contestDeletionAccess(u, c._count) } : {}),
-      fields: c.forms[0]?.fields ?? [],
+      fields: fieldsSchema.parse(c.forms[0]?.fields ?? []),
       status: contestStatus(c),
     };
   }
@@ -686,7 +689,7 @@ export class RegistrationService {
         : {}),
       latestFormVersion: forms?.version,
       formUpdated: !r.quoted && r.formVersion !== r.contest.formVersion,
-      fields: forms?.fields ?? [],
+      fields: fieldsSchema.parse(forms?.fields ?? []),
       vouchers,
       ledger,
       refunds,
@@ -720,7 +723,7 @@ export class RegistrationService {
               email: u.email,
               captain: true,
               confirmed: true,
-              answers: json(u.profile),
+              answers: json(contactAnswers(u.profile as Answers, u.email)),
             },
           },
         },
@@ -762,6 +765,14 @@ export class RegistrationService {
         throw new BadRequestException('需要保留队长');
       const existing = new Map(r.people.map((x) => [x.id, x]));
       const coaches = new Map(r.coaches.map((x) => [x.id, x]));
+      const accounts = new Map(
+        (
+          await tx.user.findMany({
+            where: { id: { in: r.people.flatMap((p) => (p.userId ? [p.userId] : [])) } },
+            select: { id: true, email: true },
+          })
+        ).map((p) => [p.id, p.email]),
+      );
       if (
         b.coaches &&
         (new Set(b.coaches.map((x) => x.id)).size !== b.coaches.length ||
@@ -775,7 +786,26 @@ export class RegistrationService {
           throw new BadRequestException('账号绑定必须通过邀请确认');
         if (!old && p.memberMode !== 'MANUAL')
           throw new BadRequestException('此竞赛要求成员接受邀请');
+        x.email = (old?.userId ? accounts.get(old.userId) : undefined) ?? x.email;
+        x.answers = contactAnswers(x.answers, x.email);
+        await validateInstitution(
+          tx,
+          x.answers.school,
+          (old?.answers as Answers | undefined)?.school,
+        );
       }
+      for (const x of b.coaches ?? []) {
+        const old = coaches.get(x.id)!;
+        x.answers = contactAnswers(x.answers, old.user.email);
+        await validateInstitution(tx, x.answers.school, (old.answers as Answers).school);
+      }
+      b.answers = normalizeRegistrationAnswers(b.answers, true);
+      if (b.organization)
+        await validateInstitution(
+          tx,
+          b.organization.name,
+          (r.organization as Answers | null)?.name ?? (u.profile as Answers).school,
+        );
       const same =
         r.examSiteId === examSiteId &&
         r.teamName === b.teamName &&
@@ -791,7 +821,7 @@ export class RegistrationService {
           return (
             old &&
             old.name === x.name &&
-            old.email === (old.userId ? old.email : x.email) &&
+            old.email === x.email &&
             old.captain === x.captain &&
             isDeepStrictEqual(old.answers, x.answers)
           );
@@ -811,7 +841,7 @@ export class RegistrationService {
         const old = x.id ? existing.get(x.id) : undefined;
         const data = {
           name: x.name,
-          email: old?.userId ? old.email : x.email,
+          email: x.email,
           captain: x.captain,
           answers: json(x.answers),
           uniqueKey: personUniqueKey(p, x.answers),
@@ -1017,7 +1047,15 @@ export class RegistrationService {
   ) {
     const relevant = fields.filter((f) => f.scope === scope && fieldVisible(f, answers));
     const values = Object.fromEntries(
-      Object.entries(answers).filter(([k]) => relevant.some((f) => f.key === k)),
+      Object.entries(answers).filter(([k, v]) =>
+        relevant.some(
+          (f) =>
+            f.key === k &&
+            (f.required ||
+              !['email', 'year', 'date', 'number'].includes(f.type) ||
+              (v !== '' && v !== null)),
+        ),
+      ),
     );
     const required = relevant.filter((f) => f.required).map((f) => f.key);
     const validator = ajv.compile({ ...fieldsJsonSchema(relevant, scope), required });
@@ -1323,7 +1361,7 @@ export class RegistrationService {
             userId: u.id,
             name: u.name,
             email: u.email,
-            answers: json(u.profile),
+            answers: json(contactAnswers(u.profile as Answers, u.email)),
             confirmed: true,
           },
         });
@@ -1336,7 +1374,11 @@ export class RegistrationService {
         if (p.coachMode === 'DISABLED' || r.coaches.length >= p.maxCoaches)
           throw new BadRequestException('老师人数已达上限或竞赛禁用老师');
         await tx.registrationCoach.create({
-          data: { registrationId: id, userId: coachId, answers: json(coach.profile) },
+          data: {
+            registrationId: id,
+            userId: coachId,
+            answers: json(contactAnswers(coach.profile as Answers, coach.email)),
+          },
         });
       }
       await tx.invitation.update({
@@ -1407,10 +1449,17 @@ export class RegistrationService {
       if (!p) throw new ForbiddenException();
       checkVersion(r.version, b.version);
       windowOpen(r);
+      const account = await tx.user.findUniqueOrThrow({
+        where: { id: p.userId! },
+        select: { email: true },
+      });
+      b.answers = contactAnswers(b.answers, account.email);
+      await validateInstitution(tx, b.answers.school, (p.answers as Answers).school);
       await tx.registrationPerson.update({
         where: { id: p.id },
         data: {
           name: b.name,
+          email: account.email,
           answers: json(b.answers),
           uniqueKey: personUniqueKey(policy(r), b.answers),
         },
@@ -1436,6 +1485,8 @@ export class RegistrationService {
       windowOpen(r);
       const coach = r.coaches.find((c) => c.id === coachId);
       if (!coach) throw new BadRequestException('指导老师不属于此报名');
+      b.answers = contactAnswers(b.answers, coach.user.email);
+      await validateInstitution(tx, b.answers.school, (coach.answers as Answers).school);
       if (isDeepStrictEqual(coach.answers, b.answers)) return r;
       await tx.registrationCoach.update({
         where: { id: coachId, registrationId: id },

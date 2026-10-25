@@ -25,6 +25,7 @@ import {
   participationSchema,
   adminPermissions,
   userTagsSchema,
+  institutionInputSchema,
 } from '@contest-center/contracts';
 import type { OpenAPIObject } from '@nestjs/swagger';
 const id = z.string().uuid(),
@@ -87,6 +88,7 @@ export function describeApi(document: OpenAPIObject) {
     RegistrationActions: registrationActionsSchema,
     RegistrationInput: registrationSchema,
     FieldDefinition: fieldSchema,
+    InstitutionInput: institutionInputSchema,
     RegistrationEnvelopeV1: registrationEnvelopeSchema,
     AccountInvitationInput: accountInvitationSchema,
     MailSettingsInput: mailSettingsSchema,
@@ -370,6 +372,8 @@ export function describeApi(document: OpenAPIObject) {
       allowPrivate: z.boolean().default(false),
     }),
     'post /api/v1/admin/fields': 'FieldDefinition',
+    'post /api/v1/admin/institutions': 'InstitutionInput',
+    'put /api/v1/admin/institutions/{id}': 'InstitutionInput',
     'post /api/v1/admin/roles': object({
       userId: id,
       contestId: id.optional(),
@@ -510,6 +514,8 @@ export function describeApi(document: OpenAPIObject) {
         ([
           '/api/v1/admin/jobs',
           '/api/v1/admin/users',
+          '/api/v1/admin/institutions',
+          '/api/v1/institutions',
           '/api/v1/admin/students',
           '/api/v1/admin/teachers',
           '/api/v1/admin/invitations',

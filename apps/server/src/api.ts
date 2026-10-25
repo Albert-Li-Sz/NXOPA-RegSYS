@@ -49,6 +49,7 @@ import { StorageService } from './storage.js';
 import { MailTemplateService } from './mail-templates.js';
 import { PublicRosterService } from './public-roster.js';
 import { MailDeliveryService } from './mail-delivery.js';
+import { InstitutionService } from './institutions.js';
 import { db, registrationInclude, json, lock, audit } from './db.js';
 import { requireManager, requireAdmin } from './security.js';
 import { redis } from './auth.js';
@@ -77,7 +78,27 @@ export class ApiController {
     @Inject(MailTemplateService) private mailTemplates: MailTemplateService,
     @Inject(PublicRosterService) private publicRoster: PublicRosterService,
     @Inject(MailDeliveryService) private mailDelivery: MailDeliveryService,
+    @Inject(InstitutionService) private institutions: InstitutionService,
   ) {}
+  @Get('institutions') institutionList(@Req() r: AuthRequest, @Query() q: Record<string, string>) {
+    return this.institutions.list(user(r), q);
+  }
+  @Get('admin/institutions') institutionAdminList(
+    @Req() r: AuthRequest,
+    @Query() q: Record<string, string>,
+  ) {
+    return this.institutions.list(user(r), q, true);
+  }
+  @Post('admin/institutions') institutionCreate(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.institutions.save(user(r), b);
+  }
+  @Put('admin/institutions/:id') institutionSave(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: unknown,
+  ) {
+    return this.institutions.save(user(r), b, id);
+  }
   @Get('admin/storage') storageView(@Req() r: AuthRequest) {
     return this.storage.view(user(r));
   }

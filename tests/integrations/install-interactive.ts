@@ -32,7 +32,7 @@ for (const key of [
 ])
   delete env[key];
 const initialTag =
-  process.env.INTERACTIVE_INSTALL_FROM ?? process.env.INSTALL_UPGRADE_FROM ?? 'v0.10.0';
+  process.env.INTERACTIVE_INSTALL_FROM ?? process.env.INSTALL_UPGRADE_FROM ?? 'v0.10.2';
 const targetTag = process.env.INTERACTIVE_INSTALL_TO ?? process.env.IMAGE_TAG ?? defaultTag;
 const checks: string[] = [];
 let success = false;
@@ -169,7 +169,9 @@ try {
       class_name: '验收一班',
       college: '验收学院',
       gender: '男',
-      school: '验收大学',
+      school: '南京晓庄学院',
+      // v0.10.x accepted unreasonable historical values; v2 must clear them during upgrade.
+      enrollment_year: /^v0\.10\./.test(initialTag) ? 9999 : 2026,
       phone: '00000000000',
     },
   });
@@ -187,7 +189,7 @@ try {
   let registration = await admin.api('/registrations', 'POST', { contestId: contest.id });
   registration = await admin.api(`/registrations/${registration.id}`, 'PUT', {
     ...registration,
-    organization: { name: '验收大学', shortName: 'TEST', country: 'CHN', icpcId: '' },
+    organization: { name: '南京晓庄学院', shortName: 'TEST', country: 'CHN', icpcId: '' },
   });
   registration = await admin.api(`/registrations/${registration.id}/submit`, 'POST', {
     version: registration.version,
@@ -233,6 +235,16 @@ try {
     updatedConfig === originalConfig.replace(`IMAGE_TAG=${initialTag}`, `IMAGE_TAG=${targetTag}`),
   );
   assert.equal(await version(), targetTag.slice(1));
+  const migratedUser = (await admin.api('/auth/me')).user;
+  assert.equal(migratedUser.profile.student_id, '0020260001');
+  if (/^v0\.10\./.test(initialTag)) assert.equal(migratedUser.profile.enrollment_year, undefined);
+  const directory = await admin.api('/institutions');
+  assert.equal(directory.total, 1412);
+  assert.equal(directory.items.length, 50);
+  const upgradedEntry = await admin.api(`/registrations/${registration.id}`);
+  if (/^v0\.10\./.test(initialTag))
+    assert.equal(upgradedEntry.people[0].answers.enrollment_year, undefined);
+  assert.equal(upgradedEntry.people[0].answers.email, admin.user.email);
   assert.equal((await admin.api(`/registrations/${registration.id}`)).eligible, true);
   assert.equal(
     await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),

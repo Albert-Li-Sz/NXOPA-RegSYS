@@ -6,7 +6,7 @@ on:
       image_tag:
         description: 待验收的已有镜像版本
         required: true
-        default: v0.10.2
+        default: v2.0.0
         type: string
       proxy_only:
         description: 仅复验 HTTPS 代理与迁移流程
@@ -52,7 +52,7 @@ jobs:
       - name: 交互安装、升级及卸载实际验收
         if: ${{ !inputs.proxy_only }}
         env:
-          INTERACTIVE_INSTALL_FROM: v0.10.0
+          INTERACTIVE_INSTALL_FROM: v0.10.2
           INTERACTIVE_INSTALL_TO: ${{ inputs.image_tag }}
         run: pnpm test:install-interactive
       - name: 核验匿名拉取及镜像版本

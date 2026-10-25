@@ -2,7 +2,13 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { z } from 'zod';
 import { verify } from 'argon2';
 import { randomUUID } from 'node:crypto';
-import { profileComplete, userTagsSchema, type Principal } from '@contest-center/contracts';
+import {
+  profileComplete,
+  normalizeProfileYears,
+  userTagsSchema,
+  type Principal,
+} from '@contest-center/contracts';
+import { validateInstitution } from './institutions.js';
 import { db, lock, audit, event, json } from './db.js';
 import { requireAdmin, requireSystemAdmin, manages, sha, checkVersion } from './security.js';
 import {
@@ -36,7 +42,7 @@ function identityKey(data: ReturnType<typeof identitySnapshot>) {
   const identifier = String(
     data.profile[data.kind === 'TEACHER' ? 'employee_id' : 'student_id'] ?? '',
   ).trim();
-  if (!identifier) throw new BadRequestException('请填写学号或工号');
+  if (!identifier) throw new BadRequestException('请填写学号或职工号');
   const institution =
     String(data.profile.school ?? '')
       .trim()
@@ -82,15 +88,12 @@ export class PeopleService {
         version: z.number().int(),
       })
       .parse(body);
+    b.profile = normalizeProfileYears(b.profile, true);
+    delete b.profile.email;
     if (!profileComplete(b))
-      throw new BadRequestException('请完善姓名、院系、性别及学号 / 班级，教师填写工号与入职日期');
-    if (
-      b.profile.enrollment_year !== undefined &&
-      (!Number.isInteger(Number(b.profile.enrollment_year)) ||
-        Number(b.profile.enrollment_year) < 1950 ||
-        Number(b.profile.enrollment_year) > new Date().getFullYear() + 1)
-    )
-      throw new BadRequestException('入学年份无效');
+      throw new BadRequestException(
+        '请完善姓名、院系、性别及学号 / 班级，教师填写职工号与入职日期',
+      );
     if (b.kind === 'STUDENT' && b.profile.enrollment_year === undefined)
       throw new BadRequestException('请填写入学年份');
     if (b.kind === 'STUDENT') b.profile.enrollment_year = Number(b.profile.enrollment_year);
@@ -100,6 +103,11 @@ export class PeopleService {
       await lock(tx, `auth:${u.id}`);
       const current = await tx.user.findUniqueOrThrow({ where: { id: u.id } });
       if (current.version !== b.version) throw new BadRequestException('资料已更新，请刷新');
+      await validateInstitution(
+        tx,
+        b.profile.school,
+        (current.profile as Record<string, unknown>).school,
+      );
       if (await tx.identityRequest.count({ where: { userId: u.id, status: 'PENDING' } }))
         throw new BadRequestException('已有待审核申请，请等待管理员处理');
       const request = await tx.identityRequest.create({
@@ -163,7 +171,7 @@ export class PeopleService {
             where: { personId: person.id, deactivatedAt: null, id: { not: target.id } },
           }))
         )
-          throw new BadRequestException('此学号 / 工号已关联有效账号，不能合并');
+          throw new BadRequestException('此学号 / 职工号已关联有效账号，不能合并');
         if (!person)
           person = await tx.personRecord.create({
             data: {
@@ -556,13 +564,13 @@ export class PeopleService {
         );
       if (b.profile.gender !== undefined)
         z.enum(['男', '女'], '请选择男或女').parse(b.profile.gender);
-      if (b.profile.enrollment_year !== undefined)
-        b.profile.enrollment_year = z.coerce
-          .number()
-          .int()
-          .min(1950)
-          .max(new Date().getFullYear() + 1)
-          .parse(b.profile.enrollment_year);
+      b.profile = normalizeProfileYears(b.profile, true);
+      delete b.profile.email;
+      await validateInstitution(
+        tx,
+        b.profile.school,
+        (target.profile as Record<string, unknown>).school,
+      );
       if (b.profile.employed_at) {
         const date = z
           .string()
@@ -582,7 +590,7 @@ export class PeopleService {
         await lock(tx, `person:${identity.key}`);
         const conflict = await tx.personRecord.findUnique({ where: { identityKey: identity.key } });
         if (conflict && conflict.id !== target.personId)
-          throw new BadRequestException('此学号 / 工号已关联其他身份');
+          throw new BadRequestException('此学号 / 职工号已关联其他身份');
         await tx.personRecord.update({
           where: { id: target.personId },
           data: {

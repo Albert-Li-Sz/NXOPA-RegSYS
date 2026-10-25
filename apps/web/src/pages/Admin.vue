@@ -19,6 +19,7 @@ import MailSettings from '../components/MailSettings.vue';
 import GithubSettings from '../components/GithubSettings.vue';
 import FeishuSettings from '../components/FeishuSettings.vue';
 import StorageSettings from '../components/StorageSettings.vue';
+import InstitutionSettings from '../components/InstitutionSettings.vue';
 import MailTemplates from '../components/MailTemplates.vue';
 import StudentsView from '../components/StudentsView.vue';
 import UserDetail from '../components/UserDetail.vue';
@@ -420,6 +421,7 @@ async function webhook() {
   <div class="panel" v-if="tab === 'github' && isSystemAdmin()"><GithubSettings /></div>
   <div class="panel" v-if="tab === 'feishu' && isSystemAdmin()"><FeishuSettings /></div>
   <StorageSettings v-if="tab === 'storage' && isSystemAdmin()" />
+  <InstitutionSettings v-if="tab === 'institutions' && isSystemAdmin()" />
   <MailTemplates v-if="tab === 'mail-templates' && isSystemAdmin()" />
   <StudentsView v-if="tab === 'students' && allowedTabs.includes('students')" ref="peopleView" />
   <StudentsView

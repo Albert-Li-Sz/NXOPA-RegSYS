@@ -75,6 +75,7 @@ try {
     'infra/minio/Dockerfile',
     'infra/minio/entrypoint.sh',
     'scripts/backup.sh',
+    'scripts/pack-backup.sh',
     'scripts/restore.sh',
     'scripts/verify-backup.mjs',
     'scripts/verify-storage-backup.mjs',
@@ -168,13 +169,13 @@ try {
     );
     assert.equal(interactive.success, true);
     assert.equal(interactive.targetTag, tag);
-    assert.equal(interactive.initialTag, 'v0.10.0');
+    assert.equal(interactive.initialTag, 'v0.10.2');
     assert.equal(interactive.platform, 'linux');
     assert.equal(interactive.architecture, arch === 'amd64' ? 'x64' : 'arm64');
     assert.ok(interactive.checks.length >= 4);
     assert.ok(
       interactive.checks.some((check) => check.includes('共享比赛凭据')),
-      `${arch} must preserve competition credentials when upgrading v0.10.0`,
+      `${arch} must preserve competition credentials when upgrading v0.10.2`,
     );
     await writeFile(
       join(output, `installation-interactive-${arch}.json`),

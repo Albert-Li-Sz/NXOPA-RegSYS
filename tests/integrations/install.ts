@@ -289,6 +289,13 @@ try {
   await run(['admin'], credentials);
   const admin = await new Client().login(credentials.ADMIN_EMAIL, credentials.ADMIN_PASSWORD);
   assert.equal(admin.user.isAdmin, true);
+  assert.equal((await admin.api('/institutions')).total, 1412);
+  const institution = await admin.api('/admin/institutions', 'POST', {
+    name: '安装验收研究所',
+    shortName: '验收研究所',
+    aliases: ['安装测试单位'],
+    enabled: false,
+  });
   assert.equal((await admin.api('/admin/mail')).enabled, false);
   assert.equal(
     (
@@ -415,6 +422,11 @@ try {
     }
   };
   await until(healthy, (v) => v, 90000);
+  const restartedInstitution = await admin.api(
+    `/admin/institutions?search=${encodeURIComponent(institution.name)}`,
+  );
+  assert.equal(restartedInstitution.items[0].id, institution.id);
+  assert.equal(restartedInstitution.items[0].enabled, false);
   assert.equal((await admin.api(`/registrations/${registration.id}`)).eligible, true);
   assert.equal((await admin.raw(`/api/v1/files/${attachment.id}`)).status, 200);
   passed('重启数据库、Redis、API 和 Worker 后保留管理员会话、报名及附件');
@@ -428,9 +440,19 @@ try {
     admin.api(`/registrations/${registration.id}`),
   );
   await admin.api(`/registrations/${registration.id}/cancel`, 'POST', { version: before.version });
+  await admin.api(`/admin/institutions/${institution.id}`, 'PUT', {
+    ...institution,
+    enabled: true,
+  });
   await run(['restore', path.join(backups, backup), '--yes']);
   await until(healthy, (v) => v, 90000);
   const restored = await admin.api(`/registrations/${registration.id}`);
+  const restoredInstitution = await admin.api(
+    `/admin/institutions?search=${encodeURIComponent(institution.name)}`,
+  );
+  assert.equal(restoredInstitution.items[0].id, institution.id);
+  assert.equal(restoredInstitution.items[0].enabled, false);
+  assert.deepEqual(restoredInstitution.items[0].aliases, ['安装测试单位']);
   assert.equal(restored.version, before.version);
   assert.equal(restored.eligible, true);
   assert.equal(

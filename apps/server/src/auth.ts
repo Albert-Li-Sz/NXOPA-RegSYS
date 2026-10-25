@@ -13,6 +13,9 @@ import {
   invitationReturnPathSchema,
   answersSchema,
   profileComplete,
+  enrollmentYearSchema,
+  normalizeEnrollmentYear,
+  normalizeProfileYears,
   type Principal,
 } from '@contest-center/contracts';
 import { db, audit, event, json, lock, type Tx } from './db.js';
@@ -27,6 +30,8 @@ import { opaqueToken, sha, hmac, same, encrypt, secretKey, otpHash, checkOtp } f
 import { effectiveAuthorization, revokeRecipientInvitations } from './authorization.js';
 import { feishuSignup, attachFeishuSignup, clearFeishuSignup } from './feishu.js';
 import { paginated, type ListQuery } from './pagination.js';
+import { syncRegistrationEmail } from './profile-data.js';
+import { validateInstitution } from './institutions.js';
 
 export const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: 1, commandTimeout: 5000 });
 export async function incrementExpiring(key: string, seconds: number) {
@@ -318,12 +323,7 @@ export class AuthService {
         code: z.string().regex(/^\d{6}$/, '请输入邮箱中的六位验证码'),
         kind: z.enum(['STUDENT', 'TEACHER']).default('STUDENT'),
         identifier: z.string().trim().min(1).max(100).optional(),
-        enrollmentYear: z
-          .number()
-          .int()
-          .min(1950)
-          .max(new Date().getFullYear() + 1)
-          .optional(),
+        enrollmentYear: enrollmentYearSchema.optional(),
         employedAt: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -341,7 +341,7 @@ export class AuthService {
             !Number.isFinite(Date.parse(b.employedAt)) ||
             new Date(b.employedAt).toISOString().slice(0, 10) !== b.employedAt))
     )
-      throw new BadRequestException('学生需填写学号和入学年份，教师需填写工号和有效入职日期');
+      throw new BadRequestException('学生需填写学号和入学年份，教师需填写职工号和有效入职日期');
     const email = b.email.toLowerCase(),
       tokenId = sha(b.token);
     const feishu = await feishuSignup(req, b.feishuClaim);
@@ -371,7 +371,10 @@ export class AuthService {
           profile: json(
             b.kind === 'TEACHER'
               ? { employee_id: b.identifier, employed_at: b.employedAt }
-              : { student_id: b.identifier, enrollment_year: b.enrollmentYear },
+              : {
+                  student_id: b.identifier,
+                  enrollment_year: normalizeEnrollmentYear(b.enrollmentYear),
+                },
           ),
         },
       });
@@ -525,6 +528,9 @@ export class AuthService {
       b.profile.display_name = z.string().trim().max(100).parse(b.profile.display_name);
     if (b.profile.gender !== undefined)
       z.enum(['男', '女'], '请选择男或女').parse(b.profile.gender);
+    b.profile = normalizeProfileYears(b.profile, true);
+    // Login email is a verified account property, never an independently editable profile answer.
+    delete b.profile.email;
     if (b.version !== u.version) throw new BadRequestException('资料已更新，请刷新');
     if (b.isCoach !== undefined && b.isCoach !== u.isCoach)
       throw new ForbiddenException('身份变更须由管理员生成邀请链接并确认');
@@ -562,6 +568,11 @@ export class AuthService {
       // Serialize mailbox changes with token creation and consumption.
       await lock(tx, `auth:${u.id}`);
       if (changedEmail) await requireReauthentication(req, tx);
+      await validateInstitution(
+        tx,
+        b.profile.school,
+        (current.profile as Record<string, unknown>).school,
+      );
       await tx.user.update({
         where: { id: u.id, version: u.version },
         data: {
@@ -689,6 +700,7 @@ export class AuthService {
         version: { increment: 1 },
       },
     });
+    await syncRegistrationEmail(tx, id, account.pendingEmail);
     await tx.session.deleteMany({
       where: { userId: id, ...(req?.sessionId ? { id: { not: req.sessionId } } : {}) },
     });

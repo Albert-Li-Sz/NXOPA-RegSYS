@@ -28,7 +28,7 @@
 \fancyhf{}
 \fancyhead[L]{\small\color{muted}南晓开放原子社在线报名系统}
 \fancyhead[R]{\small\color{muted}配置教程}
-\fancyfoot[L]{\small\color{muted}v0.10.2 · 中文 · Asia/Shanghai}
+\fancyfoot[L]{\small\color{muted}v2.0.0 · 中文 · Asia/Shanghai}
 \fancyfoot[R]{\small\color{muted}\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \newcommand{\code}[1]{{\small\ttfamily\detokenize{#1}}}
@@ -38,7 +38,7 @@
 \AfterEndEnvironment{Code}{\end{minipage}\par}
 \begin{document}
 \thispagestyle{empty}
-{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 25 日}
+{\color{brand}\small 系统管理员操作手册 / 2026 年 10 月 26 日}
 \vspace{9mm}
 
 {\huge\bfseries\color{ink}南晓开放原子社\\[3mm]在线报名系统}
@@ -76,7 +76,7 @@ curl --fail http://127.0.0.1:8080/api/v1/health
 bash install.sh update
 bash install.sh uninstall
 \end{Code}
-更新先加密备份，再下载新版材料、拉取或构建、迁移并等待健康检查；备份失败中止操作。v0.10.0 可升级至 v0.10.2，保留原数据卷和加密密钥；v0.9.x 与已弃用的 v1.0.0 须使用独立目录和数据卷全新部署。默认卸载保留数据，永久删除须准确输入 \code{DELETE 项目名}。配置和备份保留，备份解密需要原加密密钥。旧版 \code{install/.env} 自动复制到 \code{deploy/.env}，保留项目名、数据库密码、加密密钥与代理模式。恢复会覆盖当前数据库和附件；确认后先验证备份并建立恢复前快照。恢复失败保持业务服务停止。维护命令见 \code{bash install.sh --help}。
+更新先加密备份，再下载新版材料、拉取或构建、迁移并等待健康检查；备份失败中止操作。v0.10.2 可升级至 v2.0.0，保留原数据卷和加密密钥；v0.9.x 与已弃用的 v1.0.0 须使用独立目录和数据卷全新部署。默认卸载保留数据，永久删除须准确输入 \code{DELETE 项目名}。配置和备份保留，备份解密需要原加密密钥。旧版 \code{install/.env} 自动复制到 \code{deploy/.env}，保留项目名、数据库密码、加密密钥与代理模式。恢复会覆盖当前数据库和附件；确认后先验证备份并建立恢复前快照。恢复失败保持业务服务停止。维护命令见 \code{bash install.sh --help}。
 
 \textbf{设置访问地址。}向导保存下列部署项；也可编辑 \code{deploy/.env}。自行完成域名解析、证书与代理配置，参考 \code{deploy/nginx.conf.example}。首次启动使用环境地址作为初始值；登录后在“管理中心 → 全局设置”维护邮件与邀请链接使用的地址。
 \begin{Code}
@@ -138,6 +138,18 @@ GitHub OAuth App 的真实凭据由部署管理员配置。本版本以独立模
 \shot[0.54\textheight]{26-profile}{账号中心的五项必填资料。填写完成并保存后，返回原报名页面。}
 
 注册完成后直接引导补充资料；已登录用户从竞赛点击报名时也会检查。团队中已绑定本站账号的参赛成员分别完善资料；指导老师资料仍按竞赛规则填写。
+
+\newpage
+\textbf{年份、院校与联系邮箱。}学生使用学号，教职工使用职工号。入学年份使用年份选择器，范围为 1950 年至下一年；升级时将“2023年”“2023级”等旧值规范为 2023，无法识别或超出范围的当前资料直接清空，其他资料保留。历史审核与报名修订记录保留原始内容。
+\shot[0.49\textheight]{35-profile-fields}{年份选择与可搜索院校：邮箱读取登录账号，个人中心保留独立的邮箱验证入口。}
+
+新选择的院校或单位须来自启用目录，支持按名称、别名和地区搜索。历史资料中的旧单位可继续显示和保留，改为其他单位时从目录选择。报名中已绑定成员的邮箱只读，手工添加成员的邮箱可以填写；验证并更换账号邮箱后，同步当前报名和快照，旧准考证需重新生成。CSV 仅保留一列成员邮箱。
+
+\newpage
+\textbf{管理院校与单位。}系统管理员打开“管理中心 → 院校与单位”，搜索、添加单位、维护简称和别名，或停用不再使用的条目。已有资料继续保留停用条目的原名称；名称不直接改写，单位更名请新增条目。
+\shot[0.49\textheight]{36-institutions}{后台目录：默认内置本科院校，也支持添加其他院校、企业与单位。}
+
+默认数据取自\href{https://www.moe.gov.cn/jyb_xxgk/s5743/s5744/202606/t20260618_1441074.html}{教育部截至 2026 年 6 月 17 日的全国高等学校名单}，包含 1,412 所本科院校，不含港澳台地区院校。目录随发布包提供，启动时无需访问教育部网站；重复启动和本版本备份恢复保留后台新增、简称、别名及启停状态。
 
 \newpage
 \section{邮件服务：保存、检测与实际收件}
@@ -229,7 +241,7 @@ hydrooj cli system setIpLogin /srv/import/seats.csv
 \newpage
 \section{导出 DOMjudge 导入文件}
 兼容 DOMjudge 9.x。用户名使用个人本人／团队队长学号，密码与 Hydro 和准考证一致。队伍及账号 ID 均为稳定的报名 UUID，team\_id 对应该 UUID。平台导出中心选择 DOMjudge，下载 ZIP，包含 groups.json、organizations.json、teams.json、accounts.json、账号密码表和说明。已有分组可填写外部 ID，否则自动生成活动专属 ID。
-\shot[0.42\textheight]{08-platform-domjudge-export}{DOMjudge 9.x 导出：可配置正式与非正式分组外部 ID。}
+\shot[0.37\textheight]{08-platform-domjudge-export}{DOMjudge 9.x 导出：可配置正式与非正式分组外部 ID。}
 
 在目标平台管理员后台打开 Import / export → Import JSON / YAML，依次导入：
 \begin{enumerate}

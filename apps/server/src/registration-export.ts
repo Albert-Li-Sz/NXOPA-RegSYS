@@ -152,6 +152,7 @@ export async function registrationCsv(
     };
     for (const field of fields.values()) {
       if (field.scope === 'COACH') continue;
+      if (field.scope === 'PERSON' && field.key === 'email') continue;
       columns.push({
         name: `${scopeLabels[field.scope]}·${field.label} (${field.key})`,
         value: (r, p) =>
@@ -168,7 +169,7 @@ export async function registrationCsv(
         { name: `老师${index + 1}·邮箱`, value: (r) => r.coaches[index]?.user.email },
       );
       for (const field of fields.values())
-        if (field.scope === 'COACH')
+        if (field.scope === 'COACH' && field.key !== 'email')
           columns.push({
             name: `老师${index + 1}·${field.label} (${field.key})`,
             value: (r) => answer(r.coaches[index]?.answers?.[field.key]),

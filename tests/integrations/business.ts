@@ -30,6 +30,9 @@ try {
     carol = await new Client().login('carol'),
     teacher = await new Client().login('teacher'),
     manager = await new Client().login('manager');
+  // Custom organizations must be registered by an administrator before new selections.
+  for (const name of ['示例大学 & 学院', '示例大学'])
+    await admin.api('/admin/institutions', 'POST', { name });
   async function contest(policy: Record<string, unknown>, fields = defaultFields) {
     const c = await admin.api('/contests', 'POST', {
       title: `验收竞赛 ${run} ${report.length}`,

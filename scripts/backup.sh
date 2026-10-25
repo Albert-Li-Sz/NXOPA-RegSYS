@@ -38,7 +38,7 @@ if [[ "$has_s3_schema" == t ]]; then backup_compose run --rm -T --no-deps --user
 backup_compose run --rm -T --no-deps --user 1000 worker tar -czf - -C /data/storage . > "$stage/files.tgz"
 backup_compose run --rm -T --no-deps --user 1000 worker sh -c 'if test -f src/storage-cli.ts; then node --import tsx src/storage-cli.ts clean /data/storage/.s3-backup; fi'
 cp "$contest_env_file" "$stage/environment.env"
-COPYFILE_DISABLE=1 tar -czf "$stage/raw.tgz" -C "$stage" database.dump files.tgz environment.env
+bash scripts/pack-backup.sh "$stage"
 backup_compose run --rm -T --no-deps --user "$(id -u):$(id -g)" -v "$stage:/backup" -v "$(pwd)/scripts/verify-backup.mjs:/verify-backup.mjs:ro" api node /verify-backup.mjs /backup/raw.tgz outer
 backup_compose run --rm -T --no-deps --user "$(id -u):$(id -g)" -v "$stage:/backup" -v "$(pwd)/scripts/verify-backup.mjs:/verify-backup.mjs:ro" api node /verify-backup.mjs /backup/files.tgz files
 # Host-owned output remains readable and chmod-able for non-root Linux installers.
