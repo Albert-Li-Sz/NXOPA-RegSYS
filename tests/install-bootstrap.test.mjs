@@ -27,6 +27,7 @@ async function fixture(fn, { legacyImages = false } = {}) {
     'infra/caddy',
     'infra/caddy-gateway',
     'scripts/backup.sh',
+    'scripts/pack-backup.sh',
     'scripts/restore.sh',
     'scripts/compose-lib.sh',
   ]) {
