@@ -111,7 +111,7 @@ export class Client {
         class_name: '验收一班',
         college: '验收学院',
         gender: '男',
-        school: '验收大学',
+        school: '南京晓庄学院',
         phone: '00000000000',
       },
     });

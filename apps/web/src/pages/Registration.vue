@@ -19,6 +19,7 @@ import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
 import { policySchema } from '@contest-center/contracts';
 import DynamicFields from '../components/DynamicFields.vue';
+import InstitutionSelect from '../components/InstitutionSelect.vue';
 import { operationsSettled } from '../composables/usePendingOperations';
 const route = useRoute(),
   r = shallowRef<RegistrationView>(),
@@ -549,9 +550,15 @@ async function memberSave(id: string, index: number) {
               ></el-form-item
             ><template v-if="platformProfiles.length || form.organization?.name"
               ><el-form-item label="代表学校／单位全称" required for="organization-name"
-                ><el-input
+                ><InstitutionSelect
                   id="organization-name"
                   v-model="form.organization.name"
+                  @selected="
+                    (row) => {
+                      form.organization.shortName = row.shortName || row.name.slice(0, 80);
+                      form.organization.country = row.country;
+                    }
+                  "
                   :disabled="!canSave" /></el-form-item
               ><el-form-item label="学校／单位简称" required for="organization-short"
                 ><el-input
@@ -646,11 +653,14 @@ async function memberSave(id: string, index: number) {
                 ><el-input
                   :id="`person-${index}-email`"
                   v-model="person.email"
+                  type="email"
                   :disabled="!!person.userId || !canSave"
               /></el-form-item>
             </div>
             <DynamicFields
-              :fields="r.fields"
+              :fields="
+                r.fields.filter((field) => field.key !== 'email' || field.scope !== 'PERSON')
+              "
               scope="PERSON"
               :answers="person.answers"
               :prefix="`member-${index}`"

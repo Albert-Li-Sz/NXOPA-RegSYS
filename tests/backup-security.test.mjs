@@ -5,6 +5,48 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { validateBackup } from '../scripts/verify-backup.mjs';
+import { execFileSync } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+test('host extended attributes do not prevent the generated backup from being restored', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'nxopa-backup-xattrs-'));
+  try {
+    for (const name of ['database.dump', 'files.tgz', 'environment.env'])
+      await writeFile(path.join(dir, name), 'fixture');
+    let tarPath = process.env.PATH;
+    if (process.platform === 'darwin') {
+      execFileSync('xattr', [
+        '-w',
+        'com.apple.provenance',
+        'fixture',
+        path.join(dir, 'environment.env'),
+      ]);
+    } else {
+      execFileSync('python3', [
+        '-c',
+        'import os,sys;os.setxattr(sys.argv[1],"user.backup-fixture",b"fixture")',
+        path.join(dir, 'environment.env'),
+      ]);
+      const actualTar = execFileSync('which', ['tar'], { encoding: 'utf8' }).trim();
+      await mkdir(path.join(dir, 'bin'));
+      // GNU tar normally excludes xattrs; emulate the BSD default while using a real tar executable.
+      await writeFile(
+        path.join(dir, 'bin/tar'),
+        `#!/usr/bin/env bash\nexec '${actualTar.replaceAll("'", "'\\''")}' --xattrs "$@"\n`,
+        { mode: 0o700 },
+      );
+      tarPath = `${dir}/bin:${tarPath}`;
+    }
+    execFileSync(
+      'bash',
+      [fileURLToPath(new URL('../scripts/pack-backup.sh', import.meta.url)), dir],
+      { env: { ...process.env, PATH: tarPath } },
+    );
+    assert.equal((await validateBackup(path.join(dir, 'raw.tgz'), 'outer')).entries, 3);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 function entry(name, body = Buffer.from('fixture'), type = '0', link = '') {
   const header = Buffer.alloc(512);
   header.write(name, 0, 100);

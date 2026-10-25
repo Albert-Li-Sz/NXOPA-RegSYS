@@ -30,11 +30,12 @@ const visible = computed({
 const teacher = computed(() => detail.value?.kind === 'TEACHER');
 const fields = computed(() => [
   ...defaultFields
+    .filter((field) => field.key !== 'email')
     .filter((field) => !teacher.value || !['student_id', 'class_name'].includes(field.key))
     .map((field) => ({ ...field, required: false })),
   ...(teacher.value
     ? [
-        fieldSchema.parse({ key: 'employee_id', label: '工号', scope: 'PERSON', type: 'text' }),
+        fieldSchema.parse({ key: 'employee_id', label: '职工号', scope: 'PERSON', type: 'text' }),
         fieldSchema.parse({ key: 'employed_at', label: '入职日期', scope: 'PERSON', type: 'date' }),
       ]
     : [
@@ -42,7 +43,7 @@ const fields = computed(() => [
           key: 'enrollment_year',
           label: '入学年份',
           scope: 'PERSON',
-          type: 'number',
+          type: 'year',
           min: 1950,
           max: new Date().getFullYear() + 1,
         }),

@@ -4,6 +4,7 @@ import { date } from '../api';
 import { usePagedList } from '../composables/usePagedList';
 import ListPagination from './ListPagination.vue';
 import UserDetail from './UserDetail.vue';
+import YearSelect from './YearSelect.vue';
 const props = withDefaults(defineProps<{ kind?: 'STUDENT' | 'TEACHER' }>(), { kind: 'STUDENT' });
 const teacher = props.kind === 'TEACHER';
 const endpoint = teacher ? 'teachers' : 'students';
@@ -22,11 +23,14 @@ defineExpose({ refresh: list.load });
         clearable
         placeholder="姓名 / 邮箱"
         style="max-width: 320px"
-      /><el-input
+      /><YearSelect
         v-if="!teacher"
-        v-model="list.filters.value.year"
-        clearable
-        placeholder="入学年份"
+        id="student-filter-year"
+        :model-value="list.filters.value.year"
+        @update:model-value="
+          (year: number | undefined) =>
+            (list.filters.value.year = year === undefined ? '' : String(year))
+        "
         style="max-width: 160px"
       />
     </div>

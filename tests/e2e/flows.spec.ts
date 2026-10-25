@@ -1,4 +1,4 @@
-import { editRegistration, approveRegistration } from './workflow-helpers.js';
+import { editRegistration, approveRegistration, chooseInstitution } from './workflow-helpers.js';
 import { test, expect, type Page, type Browser } from '@playwright/test';
 import { Client } from '../integrations/client.js';
 import { db } from '../../apps/server/src/db.js';
@@ -145,7 +145,7 @@ test('manual team, optional teacher, review first, receipt and partial/full conf
     for (const index of [1, 2]) {
       await owner.page.getByRole('button', { name: '添加代填成员' }).click();
       await owner.page.locator(`#person-${index}-name`).fill(`代填选手${index}`);
-      await owner.page.locator(`#member-${index}-school`).fill('示例大学');
+      await chooseInstitution(owner.page, `#member-${index}-school`, '南京晓庄学院');
       await owner.page.locator(`#member-${index}-student_id`).fill(`E2E-${stamp}-${index}`);
       await owner.page.locator(`#member-${index}-phone`).fill('00000000000');
       await owner.page.locator(`#member-${index}-class_name`).fill('验收一班');

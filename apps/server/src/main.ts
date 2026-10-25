@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 import { migrateCancelledRegistrations } from './registration-removal.js';
+import { seedInstitutions, InstitutionService } from './institutions.js';
+import { migrateProfileFields } from './profile-data.js';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
@@ -90,10 +92,13 @@ class Errors implements ExceptionFilter {
     MailTemplateService,
     PublicRosterService,
     MailDeliveryService,
+    InstitutionService,
   ],
 })
 class AppModule {}
 await migrateCancelledRegistrations();
+await seedInstitutions();
+await migrateProfileFields();
 const app = await NestFactory.create<NestExpressApplication>(AppModule, {
   logger: ['error', 'warn'],
 });

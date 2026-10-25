@@ -5,6 +5,8 @@ import type { FieldDefinition, Data } from '../types';
 import { upload } from '../api';
 import PaginatedList from './PaginatedList.vue';
 import { beginOperation } from '../composables/usePendingOperations';
+import YearSelect from './YearSelect.vue';
+import InstitutionSelect from './InstitutionSelect.vue';
 const props = defineProps<{
   fields: FieldDefinition[];
   scope: FieldDefinition['scope'];
@@ -64,14 +66,26 @@ async function file(e: Event, key: string) {
       >
         <div style="width: 100%">
           <el-input
-            v-if="f.type === 'text' || f.type === 'textarea'"
+            v-if="f.type === 'text' || f.type === 'textarea' || f.type === 'email'"
             :id="`${prefix || scope}-${f.key}`"
             v-model="answers[f.key]"
-            :type="f.type === 'textarea' ? 'textarea' : 'text'"
+            :type="f.type === 'textarea' ? 'textarea' : f.type === 'email' ? 'email' : 'text'"
             :rows="3"
             :maxlength="f.max ?? (f.type === 'textarea' ? 10000 : 1000)"
             :disabled="disabled"
             :placeholder="`请填写${f.label}`"
+          />
+          <YearSelect
+            v-else-if="f.type === 'year'"
+            :id="`${prefix || scope}-${f.key}`"
+            v-model="answers[f.key]"
+            :disabled="disabled"
+          />
+          <InstitutionSelect
+            v-else-if="f.type === 'institution'"
+            :id="`${prefix || scope}-${f.key}`"
+            v-model="answers[f.key]"
+            :disabled="disabled"
           />
           <el-input-number
             v-else-if="f.type === 'number'"

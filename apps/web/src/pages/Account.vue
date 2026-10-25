@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import YearSelect from '../components/YearSelect.vue';
 import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -302,7 +303,7 @@ async function revokeSession(id: string) {
               ><el-radio-button value="TEACHER">教师</el-radio-button></el-radio-group
             ></el-form-item
           ><el-form-item
-            :label="form.kind === 'TEACHER' ? '工号' : '学号'"
+            :label="form.kind === 'TEACHER' ? '职工号' : '学号'"
             for="register-identifier"
             required
             ><el-input id="register-identifier" v-model="form.identifier" /></el-form-item
@@ -311,11 +312,7 @@ async function revokeSession(id: string) {
             label="入学年份"
             for="register-year"
             required
-            ><el-input-number
-              id="register-year"
-              v-model="form.enrollmentYear"
-              :min="1950"
-              :max="new Date().getFullYear() + 1" /></el-form-item
+            ><YearSelect id="register-year" v-model="form.enrollmentYear" /></el-form-item
           ><el-form-item v-else label="入职日期" for="register-employment" required
             ><el-date-picker
               id="register-employment"

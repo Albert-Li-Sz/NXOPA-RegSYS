@@ -309,7 +309,7 @@ async function register(index: number, kind = 'STUDENT') {
       ...actor.user.profile,
       class_name: kind === 'STUDENT' ? '测试一班' : undefined,
       college: '测试学院',
-      school: '测试大学',
+      school: '南京晓庄学院',
       gender: '女',
     },
   });
@@ -621,7 +621,7 @@ try {
       ...initialIdentityActor.user.profile,
       class_name: '实名测试班级',
       college: '实名测试学院',
-      school: '实名测试学校',
+      school: '南京晓庄学院',
       gender: '男',
     },
     version: initialIdentityActor.user.version,

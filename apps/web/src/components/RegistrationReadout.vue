@@ -16,7 +16,10 @@ const preview = ref(''),
   loading = ref(false);
 function fields(scope: string, answers: Data) {
   return (props.registration.fields as FieldDefinition[]).filter(
-    (f) => f.scope === scope && fieldVisible(f, answers),
+    (f) =>
+      f.scope === scope &&
+      !(['PERSON', 'COACH'].includes(scope) && f.key === 'email') &&
+      fieldVisible(f, answers),
   );
 }
 const value = (v: unknown) =>

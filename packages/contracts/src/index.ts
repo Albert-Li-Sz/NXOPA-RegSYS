@@ -1,5 +1,11 @@
 import './browser-validation.js';
 import { z } from 'zod';
+import {
+  enrollmentYearSchema,
+  minimumEnrollmentYear,
+  maximumEnrollmentYear,
+} from './profile-fields.js';
+export * from './profile-fields.js';
 export {
   defaultMailTemplate,
   mailTemplateForCategory,
@@ -29,9 +35,10 @@ export const studentProfileSchema = z.object({
   class_name: z.string().trim().min(1, '请填写班级').max(100),
   college: z.string().trim().min(1, '请填写学院').max(100),
   gender: z.enum(['男', '女'], '请选择男或女'),
+  enrollment_year: enrollmentYearSchema.optional(),
 });
 export const teacherProfileSchema = z.object({
-  employee_id: z.string().trim().min(1, '请填写工号').max(100),
+  employee_id: z.string().trim().min(1, '请填写职工号').max(100),
   employed_at: z.iso.date('请填写有效入职日期'),
   college: z.string().trim().min(1, '请填写院系').max(100),
   gender: z.enum(['男', '女'], '请选择男或女'),
@@ -219,6 +226,9 @@ export const fieldSchema = z
       'textarea',
       'number',
       'date',
+      'year',
+      'email',
+      'institution',
       'select',
       'multiselect',
       'boolean',
@@ -248,6 +258,17 @@ export const fieldSchema = z
           ctx.addIssue({ code: 'custom', path: [key], message: '文本长度须为非负整数' });
       }
     }
+  })
+  .overwrite((field) => {
+    if (field.key === 'school')
+      return { ...field, label: '院校或单位', type: 'institution' as const };
+    if (field.key === 'enrollment_year')
+      return { ...field, label: '入学年份', type: 'year' as const };
+    if (field.key === 'student_id') return { ...field, label: '学号' };
+    if (field.key === 'employee_id') return { ...field, label: '职工号' };
+    if (field.key === 'email')
+      return { ...field, label: '邮箱', type: 'email' as const, sensitive: true };
+    return field;
   });
 export type FieldDefinition = z.infer<typeof fieldSchema>;
 export const fieldsSchema = z
@@ -434,11 +455,14 @@ export function fieldVisible(f: FieldDefinition, answers: Answers) {
 export function fieldsJsonSchema(fields: FieldDefinition[], scope: FieldDefinition['scope']) {
   const properties: Record<string, unknown> = {};
   for (const f of fields.filter((f) => f.scope === scope)) {
-    const type = ['number', 'boolean'].includes(f.type)
-      ? f.type
-      : f.type === 'multiselect'
-        ? 'array'
-        : 'string';
+    const type =
+      f.type === 'year'
+        ? 'integer'
+        : ['number', 'boolean'].includes(f.type)
+          ? f.type
+          : f.type === 'multiselect'
+            ? 'array'
+            : 'string';
     properties[f.key] = {
       type,
       ...(f.type === 'select' ? { enum: f.key === 'gender' ? ['男', '女'] : f.options } : {}),
@@ -446,6 +470,10 @@ export function fieldsJsonSchema(fields: FieldDefinition[], scope: FieldDefiniti
         ? { items: { type: 'string', enum: f.options }, uniqueItems: true }
         : {}),
       ...(f.type === 'date' ? { format: 'date' } : {}),
+      ...(f.type === 'email' ? { format: 'email' } : {}),
+      ...(f.type === 'year'
+        ? { minimum: minimumEnrollmentYear, maximum: maximumEnrollmentYear() }
+        : {}),
       ...(type === 'number'
         ? {
             ...(f.min !== undefined ? { minimum: f.min } : {}),
@@ -566,10 +594,11 @@ export const platformExportSchema = z.object({
     .optional(),
 });
 export const defaultFields: FieldDefinition[] = fieldsSchema.parse([
-  { key: 'school', label: '学校 / 单位', scope: 'PERSON', type: 'text' },
+  { key: 'school', label: '院校或单位', scope: 'PERSON', type: 'institution' },
+  { key: 'email', label: '邮箱', scope: 'PERSON', type: 'email', sensitive: true },
   {
     key: 'student_id',
-    label: '学号 / 参赛编号',
+    label: '学号',
     scope: 'PERSON',
     type: 'text',
     required: true,

@@ -4,6 +4,56 @@
  */
 
 export interface paths {
+    "/api/v1/institutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description 显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。 */
+        get: operations["ApiController_institutionList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/institutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description 显式传入 page 或 pageSize 返回 PageResult，列表与总数使用相同权限和筛选条件。旧调用保持数组／游标形式。 */
+        get: operations["ApiController_institutionAdminList"];
+        put?: never;
+        post: operations["ApiController_institutionCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/institutions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["ApiController_institutionSave"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/storage": {
         parameters: {
             query?: never;
@@ -2361,7 +2411,7 @@ export interface components {
                 /** @enum {string} */
                 scope: "PERSON" | "TEAM" | "COACH" | "REGISTRATION";
                 /** @enum {string} */
-                type: "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "boolean" | "file" | "photo";
+                type: "text" | "textarea" | "number" | "date" | "year" | "email" | "institution" | "select" | "multiselect" | "boolean" | "file" | "photo";
                 /** @default false */
                 required: boolean;
                 /** @default false */
@@ -2523,7 +2573,7 @@ export interface components {
             /** @enum {string} */
             scope: "PERSON" | "TEAM" | "COACH" | "REGISTRATION";
             /** @enum {string} */
-            type: "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "boolean" | "file" | "photo";
+            type: "text" | "textarea" | "number" | "date" | "year" | "email" | "institution" | "select" | "multiselect" | "boolean" | "file" | "photo";
             /** @default false */
             required: boolean;
             /** @default false */
@@ -2545,11 +2595,27 @@ export interface components {
                 includes?: string;
             };
         };
-        Value10___schema0: string | number | boolean | (null) | components["schemas"]["Value10___schema0"][] | {
-            [key: string]: components["schemas"]["Value10___schema0"];
+        InstitutionInput: {
+            version?: number;
+            name: string;
+            /** @default  */
+            shortName: string;
+            /** @default CHN */
+            country: string;
+            /** @default  */
+            province: string;
+            /** @default  */
+            city: string;
+            /** @default [] */
+            aliases: string[];
+            /** @default true */
+            enabled: boolean;
         };
-        Value10___schema1: string | number | boolean | (null) | components["schemas"]["Value10___schema1"][] | {
-            [key: string]: components["schemas"]["Value10___schema1"];
+        Value11___schema0: string | number | boolean | (null) | components["schemas"]["Value11___schema0"][] | {
+            [key: string]: components["schemas"]["Value11___schema0"];
+        };
+        Value11___schema1: string | number | boolean | (null) | components["schemas"]["Value11___schema1"][] | {
+            [key: string]: components["schemas"]["Value11___schema1"];
         };
         RegistrationEnvelopeV1: {
             /** @enum {number} */
@@ -2584,7 +2650,7 @@ export interface components {
                 captain: boolean;
                 email?: string;
                 answers?: {
-                    [key: string]: components["schemas"]["Value10___schema0"];
+                    [key: string]: components["schemas"]["Value11___schema0"];
                 };
             }[];
             form?: {
@@ -2595,7 +2661,7 @@ export interface components {
                     /** @enum {string} */
                     scope: "PERSON" | "TEAM" | "COACH" | "REGISTRATION";
                     /** @enum {string} */
-                    type: "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "boolean" | "file" | "photo";
+                    type: "text" | "textarea" | "number" | "date" | "year" | "email" | "institution" | "select" | "multiselect" | "boolean" | "file" | "photo";
                     /** @default false */
                     required: boolean;
                     /** @default false */
@@ -2613,12 +2679,12 @@ export interface components {
                     max?: number;
                     condition?: {
                         key: string;
-                        equals?: components["schemas"]["Value10___schema1"];
+                        equals?: components["schemas"]["Value11___schema1"];
                         includes?: string;
                     };
                 }[];
                 answers: {
-                    [key: string]: components["schemas"]["Value10___schema0"];
+                    [key: string]: components["schemas"]["Value11___schema0"];
                 };
             };
             coaches?: {
@@ -2627,7 +2693,7 @@ export interface components {
                 name?: string;
                 email?: string;
                 answers: {
-                    [key: string]: components["schemas"]["Value10___schema0"];
+                    [key: string]: components["schemas"]["Value11___schema0"];
                 };
             }[];
             qualification?: {
@@ -2738,8 +2804,8 @@ export interface components {
             message: string;
             statusCode?: number;
         };
-        Value23___schema0: string | number | boolean | (null) | components["schemas"]["Value23___schema0"][] | {
-            [key: string]: components["schemas"]["Value23___schema0"];
+        Value24___schema0: string | number | boolean | (null) | components["schemas"]["Value24___schema0"][] | {
+            [key: string]: components["schemas"]["Value24___schema0"];
         };
     };
     responses: never;
@@ -2750,6 +2816,332 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    ApiController_institutionList: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                status?: string;
+                review?: string;
+                participationType?: string;
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 分页结果或兼容数组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_institutionAdminList: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: 20 | 50 | 100;
+                search?: string;
+                status?: string;
+                review?: string;
+                participationType?: string;
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 分页结果或兼容数组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageResult"] | unknown[];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_institutionCreate: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstitutionInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ApiController_institutionSave: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                /** @description Same actor, method, URL and body replay the encrypted saved result. */
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstitutionInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     ApiController_storageView: {
         parameters: {
             query?: never;
@@ -4346,7 +4738,7 @@ export interface operations {
                     kind: "STUDENT" | "TEACHER";
                     name: string;
                     profile: {
-                        [key: string]: components["schemas"]["Value23___schema0"];
+                        [key: string]: components["schemas"]["Value24___schema0"];
                     };
                     version: number;
                 };

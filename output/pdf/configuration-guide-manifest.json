@@ -1,7 +1,7 @@
 {
-  "sourceSha256": "a889db4e60202df8ae3e01af395e98a00ee6ebc073b3ebbff61904d63bf95279",
-  "pdfSha256": "0cde2f0fca7dbfee91d794112ca2d98f605304408a4644be92739255d64bb206",
-  "sourceZipSha256": "cd9a3086d0bd6baba87eb7695a058da66f780d9c450fe7f9055e236fb3a77596",
+  "sourceSha256": "da57d4e7204d557e280d8186c293a4b8bb1382424026b443e1ddd91c8442974d",
+  "pdfSha256": "7bbf7dbacf9d5b99671d165ad07d9de1d05724a63e2f6e123ff3440db3ce2960",
+  "sourceZipSha256": "e25496a651c148f80e4cd108ac68fbc73c7e79d251687cdce20a3c29ccfd87e2",
   "screenshots": {
     "01-home.png": "c1decac06048e63a83e80b1c44d305d66aec7a3964c163a88c7b2a2688541785",
     "02-login.png": "6135f4f9e81d777275341afc1706780e680303b5f3a368db29f50ed9ceceb344",
@@ -23,6 +23,8 @@
     "24-github-login.png": "6bcbe34eddebaec63691f508ecdb4c7e92013ce98e9d40e5e719eceab6b99c5d",
     "25-user-tags.png": "53d6727f344b5ebfc6e0c774957c60bf5c104ea8214bdd958bbeb6deaf6034a9",
     "26-profile.png": "35f4722c16289be1fa45e1958cba6d30669eaf6b37cc7c0a1e2b129a54914c4a",
-    "27-github-settings.png": "d756fc09c29ac0d4bc6c8b667e7b52f582a7e468738dd9259398ca5eea409f8f"
+    "27-github-settings.png": "d756fc09c29ac0d4bc6c8b667e7b52f582a7e468738dd9259398ca5eea409f8f",
+    "35-profile-fields.png": "f17455498b964bf773b2fcc499454429111f3efa4ed189121efc6b09dac6da9e",
+    "36-institutions.png": "fd5a903a6e48a36520f397a171075f4191ef95664a006516f274f9e5465dbafb"
   }
 }

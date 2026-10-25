@@ -151,7 +151,10 @@ export class AdminService {
   }
   async fields(u: Principal) {
     if (!u.isAdmin && !u.contestIds.length) throw new BadRequestException('需要管理员身份');
-    return db.fieldDefinition.findMany({ orderBy: { key: 'asc' } });
+    return (await db.fieldDefinition.findMany({ orderBy: { key: 'asc' } })).map((row) => ({
+      ...row,
+      definition: fieldSchema.parse(row.definition),
+    }));
   }
   async field(u: Principal, body: unknown) {
     requireAdmin(u);

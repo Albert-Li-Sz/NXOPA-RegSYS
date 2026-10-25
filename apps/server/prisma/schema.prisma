@@ -115,6 +115,24 @@ model Setting {
   value Json
   version Int @default(1)
 }
+model Institution {
+  id String @id @default(uuid()) @db.Uuid
+  code String? @unique
+  name String
+  normalizedName String @unique
+  shortName String @default("")
+  country String @default("CHN")
+  province String @default("")
+  city String @default("")
+  aliases String[] @default([])
+  searchText String
+  source String @default("CUSTOM")
+  enabled Boolean @default(true)
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([enabled,name,id])
+}
 /// GitHub login uses the github slug; other historical providers remain inactive.
 model OAuthProvider {
   id String @id @default(uuid()) @db.Uuid

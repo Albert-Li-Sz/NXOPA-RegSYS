@@ -1,4 +1,18 @@
 import { expect, type Page } from '@playwright/test';
+export async function chooseInstitution(page: Page, selector: string, name: string) {
+  const input = page.locator(selector);
+  await input.click();
+  await input.fill(name);
+  await page
+    .locator('.el-select-dropdown:visible')
+    .getByRole('option')
+    .filter({ hasText: name })
+    .first()
+    .click();
+  await expect(
+    input.locator('xpath=ancestor::div[contains(@class,"el-select__wrapper")]'),
+  ).toContainText(name);
+}
 export async function editRegistration(page: Page) {
   const edit = page.getByRole('button', { name: '编辑报名资料', exact: true });
   await expect(edit.or(page.getByRole('button', { name: /^(保存草稿|保存修改)$/ }))).toBeVisible();
