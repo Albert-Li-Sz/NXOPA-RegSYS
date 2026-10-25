@@ -8,7 +8,7 @@
 
 导出权限为该活动的 `INTEGRATIONS`。系统仅导出已取得参赛资格的报名，草稿、未通过审核、费用未完成、取消的记录不进入文件。可排除非正式报名，也可把本次全部队伍设为非正式。后续新增或变更报名需重新导出、导入。
 
-ZIP 包包含 `teams.json`、`credentials.csv` 和 `README.txt`；DOMjudge 另外包含 `groups.json`、`organizations.json`、`accounts.json`。同一报名、同一平台复用比赛密码，密码在数据库中加密保存，与本站登录密码独立。Hydro 使用个人本人／团队队长的报名学号登录，DOMjudge 沿用系统生成的账号。JSON 直接序列化，不经过 Excel / pandas，队名为 `NULL`、中文和真实成员都能保留。导出的凭据表含明文比赛密码，请仅交给评测管理员并妥善分发。
+ZIP 包包含 `teams.json`、`credentials.csv` 和 `README.txt`；DOMjudge 另外包含 `groups.json`、`organizations.json`、`accounts.json`。Hydro、DOMjudge 和准考证共用同一份报名的账号密码：个人本人／团队队长的报名学号作为登录名，系统随机生成比赛密码并加密保存，与本站登录密码独立。首次导出或生成准考证时按需生成，重复、并发操作及关闭再开启平台导出均保留密码。JSON 直接序列化，不经过 Excel / pandas，队名为 `NULL`、中文和真实成员都能保留。导出的凭据表含明文比赛密码，请仅交给评测管理员并妥善分发。
 
 一个报名对应一个平台队伍和一个比赛账号。Hydro 座位使用“考场编号＋至少两位座位序号”，例如编号 A、座位 1 导出 `A01`，座位 100 导出 `A100`；未排座或未填编号时导出空字符串，不使用活动前缀、人工队伍编号或报名编号回退。DOMjudge 继续使用带活动前缀的“考场名-座位号”，未排座时回退到可选队伍编号／座位或报名编号。非空座位重复或一个团队分配了多个个人座位时会拒绝导出，Hydro 允许多条空座位。
 
@@ -55,7 +55,7 @@ hydrooj cli system onsiteImport /srv/import/teams.json 0123456789abcdef01234567,
 ]
 ```
 
-`id` 固定使用报名 UUID，不随学号、队名或座位变化。`name` 读取个人本人／团队队长报名资料中的 `student_id`，保留字符串前导零，并按 Hydro 的 SASLprep 规则规范化；学号缺失、格式不符或同包内规范化后重名（忽略大小写）会拒绝整包导出并指出报名。`displayName` 为用户填写的队名，个人赛为本人姓名。`password` 为首次导出时生成并加密保存的独立比赛密码，重复导出保持不变。
+`id` 固定使用报名 UUID，不随学号、队名或座位变化。`name` 读取个人本人／团队队长报名资料中的 `student_id`，保留字符串前导零，并按 Hydro 的 SASLprep 规则规范化；学号缺失、格式不符或同一活动合格报名内规范化后重名（忽略大小写，包含本次未选中的分组）会拒绝整包导出并指出报名。`displayName` 为用户填写的队名，个人赛为本人姓名。`password` 为首次导出或生成准考证时生成并加密保存的共享比赛密码，重复导出保持不变。
 
 `members` 仅包含有效成员姓名，队长在前，支持四名及更多成员；不同时输出 `member1`–`member4`，避免插件追加造成重复。`coach` 为已关联教练姓名，多人以“、”连接；`school` 为代表单位。`rank` 必须为布尔值：`true` 为正式，`false` 为非正式；选择“全部作为非正式参赛”时全部导出 `false`。`credentials.csv` 的用户名、密码和座位与 JSON 一致。
 
@@ -81,7 +81,7 @@ hydrooj cli system onsiteImport /srv/import/teams.json 0123456789abcdef01234567,
 | 3    | teams         | teams.json         | 队伍外部 ID、组 ID、学校 ID、名称、成员、座位与地点 |
 | 4    | accounts      | accounts.json      | 用户名、密码、type=team、team_id                    |
 
-**用户文件的导入类型是 accounts，不是 users**。DOMjudge 文档中的 accounts.yaml 同样允许 accounts.json。不要把注册用户 JSON 接口、旧 accounts.tsv 或团队导入页面混用。`team_id` 对应 `teams.json` 的外部 `id`，不是 DOMjudge 数据库数字主键；`group_ids` 只包含一个分组。本系统分别生成稳定 ID 并保持关联。
+**用户文件的导入类型是 accounts，不是 users**。DOMjudge 文档中的 accounts.yaml 同样允许 accounts.json。不要把注册用户 JSON 接口、旧 accounts.tsv 或团队导入页面混用。`team_id` 对应 `teams.json` 的外部 `id`，不是 DOMjudge 数据库数字主键；`group_ids` 只包含一个分组。队伍及账号 id 均为报名 UUID，team_id 指向同一 UUID；用户名为本人／队长学号，密码与 Hydro 和准考证一致。
 
 如果已有分组，导出时可填写其外部 ID；导入 groups.json 会更新对应分组，请核对名称和排名顺序。相同 sortorder 会合并排名，仅给非正式组改名字不能隔离排名。完成导入后，在目标比赛设置中允许对应组参赛，核对激活时间、比赛时间、正式奖项设置；导入队伍与用户本身不自动创建比赛或授予比赛准入。
 
@@ -89,7 +89,11 @@ hydrooj cli system onsiteImport /srv/import/teams.json 0123456789abcdef01234567,
 
 重复导入队伍按外部 ID 更新；9.x 账号导入对已存在的用户名／ID可能跳过或拒绝更新。修改密码、名称、队伍关联时必须查看导入结果，并在 Users 管理页核对或手动修改。使用导出的 team 账号实际登录，确认只能访问正确的队伍和比赛，再发放凭据。不能用“上传成功”代替导入结果和登录检查。
 
-## 旧版本升级与数据边界
+## 部署与数据边界
+
+v0.10.0 按全新部署发布，使用新的安装目录、Compose 项目名和数据卷；不迁移 v0.9.x 或已弃用的 v1.0.0 业务数据和比赛凭据。v1.0.0 已停止分发，后续维护以 v0.9.2 功能为基础。学号或队长变更后保留报名 UUID 和随机密码，更新用户名并撤销旧准考证；目标平台需重新导入或手动更新。
+
+以下是此前 v0.7.x 的同步退役机制：
 
 升级会停用旧实例和自动绑定、取消未完成 SYNC 任务、移除旧服务凭据。历史映射与人工撤权待办保留以便处理已创建的远端账号；旧接口返回 404。新导出不会沿用旧同步账号，也不会联络远端。请先备份，比赛正在使用旧账号时不要在赛中直接切换。
 

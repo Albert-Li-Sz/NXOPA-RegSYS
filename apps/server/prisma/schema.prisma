@@ -177,6 +177,7 @@ model Contest {
   roles RoleAssignment[]
   forms FormVersion[]
   registrations Registration[]
+  competitionAccounts CompetitionAccount[]
   bindings PlatformBinding[]
   rooms ExamRoom[]
   examSites ExamSite[]
@@ -233,7 +234,7 @@ model Registration {
   seats SeatAssignment[]
   admissions AdmissionDocument[]
   mappings AccountMapping[]
-  exportAccounts PlatformExportAccount[]
+  competitionAccount CompetitionAccount?
   @@index([contestId,status,review,eligible])
   @@index([ownerId])
   @@index([examSiteId])
@@ -241,15 +242,17 @@ model Registration {
   @@unique([contestId,number])
   teamFiles TeamFile[]
 }
-model PlatformExportAccount {
+model CompetitionAccount {
   id String @id @default(uuid()) @db.Uuid
-  registrationId String @db.Uuid
+  registrationId String @unique @db.Uuid
   registration Registration @relation(fields:[registrationId],references:[id],onDelete:Cascade)
-  platform String
-  username String @unique
+  contestId String @db.Uuid
+  contest Contest @relation(fields:[contestId],references:[id],onDelete:Cascade)
+  username String
+  usernameKey String
   credential String
   createdAt DateTime @default(now())
-  @@unique([registrationId,platform])
+  @@unique([contestId,usernameKey])
 }
 /// active_contest_user and active_contest_identifier are partial unique indexes maintained by SQL migrations. Never use db push.
 model RegistrationPerson {

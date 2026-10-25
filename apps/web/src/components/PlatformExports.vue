@@ -98,11 +98,12 @@ async function download() {
       </p>
       <p class="notice" v-else>
         包含
-        groups.json、organizations.json、teams.json、accounts.json、账号密码表和说明。按分组、学校、队伍、用户顺序在
-        Import / export 中导入。
+        groups.json、organizations.json、teams.json、accounts.json、账号密码表和说明。个人本人／团队队长的学号作为登录名，队伍与账号以报名
+        ID 关联。按分组、学校、队伍、用户顺序在 Import / export 中导入。
       </p>
       <p>
-        重复导出保留同一报名的比赛密码，与本站登录密码独立。<span v-if="platform === 'HYDRO'"
+        两个平台和准考证共用同一组学号与比赛密码；重复导出和重新生成准考证保持密码不变，与本站登录密码独立。<span
+          v-if="platform === 'HYDRO'"
           >重新导入 Hydro 会重设远端密码。</span
         >导入包含明文比赛密码，请妥善保管。完成导出后仍需在目标平台导入，并核对比赛访问权限。
       </p>

@@ -333,6 +333,7 @@ try {
   await admin.completeProfile();
   const contest = await admin.api('/contests', 'POST', {
     title: '独立安装验收竞赛',
+    modules: { admissions: true, rooms: false, integrations: false },
     season: '安装验收',
     description: '正式 Docker Compose 空库部署',
     startsAt: new Date(Date.now() + 86400000).toISOString(),

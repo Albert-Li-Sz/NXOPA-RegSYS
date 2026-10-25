@@ -32,6 +32,7 @@ import {
 import { modulesFor } from './workflow.js';
 import { config } from './config.js';
 import { renderTemplate } from './templates.js';
+import { competitionCredentials, ensureCompetitionAccount } from './competition-accounts.js';
 
 export async function activeTemplate(contestId: string, tx: Tx = db) {
   return (
@@ -78,6 +79,7 @@ export async function admissionMaterial(
   a: { number: string; location: string; room: string; seat: string },
 ) {
   const context = admissionContext(r, a);
+  const account = await competitionCredentials(r.id, r.version);
   const fields = fieldsSchema.parse((r.snapshot as Record<string, unknown>)?.fields ?? []);
   const assets: Record<string, string> = {};
   let bytes = 0;
@@ -124,6 +126,7 @@ export async function admissionMaterial(
   return {
     context: {
       ...context,
+      account,
       registration: { ...context.registration, assets: registration.assets },
       participant: members[0],
       team: { ...context.team, assets: team.assets, members },
@@ -255,8 +258,12 @@ export class AdmissionService {
     const b = z
       .object({ contestId: z.string().uuid().optional(), source: z.string().max(100000) })
       .parse(body);
+    let showAccount = true;
     if (b.contestId) {
       requireManager(u, b.contestId, 'ADMISSIONS');
+      showAccount = modulesFor(
+        await db.contest.findUniqueOrThrow({ where: { id: b.contestId } }),
+      ).integrations;
       if (
         !modulesFor(await db.contest.findUniqueOrThrow({ where: { id: b.contestId } })).admissions
       )
@@ -273,6 +280,7 @@ export class AdmissionService {
         ],
       },
       coaches: [],
+      account: showAccount ? { username: '0020260001', password: 'PreviewContest2026!' } : null,
       admission: { number: 'PREVIEW-001', location: '示例考点', room: 'A101', seat: '12' },
     });
     const id = randomUUID();
@@ -385,6 +393,7 @@ export class AdmissionService {
         : (assignment?.location ?? (b.location || r.contest.location));
       try {
         const a = await db.$transaction(async (tx) => {
+          await lock(tx, `competition-accounts:${r.contestId}`);
           await lock(tx, id);
           await lock(tx, `seating:${r.contestId}`);
           await lock(tx, `admission-budget:${r.contestId}`);
@@ -448,6 +457,7 @@ export class AdmissionService {
           const current = await tx.registration.findUniqueOrThrow({ where: { id } });
           if (!current.eligible || current.version !== r.version)
             throw new BadRequestException('报名资料已改变');
+          await ensureCompetitionAccount(tx, id, r.version);
           const template = await activeTemplate(r.contestId, tx);
           if (!template) throw new BadRequestException('请先配置准考证模板');
           let document = await tx.admissionDocument.upsert({

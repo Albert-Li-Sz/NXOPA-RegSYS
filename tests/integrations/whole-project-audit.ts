@@ -498,7 +498,7 @@ try {
       assert.equal(result.status, 201);
       assert.equal(result.headers.get('cache-control'), 'no-store');
       await result.arrayBuffer();
-      assert.equal(await db.platformExportAccount.count({ where: { registrationId: r.id } }), 1);
+      assert.equal(await db.competitionAccount.count({ where: { registrationId: r.id } }), 1);
       await expectStatus(admin, '/integrations/instances', 'POST', {}, 404);
     },
   );

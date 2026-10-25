@@ -232,6 +232,7 @@ async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
     }
     if (expectedChecks[suite]) {
       const names: Record<string, string> = {
+        'test:competition-accounts': 'competition-accounts',
         'test:permissions': 'permission-regressions',
         'test:whole-audit': 'whole-project-audit',
         'test:security': 'security-audit',

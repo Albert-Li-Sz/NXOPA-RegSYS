@@ -463,6 +463,8 @@ async function downloadAdmissions() {
 }
 const availableVariables = computed(() => [
   'contest.title',
+  'account.username',
+  'account.password',
   'contest.startsAt',
   'admission.number',
   'admission.location',
@@ -601,7 +603,8 @@ function insertVariable(v: string) {
               ><el-checkbox v-model="form.modules.integrations">启用平台文件导出</el-checkbox>
             </div>
             <p class="form-help">
-              可先开放报名，后续启用平台文件导出，下载合格报名的 Hydro 或 DOMjudge 导入文件。
+              可先开放报名，后续启用平台文件导出。启用后，Hydro、DOMjudge
+              和准考证共用本人／队长学号及同一个随机比赛密码。
             </p>
             <el-form-item v-if="form.modules.rooms" label="排考单位"
               ><el-select v-model="form.seatingMode" filterable

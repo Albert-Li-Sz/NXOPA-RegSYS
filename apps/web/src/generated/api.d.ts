@@ -1811,7 +1811,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Same registration/platform keeps encrypted stable credentials. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay. */
+        /** @description INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Hydro, DOMjudge and admission PDFs share the participant/captain student-ID username and one encrypted stable random password per registration. DOMjudge team/account IDs and team_id use the registration UUID. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay. */
         post: operations["ApiController_exportPlatform"];
         delete?: never;
         options?: never;

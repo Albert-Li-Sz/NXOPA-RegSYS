@@ -612,6 +612,8 @@ export const defaultTemplate = String.raw`\documentclass[UTF8,fontset=fandol,a4p
 \noindent 准考证号：{{admission.number}}\\[3mm]
 比赛时间：{{contest.startsAt}}\\[3mm]
 考点：{{admission.location}}\quad 考场：{{admission.room}}\quad 座位：{{admission.seat}}\\[3mm]
+{{#if account}}比赛账号：\mbox{\texttt{ {{account.username}} }}\\[3mm]
+比赛密码：\mbox{\texttt{ {{account.password}} }}\\[3mm]{{/if}}
 {{#if team.name}}队伍名称：{{team.name}}\\[3mm]{{/if}}
 \begin{longtable}{|p{25mm}|p{65mm}|p{35mm}|}\hline
 姓名 & 学校 / 单位 & 队长\\\hline

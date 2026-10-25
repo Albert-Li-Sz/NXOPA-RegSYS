@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 export const fullRegressionSuites = [
   'test:integration',
   'test:platform-exports',
+  'test:competition-accounts',
   'test:auth',
   'test:audit-20261022',
   'test:accounts',
@@ -27,6 +28,7 @@ export const fullRegressionSuites = [
   'test:e2e',
 ];
 export const expectedChecks = {
+  'test:competition-accounts': 7,
   'test:permissions': 18,
   'test:whole-audit': 13,
   'test:security': 20,

@@ -569,7 +569,7 @@ export function describeApi(document: OpenAPIObject) {
       }
       if (url === '/api/v1/contests/{id}/platform-exports' && method === 'post') {
         op.description =
-          'INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Same registration/platform keeps encrypted stable credentials. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay.';
+          'INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Hydro, DOMjudge and admission PDFs share the participant/captain student-ID username and one encrypted stable random password per registration. DOMjudge team/account IDs and team_id use the registration UUID. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay.';
         op.parameters = op.parameters.filter((p: any) => p.name !== 'Idempotency-Key');
         op.responses['201'] = {
           description: 'Platform import ZIP with plaintext competition credentials',
