@@ -228,7 +228,9 @@ async function hydro(admin: Client) {
     mapped.map((team) => [team.id, team.name, team.password]),
     teams.map((team) => [team.id, team.name, team.password]),
   );
-  await exported(admin, 'HYDRO', true);
+  const reverted = await exported(admin, 'HYDRO', true);
+  for (const field of ['displayName', 'school', 'seat', 'coach', 'members'])
+    assert.deepEqual(reverted[0][field], teams[0][field]);
   await importFile();
   const restoredRemote = await inspect();
   for (const field of ['displayName', 'school', 'seat', 'coach', 'members'])

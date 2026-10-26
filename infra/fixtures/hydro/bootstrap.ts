@@ -37,6 +37,9 @@ class FixtureHandler extends AuthenticatedFixture {
 class InspectHandler extends AuthenticatedFixture {
   async post() {
     const { domainId, contestId, usernames } = this.request.body;
+    // onsiteImport runs in a separate CLI process. Inspect persisted values,
+    // rather than a previous inspection's HTTP-process user cache.
+    UserModel.cache.clear();
     this.response.body = await Promise.all(
       usernames.map(async (username: string) => {
         const user = await UserModel.getByUname(domainId, username);
