@@ -504,8 +504,7 @@ export function registrationEligible(
   const n = r.people.filter((x) => x.active).length;
   return (
     r.status === 'SUBMITTED' &&
-    r.review !== 'REJECTED' &&
-    (r.review === 'APPROVED' || (!p.manualReview && r.participationType !== 'UNOFFICIAL')) &&
+    r.review === 'APPROVED' &&
     n >= p.minMembers &&
     n <= p.maxMembers &&
     r.people.filter((x) => x.active).every((x) => x.confirmed) &&
@@ -578,21 +577,55 @@ export interface PaymentProvider {
   refund(id: string, amountCents: number): Promise<string>;
 }
 
-export const platformExportSchema = z.object({
-  platform: z.enum(['HYDRO', 'DOMJUDGE']),
-  includeUnofficial: z.boolean().default(true),
-  importMode: z.enum(['FOLLOW', 'FORCE_UNOFFICIAL']).default('FOLLOW'),
-  officialGroupId: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9_-]{1,64}$/)
-    .optional(),
-  unofficialGroupId: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9_-]{1,64}$/)
-    .optional(),
-});
+export const hydroExportFields = [
+  'id',
+  'name',
+  'displayName',
+  'password',
+  'school',
+  'members',
+  'coach',
+  'seat',
+  'rank',
+] as const;
+export type HydroExportField = (typeof hydroExportFields)[number];
+export const requiredHydroExportFields: readonly HydroExportField[] = ['id', 'name', 'rank'];
+export const platformExportSchema = z
+  .object({
+    platform: z.enum(['HYDRO', 'DOMJUDGE']),
+    hydroFields: z.array(z.enum(hydroExportFields)).max(hydroExportFields.length).optional(),
+    includeUnofficial: z.boolean().default(true),
+    importMode: z.enum(['FOLLOW', 'FORCE_UNOFFICIAL']).default('FOLLOW'),
+    officialGroupId: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_-]{1,64}$/)
+      .optional(),
+    unofficialGroupId: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_-]{1,64}$/)
+      .optional(),
+  })
+  .superRefine((options, ctx) => {
+    if (options.hydroFields === undefined) return;
+    if (options.platform !== 'HYDRO') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['hydroFields'],
+        message: 'DOMjudge 不支持 Hydro 字段选择',
+      });
+      return;
+    }
+    if (new Set(options.hydroFields).size !== options.hydroFields.length)
+      ctx.addIssue({ code: 'custom', path: ['hydroFields'], message: '导出字段不能重复' });
+    if (requiredHydroExportFields.some((field) => !options.hydroFields!.includes(field)))
+      ctx.addIssue({
+        code: 'custom',
+        path: ['hydroFields'],
+        message: '必须保留 id、name、rank 字段',
+      });
+  });
 export const defaultFields: FieldDefinition[] = fieldsSchema.parse([
   { key: 'school', label: '院校或单位', scope: 'PERSON', type: 'institution' },
   { key: 'email', label: '邮箱', scope: 'PERSON', type: 'email', sensitive: true },

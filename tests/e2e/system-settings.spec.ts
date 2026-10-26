@@ -113,6 +113,6 @@ test('contest administrators cannot open system mail configuration and platform 
   await expect(page.locator('#mail-host')).toHaveCount(0);
   await page.getByRole('link', { name: '平台导出中心', exact: true }).click();
   await expect(page.getByRole('heading', { name: '导出平台导入文件' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '导出平台导入包' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^(默认导出|导出平台导入包)$/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /同步|添加.*实例/ })).toHaveCount(0);
 });

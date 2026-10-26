@@ -209,7 +209,13 @@ async function save() {
     });
     await refresh();
     edit.finish();
-    ElMessage.success(wasDraft ? '报名草稿已保存' : '报名修改已保存');
+    ElMessage.success(
+      manager.value && r.value?.review === 'PENDING'
+        ? '修改已保存并送管理员复核，无需选手重新提交'
+        : wasDraft
+          ? '报名草稿已保存'
+          : '报名修改已保存',
+    );
   } finally {
     busy.value = false;
   }
@@ -744,6 +750,12 @@ async function memberSave(id: string, index: number) {
           </div>
           <p class="form-help">受邀者登录并确认后关联生效，有效期 7 天。</p>
         </div>
+        <el-alert
+          v-if="manager && canSave"
+          type="info"
+          :closable="false"
+          title="管理员修正须填写完整资料；保存后进入待复核，暂停参赛资格并使旧准考证失效，无需选手重新提交。"
+        />
         <div v-if="canSave" class="actions">
           <el-button v-if="r.actions.submit" type="primary" :loading="busy" @click="submit"
             >提交报名</el-button
@@ -752,7 +764,7 @@ async function memberSave(id: string, index: number) {
             :type="r.actions.submit ? 'default' : 'primary'"
             :loading="busy"
             @click="save"
-            >{{ savingDraft ? '保存草稿' : '保存修改' }}</el-button
+            >{{ manager ? '保存并送复核' : savingDraft ? '保存草稿' : '保存修改' }}</el-button
           >
         </div>
       </el-form>
@@ -780,7 +792,8 @@ async function memberSave(id: string, index: number) {
       </div>
       <div v-if="manager" class="card">
         <h3>公示排名</h3>
-        <EditActions :session="rankEdit" /><template v-if="rankEdit.editing.value"
+        <EditActions :session="rankEdit" :allow="!r.contest.archived" /><template
+          v-if="rankEdit.editing.value"
           ><el-input-number v-model="rank.rank" :min="1" aria-label="网络赛排名" /><el-button
             @click="saveRank"
             >保存排名</el-button

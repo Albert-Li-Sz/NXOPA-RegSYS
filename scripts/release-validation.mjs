@@ -4,6 +4,7 @@ export const fullRegressionSuites = [
   'test:platform-exports',
   'test:competition-accounts',
   'test:profile-fields',
+  'test:admin-edits',
   'test:auth',
   'test:audit-20261022',
   'test:accounts',
@@ -31,6 +32,7 @@ export const fullRegressionSuites = [
 export const expectedChecks = {
   'test:competition-accounts': 7,
   'test:profile-fields': 6,
+  'test:admin-edits': 12,
   'test:permissions': 18,
   'test:whole-audit': 13,
   'test:security': 20,

@@ -91,7 +91,7 @@ test('room codes can be edited and the downloaded Hydro package uses student-ID 
       fullPage: false,
     });
     const downloading = page.waitForEvent('download');
-    await page.getByRole('button', { name: '导出平台导入包', exact: true }).click();
+    await page.getByRole('button', { name: /^(默认导出|导出平台导入包)$/, exact: true }).click();
     const download = await downloading;
     expect(download.suggestedFilename()).toBe(`hydro-${fixture.contest.id}.zip`);
     const zip = path.join(stage, 'hydro.zip');
@@ -120,7 +120,9 @@ test('room codes can be edited and the downloaded Hydro package uses student-ID 
     });
     await page.getByText('Hydro 最新版（Onsite Toolkit）', { exact: true }).click();
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByRole('button', { name: '导出平台导入包', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /^(默认导出|导出平台导入包)$/, exact: true }),
+    ).toBeVisible();
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
       .toBeLessThanOrEqual(0);

@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v2.0.0
+        description: 已存在的版本标签，例如 v2.1.0
         required: true
-        default: v2.0.0
+        default: v2.1.0
         type: string
 
 permissions:
@@ -93,6 +93,7 @@ jobs:
             .runtime/reports/platform-imports-hydro.json
             .runtime/reports/platform-imports-domjudge.json
             .runtime/reports/competition-accounts.json
+            .runtime/reports/admin-registration-edits.json
             .runtime/reports/ui-audit
           retention-days: 30
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -239,7 +240,7 @@ jobs:
     name: 发布镜像实际安装 / ${{ matrix.arch }}
     needs: [validate, manifests]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: read
@@ -278,6 +279,13 @@ jobs:
         env:
           INTERACTIVE_INSTALL_FROM: v0.10.2
           INTERACTIVE_INSTALL_TO: ${{ env.RELEASE_TAG }}
+        run: |
+          pnpm test:install-interactive
+          cp .runtime/reports/install-interactive.json .runtime/reports/install-interactive-legacy.json
+      - name: 从 v2.0.0 保留数据升级及卸载实际验收
+        env:
+          INTERACTIVE_INSTALL_FROM: v2.0.0
+          INTERACTIVE_INSTALL_TO: ${{ env.RELEASE_TAG }}
         run: pnpm test:install-interactive
       - name: 核验公开拉取、版本摘要与源码标签
         env:
@@ -295,6 +303,7 @@ jobs:
           path: |
             .runtime/reports/install.json
             .runtime/reports/install-interactive.json
+            .runtime/reports/install-interactive-legacy.json
             .runtime/reports/install-proxy.json
           retention-days: 30
 

@@ -573,9 +573,12 @@ export function describeApi(document: OpenAPIObject) {
           },
         };
       }
+      if (url === '/api/v1/registrations/{id}' && method === 'put')
+        op.description =
+          'Applicant editing keeps the existing submission workflow. REGISTRATIONS managers may only amend APPROVED submissions or CORRECTION entries, including after closing; archived contests are read-only. Complete validation, snapshot, fee adjustment and invalidation commit atomically. A changed approved entry or complete correction becomes SUBMITTED/PENDING for administrator review without applicant resubmission. A no-op approved save preserves its state.';
       if (url === '/api/v1/contests/{id}/platform-exports' && method === 'post') {
         op.description =
-          'INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Hydro, DOMjudge and admission PDFs share the participant/captain student-ID username and one encrypted stable random password per registration. DOMjudge team/account IDs and team_id use the registration UUID. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay.';
+          'INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Hydro, DOMjudge and admission PDFs share the participant/captain student-ID username and one encrypted stable random password per registration. DOMjudge team/account IDs and team_id use the registration UUID. Hydro accepts optional hydroFields (id, name and rank required); omitted fields are excluded from teams.json and matching CSV columns. Omitting password excludes plaintext passwords from the entire ZIP; DOMjudge rejects hydroFields. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay.';
         op.parameters = op.parameters.filter((p: any) => p.name !== 'Idempotency-Key');
         op.responses['201'] = {
           description: 'Platform import ZIP with plaintext competition credentials',

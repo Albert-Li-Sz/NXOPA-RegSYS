@@ -1,7 +1,6 @@
 import {
   activityModulesSchema,
   contestStatus,
-  policySchema,
   registrationReviewPhase,
   type Principal,
 } from '@contest-center/contracts';
@@ -20,32 +19,39 @@ export function registrationDisplayState(r: { status: string; review: string }) 
   if (r.status === 'CORRECTION') return 'CORRECTION';
   return r.review;
 }
+export function registrationEditAccess(u: Principal, r: Registration) {
+  if (manages(u, r.contestId, 'REGISTRATIONS')) {
+    if (r.contest.archived) return { allowed: false, reason: '活动已归档，报名管理只读' };
+    const allowed =
+      r.status === 'CORRECTION' || (r.status === 'SUBMITTED' && r.review === 'APPROVED');
+    return { allowed, reason: allowed ? '' : '管理员仅可修改审核通过或待补正的报名' };
+  }
+  if (!editingWindow(r)) return { allowed: false, reason: '报名或补正时间已结束，或活动已归档' };
+  return { allowed: canEdit(u, r), reason: canEdit(u, r) ? '' : '当前账号没有修改此报名的权限' };
+}
 export function registrationActions(u: Principal, r: Registration) {
   const open = editingWindow(r),
-    editor = canEdit(u, r),
+    access = registrationEditAccess(u, r),
     applicant = canActForApplicant(u, r),
     member = r.people.some((p) => p.active && p.userId && owns(u, p.userId)),
     manager = manages(u, r.contestId, 'REGISTRATIONS'),
     reviewPhase = registrationReviewPhase(r),
-    integrationManager = manages(u, r.contestId, 'INTEGRATIONS'),
-    team = policySchema.parse(r.policySnapshot ?? r.contest.policy).mode === 'TEAM';
+    reviewOpen = !r.contest.archived;
   return {
-    edit: editor && open,
-    editOwnMember: open && member,
+    edit: access.allowed,
+    editOwnMember: member && (manager ? access.allowed : open),
     submit: applicant && open && ['DRAFT', 'CORRECTION'].includes(r.status),
     withdraw: applicant && open && reviewPhase === 'INITIAL' && !r.netPaidCents,
     cancel: owns(u, r.ownerId),
-    delete: manager,
-    review: manager && reviewPhase === 'INITIAL',
-    amendReview: manager && reviewPhase === 'AMEND',
+    delete: manager && !r.contest.archived,
+    review: manager && reviewOpen && reviewPhase === 'INITIAL',
+    amendReview: manager && reviewOpen && reviewPhase === 'AMEND',
     requestFinance: applicant,
     credentials: false,
-    editReason: open
-      ? editor
-        ? ''
-        : member
-          ? '仅可修改本人信息'
-          : '当前账号没有修改此报名的权限'
-      : '报名或补正时间已结束，或活动已归档',
+    editReason: access.allowed
+      ? ''
+      : !manager && open && member
+        ? '仅可修改本人信息'
+        : access.reason,
   };
 }

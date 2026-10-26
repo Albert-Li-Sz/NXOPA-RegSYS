@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import {
+  hydroExportFields,
+  requiredHydroExportFields,
+  type HydroExportField,
+} from '@contest-center/contracts';
 import { ElMessage } from 'element-plus';
 import { downloadArchive } from '../api';
 import { canManage } from '../permissions';
@@ -15,7 +20,19 @@ const platform = ref('HYDRO'),
 const officialGroupId = ref(''),
   unofficialGroupId = ref(''),
   busy = ref(false);
-async function download() {
+const selectedFields = ref<HydroExportField[]>([...hydroExportFields]);
+const fieldLabels: Record<HydroExportField, string> = {
+  id: '报名 ID',
+  name: '登录学号',
+  displayName: '队名／姓名',
+  password: '比赛密码',
+  school: '代表单位',
+  members: '队员',
+  coach: '教练',
+  seat: '座位',
+  rank: '排名性质',
+};
+async function download(custom = false) {
   if (!contestId.value || busy.value) return;
   busy.value = true;
   try {
@@ -23,6 +40,7 @@ async function download() {
       `/contests/${contestId.value}/platform-exports`,
       {
         platform: platform.value,
+        ...(custom && platform.value === 'HYDRO' ? { hydroFields: selectedFields.value } : {}),
         includeUnofficial: includeUnofficial.value,
         importMode: importMode.value,
         ...(platform.value === 'DOMJUDGE'
@@ -44,7 +62,7 @@ async function download() {
   <div class="card platform-exports">
     <h3>导出平台导入文件</h3>
     <p class="subtitle">将取得参赛资格的报名导出为 Hydro 或 DOMjudge 导入包。</p>
-    <el-form label-position="top" @submit.prevent="download">
+    <el-form label-position="top" @submit.prevent="download(false)">
       <el-form-item v-if="!initialContestId" label="本站活动／竞赛" for="export-contest">
         <el-select
           id="export-contest"
@@ -91,6 +109,27 @@ async function download() {
           />
         </el-form-item>
       </div>
+      <el-form-item v-if="platform === 'HYDRO'" label="Hydro 自选字段">
+        <el-checkbox-group v-model="selectedFields" class="export-fields" :disabled="busy">
+          <el-checkbox
+            v-for="field in hydroExportFields"
+            :key="field"
+            :value="field"
+            :disabled="requiredHydroExportFields.includes(field) || busy"
+          >
+            {{ fieldLabels[field] }}（{{ field }}）{{
+              requiredHydroExportFields.includes(field) ? ' · 必选' : ''
+            }}
+          </el-checkbox>
+        </el-checkbox-group>
+        <el-button text :disabled="busy" @click="selectedFields = [...hydroExportFields]"
+          >恢复默认</el-button
+        >
+        <p class="form-help">
+          默认导出包含全部字段；自选字段导出仅包含勾选内容。取消比赛密码时整个 ZIP
+          均不包含密码。省略密码后新建的 Hydro 账号可能与准考证密码不同；省略队员可能清空远端成员。
+        </p>
+      </el-form-item>
       <p class="notice" v-if="platform === 'HYDRO'">
         包含 teams.json、账号密码表和导入说明。使用官方 Onsite Toolkit 的 onsiteImport
         命令，个人本人／团队队长的学号作为登录名，队名／姓名写入
@@ -104,8 +143,8 @@ async function download() {
       <p>
         两个平台和准考证共用同一组学号与比赛密码；重复导出和重新生成准考证保持密码不变，与本站登录密码独立。<span
           v-if="platform === 'HYDRO'"
-          >重新导入 Hydro 会重设远端密码。</span
-        >导入包含明文比赛密码，请妥善保管。完成导出后仍需在目标平台导入，并核对比赛访问权限。
+          >导出 password 时，重新导入 Hydro 会重设远端密码。</span
+        >含密码的导入文件请妥善保管。完成导出后仍需在目标平台导入，并核对比赛访问权限。
       </p>
       <p v-if="platform === 'HYDRO'">
         每次比赛清空 Hydro 后导入；本包不兼容旧账号或跨活动账号复用。队员只通过 members
@@ -113,8 +152,15 @@ async function download() {
       </p>
       <p>资格撤销或报名删除后，请在目标平台手动处理原账号；新的导入包不会删除远端记录。</p>
       <div class="actions">
-        <el-button type="primary" native-type="submit" :loading="busy" :disabled="!contestId"
-          >导出平台导入包</el-button
+        <el-button type="primary" native-type="submit" :loading="busy" :disabled="!contestId">{{
+          platform === 'HYDRO' ? '默认导出' : '导出平台导入包'
+        }}</el-button>
+        <el-button
+          v-if="platform === 'HYDRO'"
+          :loading="busy"
+          :disabled="!contestId"
+          @click="download(true)"
+          >自选字段导出</el-button
         >
         <a href="https://albert-li-sz.github.io/NXOPA-RegSYS/#hydro" target="_blank" rel="noopener"
           >查看导入教程</a
@@ -126,6 +172,20 @@ async function download() {
 <style scoped>
 .platform-exports {
   max-width: 1000px;
+}
+.export-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  width: 100%;
+}
+.export-fields .el-checkbox {
+  margin-right: 0;
+  white-space: normal;
+  height: auto;
+  min-height: 32px;
+}
+.actions > .el-button {
+  min-width: 136px;
 }
 .el-select {
   width: 100%;

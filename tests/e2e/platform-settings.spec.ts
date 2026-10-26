@@ -57,7 +57,7 @@ test('administrator downloads both import formats and old connection controls ar
   ]) {
     await page.getByText(label, { exact: true }).click();
     const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: '导出平台导入包', exact: true }).click();
+    await page.getByRole('button', { name: /^(默认导出|导出平台导入包)$/, exact: true }).click();
     const file = await download,
       filePath = await file.path();
     expect(file.suggestedFilename()).toBe(`${type}-${fixture.contest.id}.zip`);
@@ -72,7 +72,9 @@ test('administrator downloads both import formats and old connection controls ar
           execFileSync('unzip', ['-p', filePath!, 'accounts.json'], { encoding: 'utf8' }),
         )[0].type,
       ).toBe('team');
-    await expect(page.getByRole('button', { name: '导出平台导入包', exact: true })).toBeEnabled();
+    await expect(
+      page.getByRole('button', { name: /^(默认导出|导出平台导入包)$/, exact: true }),
+    ).toBeEnabled();
     await expect(page.locator('.el-message')).toHaveCount(0);
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: path.join(screenshots, `${type}-desktop.png`), fullPage: true });
@@ -84,7 +86,7 @@ test('administrator downloads both import formats and old connection controls ar
   }
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await expect(page.getByRole('button', { name: '导出平台导入包' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^(默认导出|导出平台导入包)$/ })).toBeVisible();
   await page.screenshot({ path: path.join(screenshots, 'domjudge-mobile.png'), fullPage: true });
   expect(errors).toEqual([]);
 });
@@ -98,7 +100,7 @@ test('activity administrators export qualified entries after registration withou
   await page.getByText('包含非正式报名', { exact: true }).click();
   await expect(page.getByRole('switch', { name: '报名范围' })).not.toBeChecked();
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出平台导入包' }).click();
+  await page.getByRole('button', { name: /^(默认导出|导出平台导入包)$/ }).click();
   const file = await download;
   const teams = JSON.parse(
     execFileSync('unzip', ['-p', (await file.path())!, 'teams.json'], { encoding: 'utf8' }),
@@ -113,5 +115,5 @@ test('activity administrators export qualified entries after registration withou
   await page.reload();
   await expect(page.getByRole('tab', { name: '报名管理', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '导出平台导入文件' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '导出平台导入包' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^(默认导出|导出平台导入包)$/ })).toHaveCount(0);
 });

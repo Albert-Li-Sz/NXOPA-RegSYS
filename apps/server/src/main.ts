@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { migrateCancelledRegistrations } from './registration-removal.js';
 import { seedInstitutions, InstitutionService } from './institutions.js';
 import { migrateProfileFields } from './profile-data.js';
+import { migrateReviewEligibility } from './review-eligibility.js';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
@@ -99,6 +100,7 @@ class AppModule {}
 await migrateCancelledRegistrations();
 await seedInstitutions();
 await migrateProfileFields();
+await migrateReviewEligibility();
 const app = await NestFactory.create<NestExpressApplication>(AppModule, {
   logger: ['error', 'warn'],
 });

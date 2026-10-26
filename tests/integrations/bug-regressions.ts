@@ -290,10 +290,13 @@ try {
     const other = await bob.api('/registrations', 'POST', { contestId: c.id });
     const sharedOwnerFile = await admin.upload(other.id);
     let own = await admin.api('/registrations', 'POST', { contestId: c.id });
-    own = await admin.api(`/registrations/${own.id}`, 'PUT', {
-      ...own,
-      answers: { registration: { proof: sharedOwnerFile.id } },
+    // Management cannot edit drafts. Seed a malicious stored reference to exercise
+    // submission validation even when the uploader owns the other registration's file.
+    await db.registration.update({
+      where: { id: own.id },
+      data: { answers: { registration: { proof: sharedOwnerFile.id } } },
     });
+    own = await admin.api(`/registrations/${own.id}`);
     assert.equal(
       (await admin.raw(`/api/v1/registrations/${own.id}/submit`, 'POST', { version: own.version }))
         .status,

@@ -26,11 +26,15 @@ const compose = (platform: string, args: string[]) =>
     ],
     { timeout: 180000, maxBuffer: 4 * 1024 * 1024 },
   );
-async function exported(admin: Client, platform: string, force = false) {
+async function exported(admin: Client, platform: string, force = false, hydroFields?: string[]) {
   const response = await admin.raw(
     `/api/v1/contests/${fixture!.contest.id}/platform-exports`,
     'POST',
-    { platform, importMode: force ? 'FORCE_UNOFFICIAL' : 'FOLLOW' },
+    {
+      platform,
+      importMode: force ? 'FORCE_UNOFFICIAL' : 'FOLLOW',
+      ...(hydroFields ? { hydroFields } : {}),
+    },
   );
   if (!response.ok) throw new Error(`Export failed ${response.status}: ${await response.text()}`);
   const zip = path.join(stage, platform + '.zip');
@@ -166,6 +170,70 @@ async function hydro(admin: Client) {
   const data = (await view.json()) as any;
   assert.equal(String(data.UserContext?._id ?? data.user?._id), String(first[0].uid));
   assert.ok(data.tsdoc?.attend);
+  const remotePassword = `Remote-${crypto.randomUUID()}`;
+  const changed = await fetch(`${base}/contest-center-fixture/password`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      domainId: target.domainId,
+      username: teams[0].name,
+      password: remotePassword,
+    }),
+  });
+  assert.ok(changed.ok);
+  const minimal = await exported(admin, 'HYDRO', true, ['id', 'name', 'rank']);
+  assert.deepEqual(Object.keys(minimal[0]), ['id', 'name', 'rank']);
+  await importFile();
+  const selected = await inspect();
+  assert.deepEqual(
+    selected.map((team) => team.uid),
+    first.map((team) => team.uid),
+  );
+  assert.deepEqual(selected[0].members, []);
+  const preservedLogin = await fetch(`${base}/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body: new URLSearchParams({
+      uname: teams[0].name,
+      password: remotePassword,
+      rememberme: 'false',
+    }),
+    redirect: 'manual',
+  });
+  assert.ok(
+    preservedLogin.ok,
+    `Selected Hydro reimport must preserve an independently changed remote password: ${preservedLogin.status}`,
+  );
+  await db.registration.update({
+    where: { id: fixture!.rows[2]!.id },
+    data: { status: 'SUBMITTED', eligible: true },
+  });
+  const withNewAccount = await exported(admin, 'HYDRO', true, ['id', 'name', 'rank']);
+  await importFile();
+  const inspectedNew = await fetch(`${base}/contest-center-fixture/inspect`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ...target, usernames: withNewAccount.map((team) => team.name) }),
+  });
+  const newAccounts = (await inspectedNew.json()) as any[];
+  assert.equal(newAccounts.length, 3);
+  assert.ok(newAccounts.every((team) => team?.attend));
+  await exported(admin, 'HYDRO', true);
+  await importFile();
+  const resetLogin = await fetch(`${base}/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body: new URLSearchParams({
+      uname: teams[0].name,
+      password: teams[0].password,
+      rememberme: 'false',
+    }),
+    redirect: 'manual',
+  });
+  assert.ok(
+    resetLogin.ok,
+    `Full Hydro reimport must restore the shared password: ${resetLogin.status}`,
+  );
   reports.push({
     platform: 'HYDRO',
     version: '5.0.7',
@@ -178,6 +246,10 @@ async function hydro(admin: Client) {
     fiveMembersWithoutDuplicates: true,
     roomCodeSeats: ['A01', 'A100'],
     actualLoginAndContestAccess: true,
+    selectedFieldsReimport: true,
+    omittedPasswordPreservesRemoteChange: true,
+    omittedMembersClearsArray: true,
+    newAccountWithoutPassword: true,
   });
   console.log(
     'PASS Hydro official onsiteImport: student-ID login, registration UUID, five members, A01/A100 seats, rank, repeat import and actual contest access',

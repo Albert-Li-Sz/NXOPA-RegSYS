@@ -128,10 +128,18 @@ export class PublicRosterService {
         expectedRank: z.number().int().nullable().optional(),
       })
       .parse(body);
-    const registration = await db.registration.findUniqueOrThrow({ where: { id } });
+    const registration = await db.registration.findUniqueOrThrow({
+      where: { id },
+      include: { contest: true },
+    });
     requireManager(u, registration.contestId, 'REGISTRATIONS');
+    if (registration.contest.archived) throw new BadRequestException('活动已归档，报名管理只读');
     const changed = await db.registration.updateMany({
-      where: { id, ...(b.expectedRank !== undefined ? { publicRank: b.expectedRank } : {}) },
+      where: {
+        id,
+        contest: { archived: false },
+        ...(b.expectedRank !== undefined ? { publicRank: b.expectedRank } : {}),
+      },
       data: { publicRank: b.rank },
     });
     if (!changed.count)

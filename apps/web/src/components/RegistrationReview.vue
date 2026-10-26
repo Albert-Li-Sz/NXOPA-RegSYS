@@ -200,7 +200,13 @@ async function review(next = false) {
         :closable="false"
         title="当前报名不能审核，请等待提交或补正后重新提交"
       />
-      <el-form v-else label-position="top" :disabled="busy || refreshRequired"
+      <el-alert
+        v-if="canReview && new Date() >= new Date(r.contest.correctionUntil ?? r.contest.closesAt)"
+        type="info"
+        :closable="false"
+        title="选手补正期限已结束。退回补正后由管理员修正；需要选手补正时，请先延长活动补正期限。"
+      />
+      <el-form v-if="canReview" label-position="top" :disabled="busy || refreshRequired"
         ><el-form-item label="审核结论"
           ><el-radio-group v-model="decision"
             ><el-radio-button v-if="!amending || r.review !== 'APPROVED'" value="APPROVED"
