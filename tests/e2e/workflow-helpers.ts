@@ -15,7 +15,9 @@ export async function chooseInstitution(page: Page, selector: string, name: stri
 }
 export async function editRegistration(page: Page) {
   const edit = page.getByRole('button', { name: '编辑报名资料', exact: true });
-  await expect(edit.or(page.getByRole('button', { name: /^(保存草稿|保存修改)$/ }))).toBeVisible();
+  await expect(
+    edit.or(page.getByRole('button', { name: /^(保存草稿|保存修改|保存并送复核)$/ })),
+  ).toBeVisible();
   if (await edit.count()) await edit.click();
 }
 export async function approveRegistration(page: Page) {

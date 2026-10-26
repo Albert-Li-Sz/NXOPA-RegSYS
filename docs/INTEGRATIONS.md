@@ -10,6 +10,8 @@
 
 ZIP 包包含 `teams.json`、`credentials.csv` 和 `README.txt`；DOMjudge 另外包含 `groups.json`、`organizations.json`、`accounts.json`。Hydro、DOMjudge 和准考证共用同一份报名的账号密码：个人本人／团队队长的报名学号作为登录名，系统随机生成比赛密码并加密保存，与本站登录密码独立。首次导出或生成准考证时按需生成，重复、并发操作及关闭再开启平台导出均保留密码。JSON 直接序列化，不经过 Excel / pandas，队名为 `NULL`、中文和真实成员都能保留。导出的凭据表含明文比赛密码，请仅交给评测管理员并妥善分发。
 
+Hydro 提供“默认导出”和“自选字段导出”。默认导出包含全部 9 项；自选固定保留 `id`、`name`、`rank`，其余 6 项可选。`teams.json` 只含选定字段，凭据 CSV 同步省略对应列。取消 `password` 时整个 ZIP 都不含比赛密码，系统内原密码不变。已有 Hydro 账号不会重置密码；新账号由 Hydro 自行生成密码，可能与准考证不同。省略 `members` 时官方插件默认空数组，可能清空远端成员；字段选择不等于远端部分更新。未勾选的学校或座位不阻断 Hydro 导出。
+
 一个报名对应一个平台队伍和一个比赛账号。Hydro 座位使用“考场编号＋至少两位座位序号”，例如编号 A、座位 1 导出 `A01`，座位 100 导出 `A100`；未排座或未填编号时导出空字符串，不使用活动前缀、人工队伍编号或报名编号回退。DOMjudge 继续使用带活动前缀的“考场名-座位号”，未排座时回退到可选队伍编号／座位或报名编号。非空座位重复或一个团队分配了多个个人座位时会拒绝导出，Hydro 允许多条空座位。
 
 在“考场与座位”新增或编辑考场时，可填写独立的“考场编号”。支持字母、数字、下划线和连字符，最长 20 字符，保存时去除首尾空格并统一大写，同一活动内唯一。原有考场编号为空，不根据名称自动推测；修改编号后重新导出 Hydro 文件。考场名称仍用于排考 CSV 和准考证，编号不替代名称。
@@ -91,7 +93,7 @@ hydrooj cli system onsiteImport /srv/import/teams.json 0123456789abcdef01234567,
 
 ## 部署与数据边界
 
-v0.10.0 按全新部署发布，使用新的安装目录、Compose 项目名和数据卷；不迁移 v0.9.x 或已弃用的 v1.0.0 业务数据和比赛凭据。v2.0.0 可从 v0.10.2 升级，保留原加密密钥、报名 UUID 和共享比赛凭据。v1.0.0 已停止分发，后续维护以 v0.9.2 功能为基础。学号或队长变更后保留报名 UUID 和随机密码，更新用户名并撤销旧准考证；目标平台需重新导入或手动更新。
+v0.10.0 按全新部署发布，使用新的安装目录、Compose 项目名和数据卷；不迁移 v0.9.x 或已弃用的 v1.0.0 业务数据和比赛凭据。v2.1.0 可从 v2.0.0、v0.10.2 升级，保留原加密密钥、报名 UUID 和共享比赛凭据。v1.0.0 已停止分发，后续维护以 v0.9.2 功能为基础。学号或队长变更后保留报名 UUID 和随机密码，更新用户名并撤销旧准考证；目标平台需重新导入或手动更新。
 
 以下是此前 v0.7.x 的同步退役机制：
 
@@ -119,3 +121,7 @@ pnpm test:oj
 GitHub 登录与比赛平台账号独立。在 GitHub 开发者设置创建 OAuth App，授权回调填写 `https://你的站点/api/v1/auth/github/callback`；管理员在“GitHub 登录”页填 Client ID 和 Client Secret 并启用。代理正确传递 Host 与 X-Forwarded-Proto，回调地址可在后台明确指定。
 
 实现参考 [Auth.js GitHub Provider](https://github.com/nextauthjs/next-auth/blob/main/packages/core/src/providers/github.ts)、[GitHub OAuth Web Flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps) 与 [GitHub 邮箱 API](https://docs.github.com/en/rest/users/emails)。通过后端交换令牌，只使用已验证邮箱，令牌不持久化；state 单次有效并配合 PKCE。同邮箱已有账号先登录再绑定，禁止自动合并。资料完整性由本站维护，GitHub 登录后同样先完善学号、姓名、班级、学院和性别。
+
+## 管理员修正与重新导出
+
+管理员仅能代改审核通过和待补正报名。完整保存后直接进入等待管理员复核，无需选手重新提交；资格暂停、旧准考证失效，复核通过后重新生成、导出。管理员截止后仍可代改，归档后只读。保留报名 UUID 和共享密码，学号更正会更新后续导出与准考证用户名。重导不会删除远端旧记录，请在目标平台核对。

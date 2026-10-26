@@ -234,6 +234,7 @@ async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
       const names: Record<string, string> = {
         'test:competition-accounts': 'competition-accounts',
         'test:profile-fields': 'profile-fields',
+        'test:admin-edits': 'admin-registration-edits',
         'test:permissions': 'permission-regressions',
         'test:whole-audit': 'whole-project-audit',
         'test:security': 'security-audit',

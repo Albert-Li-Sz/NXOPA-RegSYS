@@ -1290,6 +1290,7 @@ export interface paths {
             cookie?: never;
         };
         get: operations["ApiController_detail"];
+        /** @description Applicant editing keeps the existing submission workflow. REGISTRATIONS managers may only amend APPROVED submissions or CORRECTION entries, including after closing; archived contests are read-only. Complete validation, snapshot, fee adjustment and invalidation commit atomically. A changed approved entry or complete correction becomes SUBMITTED/PENDING for administrator review without applicant resubmission. A no-op approved save preserves its state. */
         put: operations["ApiController_save"];
         post?: never;
         /** @description Permanently removes registration data, releases seats and invalidates admissions. Settlement data survives in an independent finance account; cancellation does not automatically refund. Creator may cancel; scoped registration managers may delete with a reason. */
@@ -1861,7 +1862,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Hydro, DOMjudge and admission PDFs share the participant/captain student-ID username and one encrypted stable random password per registration. DOMjudge team/account IDs and team_id use the registration UUID. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay. */
+        /** @description INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Hydro, DOMjudge and admission PDFs share the participant/captain student-ID username and one encrypted stable random password per registration. DOMjudge team/account IDs and team_id use the registration UUID. Hydro accepts optional hydroFields (id, name and rank required); omitted fields are excluded from teams.json and matching CSV columns. Omitting password excludes plaintext passwords from the entire ZIP; DOMjudge rejects hydroFields. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay. */
         post: operations["ApiController_exportPlatform"];
         delete?: never;
         options?: never;
@@ -14025,6 +14026,7 @@ export interface operations {
                 "application/json": {
                     /** @enum {string} */
                     platform: "HYDRO" | "DOMJUDGE";
+                    hydroFields?: ("id" | "name" | "displayName" | "password" | "school" | "members" | "coach" | "seat" | "rank")[];
                     /** @default true */
                     includeUnofficial: boolean;
                     /**

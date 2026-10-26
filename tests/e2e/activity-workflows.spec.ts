@@ -53,6 +53,13 @@ test('administrators edit and save other peoples entries without participant sub
   let r = await alice.api('/registrations', 'POST', { contestId: c.id });
   await login(page);
   await page.goto(`/registrations/${r.id}`);
+  await expect(page.getByRole('button', { name: '编辑报名资料', exact: true })).toHaveCount(0);
+  r = await alice.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version });
+  r = await admin.api(`/registrations/${r.id}/review`, 'POST', {
+    version: r.version,
+    decision: 'APPROVED',
+  });
+  await page.reload();
   await expect(page.getByRole('button', { name: '编辑报名资料', exact: true })).toBeVisible();
   await expect(page.getByText('等待审核', { exact: true })).toHaveCount(0);
   await expect(page.getByText('队长', { exact: true })).toHaveCount(0);
@@ -66,13 +73,14 @@ test('administrators edit and save other peoples entries without participant sub
   await page.locator('#person-0-name').fill('管理员更正的姓名');
   await expect(page.getByRole('button', { name: '提交报名', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '保存修改', exact: true }).click();
+  await page.getByRole('button', { name: '保存并送复核', exact: true }).click();
   await expect(page.locator('#person-0-name')).toHaveCount(0);
   r = await alice.api(`/registrations/${r.id}`);
   expect(r.people[0].name).toBe('管理员更正的姓名');
-  expect(r.status).toBe('DRAFT');
-  expect(r.actions.submit).toBe(true);
-  r = await alice.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version });
+  expect(r.status).toBe('SUBMITTED');
+  expect(r.review).toBe('PENDING');
+  expect(r.actions.submit).toBe(false);
+  expect((await admin.api(`/registrations/${r.id}`)).actions.review).toBe(true);
   expect(
     (await admin.raw(`/api/v1/registrations/${r.id}/withdraw`, 'POST', { version: r.version }))
       .status,

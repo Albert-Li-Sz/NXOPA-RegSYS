@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import {
+  hydroExportFields,
   organizationSchema,
   policySchema,
   platformExportSchema,
@@ -22,6 +23,9 @@ const csvCell = (value: unknown) => {
 export async function platformExport(u: Principal, contestId: string, body: unknown) {
   requireManager(u, contestId, 'INTEGRATIONS');
   const options = platformExportSchema.parse(body);
+  const selected = new Set(options.hydroFields ?? hydroExportFields);
+  const included = (field: (typeof hydroExportFields)[number]) =>
+    options.platform !== 'HYDRO' || selected.has(field);
   const prefix = `cc_${contestId.replaceAll('-', '')}`;
   const official = options.officialGroupId ?? `${prefix}_official`;
   const unofficial = options.unofficialGroupId ?? `${prefix}_unofficial`;
@@ -102,14 +106,14 @@ export async function platformExport(u: Principal, contestId: string, body: unkn
           const individual =
             policySchema.parse(r.policySnapshot ?? contest.policy).mode === 'INDIVIDUAL';
           const name = (individual ? r.people[0]?.name : r.teamName)?.trim();
-          if (!name || !r.people.length)
+          if ((included('displayName') && !name) || (included('members') && !r.people.length))
             throw new BadRequestException(`报名 ${r.number ?? r.id} 缺少队名或成员姓名`);
           const info = organizationSchema.safeParse(r.organization);
-          if (!info.success)
+          if (included('school') && !info.success)
             throw new BadRequestException(
               `报名 ${r.number ?? r.id} 缺少完整代表单位，请补正后重新审核`,
             );
-          if (r.seats.length > 1)
+          if (included('seat') && r.seats.length > 1)
             throw new BadRequestException(
               `报名 ${r.number ?? r.id} 有多个成员座位，无法映射到一个平台队伍座位`,
             );
@@ -119,8 +123,9 @@ export async function platformExport(u: Principal, contestId: string, body: unkn
           const rawSeat = assigned
             ? `${assigned.room.name}-${assigned.seat}`
             : String(fields.team_label ?? '').trim();
-          const seat =
-            options.platform === 'HYDRO'
+          const seat = !included('seat')
+            ? ''
+            : options.platform === 'HYDRO'
               ? assigned?.room.code
                 ? `${assigned.room.code}${String(assigned.seat).padStart(2, '0')}`
                 : ''
@@ -139,18 +144,26 @@ export async function platformExport(u: Principal, contestId: string, body: unkn
             options.importMode === 'FORCE_UNOFFICIAL' || r.participationType === 'UNOFFICIAL';
           credentials.push([r.number, name, loginName, password, seat, unrank ? '非正式' : '正式']);
           if (options.platform === 'HYDRO') {
-            teams.push({
+            const team = {
               id: r.id,
               name: loginName,
               displayName: name,
               password,
-              school: info.data.name,
+              school: info.success ? info.data.name : '',
               members: r.people.map((p) => p.name),
               coach: r.coaches.map((c) => c.user.name).join('、'),
               seat,
               rank: !unrank,
-            });
+            };
+            teams.push(
+              Object.fromEntries(
+                hydroExportFields
+                  .filter((field) => selected.has(field))
+                  .map((field) => [field, team[field]]),
+              ),
+            );
           } else {
+            if (!info.success) throw new BadRequestException('缺少完整代表单位');
             const orgId = `cc_org_${sha(`${info.data.country}:${info.data.name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()}`).slice(0, 24)}`;
             const organization = {
               id: orgId,
@@ -200,19 +213,37 @@ export async function platformExport(u: Principal, contestId: string, body: unkn
             ]),
             'accounts.json': jsonFile(accounts),
           });
+        const credentialColumns = [
+          0,
+          ...(included('displayName') ? [1] : []),
+          2,
+          ...(included('password') ? [3] : []),
+          ...(included('seat') ? [4] : []),
+          5,
+        ];
         files['credentials.csv'] =
-          '\uFEFF' + credentials.map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+          '\uFEFF' +
+          credentials
+            .map((r) => credentialColumns.map((i) => csvCell(r[i])).join(','))
+            .join('\r\n') +
+          '\r\n';
         files['README.txt'] =
           options.platform === 'HYDRO'
-            ? 'Hydro 最新版 + @hydrooj/onsite-toolkit：\n启用 extraFields、contestMode；需要 IP 登录时再启用 ipLogin。\n以 Hydro 运行用户执行：\nhydrooj cli system onsiteImport /绝对路径/teams.json 比赛ObjectId webp 域ID\n默认域填 system；多个比赛ID用逗号连接，逗号后不加空项。\nid 固定为报名 UUID；name 为个人本人／团队队长的学号，保留前导零并按 Hydro 规则规范化；displayName 为队名／姓名。\nmembers 仅填写一次，不同时输出 member1–member4；rank 为布尔值，true 正式、false 非正式。\nseat 使用考场编号加至少两位座位序号，如 A01、A100；未排座或未填考场编号时为空，不使用活动前缀或报名编号。\n两个平台和准考证共用本人／队长学号及同一个比赛密码；首次导出或生成准考证时随机生成，重复操作保持不变；重新导入会将远端密码重置成文件中的密码。\n按每次比赛清空 Hydro 的使用方式导出，不兼容旧导入账号或跨活动账号复用。部分外榜只显示学号，请赛前核对 displayName 的显示。\nIP 未自动填写；需要时用非空的 seat 和无表头的“seat,ip”CSV执行 setIpLogin。\n'
+            ? 'Hydro 最新版 + @hydrooj/onsite-toolkit：\n启用 extraFields、contestMode；需要 IP 登录时再启用 ipLogin。\n以 Hydro 运行用户执行：\nhydrooj cli system onsiteImport /绝对路径/teams.json 比赛ObjectId webp 域ID\n默认域填 system；多个比赛ID用逗号连接，逗号后不加空项。\nid 固定为报名 UUID；name 为个人本人／团队队长的学号，保留前导零并按 Hydro 规则规范化；displayName 为队名／姓名。\nmembers 仅填写一次，不同时输出 member1–member4；rank 为布尔值，true 正式、false 非正式。\nseat 使用考场编号加至少两位座位序号，如 A01、A100；未排座或未填考场编号时为空，不使用活动前缀或报名编号。\n两个平台和准考证共用本人／队长学号及同一个比赛密码；首次导出或生成准考证时随机生成，重复操作保持不变；导出 password 时重新导入会将远端密码重置成文件中的密码。\n按每次比赛清空 Hydro 的使用方式导出，不兼容旧导入账号或跨活动账号复用。部分外榜只显示学号，请赛前核对 displayName 的显示。\nIP 未自动填写；需要时用非空的 seat 和无表头的“seat,ip”CSV执行 setIpLogin。\n'
             : 'DOMjudge 9.x：后台 Import / export → Import JSON / YAML，依次导入 groups.json、organizations.json、teams.json、accounts.json。\n用户导入类型选 accounts，不是 users；account.type 固定为 team，team_id 对应队伍外部 id。\n正式和非正式组使用不同 sortorder，在目标比赛配置中允许对应分组参赛。\n重复导入队伍按外部ID更新；已有用户可能跳过或拒绝更新，改名／密码请在远端后台核对。\n队伍与账号 ID 使用稳定的报名 UUID；用户名为本人／队长学号，与 Hydro 和准考证共用密码。\n';
+        if (options.platform === 'HYDRO')
+          files['README.txt'] +=
+            `\n本次字段：${hydroExportFields.filter((field) => selected.has(field)).join('、')}。\n取消 password 时整个包不含比赛密码；已有 Hydro 账号不会重设密码，新账号由 Hydro 随机生成密码，可能与准考证密码不同。\n省略 members 时，Hydro 默认空数组，重新导入可能清空已有成员。自选字段控制文件内容，不代表远端部分更新。\n`;
         files['README.txt'] +=
-          '\n本包只包含本次取得参赛资格的报名，不会自动导入或删除远端账号。资格撤销／报名删除后，请在远端手动处理。\ncredentials.csv 含明文比赛密码，请妥善分发和销毁。本站密码与比赛密码独立；两个平台和准考证共用比赛凭据。\n完整教程：https://albert-li-sz.github.io/NXOPA-RegSYS/\n';
+          '\n本包只包含本次取得参赛资格的报名，不会自动导入或删除远端账号。资格撤销／报名删除后，请在远端手动处理。\n凭据表仅在选择 password 时包含明文比赛密码，请妥善分发和销毁。本站密码与比赛密码独立；两个平台和准考证共用比赛凭据。\n完整教程：https://albert-li-sz.github.io/NXOPA-RegSYS/\n';
         await audit(tx, u.id, 'PLATFORM_EXPORT', contestId, {
           platform: options.platform,
           count: rows.length,
           includeUnofficial: options.includeUnofficial,
           importMode: options.importMode,
+          ...(options.platform === 'HYDRO'
+            ? { hydroFields: hydroExportFields.filter((field) => selected.has(field)) }
+            : {}),
         });
         return {
           filename: `${options.platform.toLowerCase()}-${contestId}.zip`,

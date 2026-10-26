@@ -6,7 +6,7 @@ on:
       image_tag:
         description: 待验收的已有镜像版本
         required: true
-        default: v2.0.0
+        default: v2.1.0
         type: string
       proxy_only:
         description: 仅复验 HTTPS 代理与迁移流程
@@ -54,6 +54,14 @@ jobs:
         env:
           INTERACTIVE_INSTALL_FROM: v0.10.2
           INTERACTIVE_INSTALL_TO: ${{ inputs.image_tag }}
+        run: |
+          pnpm test:install-interactive
+          cp .runtime/reports/install-interactive.json .runtime/reports/install-interactive-legacy.json
+      - name: 从 v2.0.0 保留数据升级及卸载实际验收
+        if: ${{ !inputs.proxy_only }}
+        env:
+          INTERACTIVE_INSTALL_FROM: v2.0.0
+          INTERACTIVE_INSTALL_TO: ${{ inputs.image_tag }}
         run: pnpm test:install-interactive
       - name: 核验匿名拉取及镜像版本
         if: ${{ !inputs.proxy_only }}
@@ -71,5 +79,6 @@ jobs:
           path: |
             .runtime/reports/install.json
             .runtime/reports/install-interactive.json
+            .runtime/reports/install-interactive-legacy.json
             .runtime/reports/install-proxy.json
           retention-days: 30

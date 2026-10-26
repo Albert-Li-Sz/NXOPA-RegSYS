@@ -85,6 +85,59 @@ try {
   checks.push(
     'Hydro 导出保留 NULL 和中文，排除草稿／无资格，性质布尔值正确，密码加密保存且 CSV 防公式执行',
   );
+  const minimal = await bundle(admin, f.contest.id, {
+    platform: 'HYDRO',
+    hydroFields: ['id', 'name', 'rank'],
+  });
+  for (const team of minimal.teams) assert.deepEqual(Object.keys(team), ['id', 'name', 'rank']);
+  assert.equal(minimal.teams[1].rank, false);
+  assert.equal(
+    minimal
+      .get('credentials.csv')
+      .replace(/^\uFEFF/, '')
+      .split('\r\n')[0],
+    '"报名编号","用户名","参赛性质"',
+  );
+  for (const file of ['teams.json', 'credentials.csv', 'README.txt'])
+    for (const team of hydro.teams)
+      assert.ok(!minimal.get(file).includes(team.password), `${file} leaked a deselected password`);
+  const noPassword = await bundle(admin, f.contest.id, {
+    platform: 'HYDRO',
+    hydroFields: ['id', 'name', 'displayName', 'school', 'members', 'coach', 'seat', 'rank'],
+  });
+  assert.ok(noPassword.teams.every((team: any) => !('password' in team)));
+  assert.ok(!noPassword.get('credentials.csv').split('\r\n')[0].includes('密码'));
+  for (const hydroFields of [
+    [],
+    ['id', 'name'],
+    ['id', 'name', 'rank', 'id'],
+    ['id', 'name', 'rank', 'email'],
+  ])
+    assert.equal((await admin.raw(route, 'POST', { platform: 'HYDRO', hydroFields })).status, 400);
+  assert.equal(
+    (await admin.raw(route, 'POST', { platform: 'DOMJUDGE', hydroFields: ['id', 'name', 'rank'] }))
+      .status,
+    400,
+  );
+  const oldOrganization = hydro.teams[0].school;
+  await db.registration.update({
+    where: { id: f.rows[0]!.id },
+    data: { organization: { invalid: true } },
+  });
+  const withoutSchool = await bundle(admin, f.contest.id, {
+    platform: 'HYDRO',
+    hydroFields: ['id', 'name', 'rank'],
+  });
+  assert.equal(withoutSchool.teams.length, 2);
+  assert.equal((await admin.raw(route, 'POST', { platform: 'HYDRO' })).status, 400);
+  await db.registration.update({
+    where: { id: f.rows[0]!.id },
+    data: {
+      organization: { name: oldOrganization, shortName: 'TEST', country: 'CHN', icpcId: '' },
+    },
+  });
+  await redis.del(`rate:exports:${admin.user.id}`);
+  checks.push('Hydro 自选标准字段、整包省略密码、CSV 对应列、参数保护及未选字段不阻断导出');
   const [again, concurrent] = await Promise.all([
     bundle(admin, f.contest.id, { platform: 'HYDRO' }),
     bundle(admin, f.contest.id, { platform: 'HYDRO' }),

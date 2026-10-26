@@ -5,6 +5,9 @@ import {
   contestStatus,
   registrationEligible,
   fieldsSchema,
+  platformExportSchema,
+  hydroExportFields,
+  requiredHydroExportFields,
 } from '../../packages/contracts/src/index.js';
 import { renderTemplate } from '../../apps/server/src/templates.js';
 describe('domain boundaries', () => {
@@ -42,6 +45,47 @@ describe('domain boundaries', () => {
         { ...r, review: 'REJECTED', netPaidCents: 500 },
         { ...p, manualReview: false },
       ),
+    ).toBe(false);
+  });
+  it('requires approval for eligibility even in automatically reviewed activities', () => {
+    const p = policySchema.parse({ manualReview: false, coachMode: 'DISABLED' });
+    const r = {
+      status: 'SUBMITTED',
+      review: 'PENDING',
+      feeCents: 0,
+      netPaidCents: 0,
+      people: [{ active: true, confirmed: true }],
+      coaches: [],
+    };
+    expect(registrationEligible(r, p)).toBe(false);
+    expect(registrationEligible({ ...r, review: 'APPROVED' }, p)).toBe(true);
+  });
+  it('accepts all 64 Hydro optional-field combinations with stable mandatory identity and rank', () => {
+    const optional = hydroExportFields.filter(
+      (field) => !requiredHydroExportFields.includes(field),
+    );
+    for (let bits = 0; bits < 64; bits++) {
+      const fields = [
+        ...requiredHydroExportFields,
+        ...optional.filter((_, index) => bits & (1 << index)),
+      ];
+      expect(
+        platformExportSchema.parse({ platform: 'HYDRO', hydroFields: fields }).hydroFields,
+      ).toEqual(fields);
+    }
+    expect(platformExportSchema.parse({ platform: 'HYDRO' }).hydroFields).toBeUndefined();
+    for (const hydroFields of [
+      [],
+      ['id', 'name'],
+      ['id', 'name', 'rank', 'id'],
+      ['id', 'name', 'rank', 'email'],
+    ])
+      expect(platformExportSchema.safeParse({ platform: 'HYDRO', hydroFields }).success).toBe(
+        false,
+      );
+    expect(
+      platformExportSchema.safeParse({ platform: 'DOMJUDGE', hydroFields: hydroExportFields })
+        .success,
     ).toBe(false);
   });
   it('renders escaped Chinese data and an entire team in one document', () => {

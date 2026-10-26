@@ -169,17 +169,38 @@ try {
     );
     assert.equal(interactive.success, true);
     assert.equal(interactive.targetTag, tag);
-    assert.equal(interactive.initialTag, 'v0.10.2');
+    assert.equal(interactive.initialTag, 'v2.0.0');
     assert.equal(interactive.platform, 'linux');
     assert.equal(interactive.architecture, arch === 'amd64' ? 'x64' : 'arm64');
     assert.ok(interactive.checks.length >= 4);
     assert.ok(
       interactive.checks.some((check) => check.includes('共享比赛凭据')),
-      `${arch} must preserve competition credentials when upgrading v0.10.2`,
+      `${arch} must preserve competition credentials when upgrading v2.0.0`,
     );
     await writeFile(
       join(output, `installation-interactive-${arch}.json`),
       JSON.stringify(interactive, null, 2),
+    );
+    const legacyUpgrade = JSON.parse(
+      await readFile(
+        join(
+          root,
+          'dist/installation-reports',
+          `installation-${arch}`,
+          'install-interactive-legacy.json',
+        ),
+        'utf8',
+      ),
+    );
+    assert.equal(legacyUpgrade.success, true);
+    assert.equal(legacyUpgrade.initialTag, 'v0.10.2');
+    assert.equal(legacyUpgrade.targetTag, tag);
+    assert.equal(legacyUpgrade.platform, 'linux');
+    assert.equal(legacyUpgrade.architecture, arch === 'amd64' ? 'x64' : 'arm64');
+    assert.ok(legacyUpgrade.checks.some((check) => check.includes('共享比赛凭据')));
+    await writeFile(
+      join(output, `installation-interactive-legacy-${arch}.json`),
+      JSON.stringify(legacyUpgrade, null, 2),
     );
     const proxy = JSON.parse(
       await readFile(
@@ -264,6 +285,15 @@ try {
   await writeFile(
     join(output, 'competition-accounts.json'),
     JSON.stringify(competitionAccounts, null, 2),
+  );
+  const adminEdits = JSON.parse(
+    await readFile(join(root, 'dist/feature-reports/admin-registration-edits.json'), 'utf8'),
+  );
+  assert.equal(adminEdits.success, true);
+  assert.equal(adminEdits.checks.length, 12);
+  await writeFile(
+    join(output, 'admin-registration-edits.json'),
+    JSON.stringify(adminEdits, null, 2),
   );
   const names = (await readdir(output)).sort();
   const checksums = await Promise.all(

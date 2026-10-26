@@ -1,5 +1,6 @@
 import { answersSchema } from '@contest-center/contracts';
 import { canManageRegistrationData } from './security.js';
+import { registrationUsername } from './competition-accounts.js';
 import {
   BadRequestException,
   ForbiddenException,
@@ -64,6 +65,7 @@ import { publicUser } from './auth.js';
 import { removeRegistration, recordRemoteRevocation } from './registration-removal.js';
 import {
   registrationActions,
+  registrationEditAccess,
   registrationDisplayState,
   editingWindow,
   modulesFor,
@@ -204,6 +206,11 @@ export async function dirty(tx: Tx, r: Registration, u: Principal, reason: strin
   });
   await event(tx, 'ELIGIBILITY', r.id, { eligible: false, version: r.version + 1 });
   await audit(tx, u.id, reason, r.id);
+}
+function requireRegistrationEdit(u: Principal, r: Registration) {
+  if (!canEdit(u, r)) throw new ForbiddenException();
+  const access = registrationEditAccess(u, r);
+  if (!access.allowed) throw new BadRequestException(access.reason);
 }
 function windowOpen(r: Registration) {
   if (!editingWindow(r)) throw new BadRequestException('报名或补正时间已结束，或活动已归档');
@@ -660,7 +667,7 @@ export class RegistrationService {
       : [];
     const revisions = manages(u, r.contestId, 'REGISTRATIONS')
       ? await db.registrationRevision.findMany({
-          where: { registrationId: id, reason: 'SUBMIT' },
+          where: { registrationId: id, reason: { in: ['SUBMIT', 'ADMIN_EDIT'] } },
           orderBy: { version: 'desc' },
           take: 2,
         })
@@ -743,7 +750,7 @@ export class RegistrationService {
       await lock(tx, `seating:${r.contestId}`);
       r = await loaded(tx, id);
       checkVersion(r.version, b.version);
-      windowOpen(r);
+      requireRegistrationEdit(u, r);
       const examSiteId = b.examSiteId === undefined ? r.examSiteId : b.examSiteId;
       validateExamSite(r, examSiteId);
       const p = policy(r);
@@ -812,7 +819,10 @@ export class RegistrationService {
         r.teamEnglishName === b.teamEnglishName &&
         r.participationType === participationType &&
         (b.organization === undefined || isDeepStrictEqual(r.organization, b.organization)) &&
-        isDeepStrictEqual(r.answers, b.answers) &&
+        isDeepStrictEqual(
+          { team: {}, registration: {}, ...(r.answers as Answers) },
+          { team: {}, registration: {}, ...b.answers },
+        ) &&
         (!b.coaches ||
           b.coaches.every((x) => isDeepStrictEqual(coaches.get(x.id)!.answers, x.answers))) &&
         r.people.length === b.people.length &&
@@ -826,7 +836,8 @@ export class RegistrationService {
             isDeepStrictEqual(old.answers, x.answers)
           );
         });
-      if (same) return r;
+      if (same && !(manages(u, r.contestId, 'REGISTRATIONS') && r.status === 'CORRECTION'))
+        return r;
       const retainedPeople = new Set(b.people.flatMap((p) => (p.id ? [p.id] : [])));
       if (r.examSiteId !== examSiteId || r.people.some((p) => !retainedPeople.has(p.id))) {
         await tx.seatAssignment.deleteMany({ where: { registrationId: id } });
@@ -875,8 +886,7 @@ export class RegistrationService {
           where: { id: coach.id },
           data: { answers: json(coach.answers) },
         });
-      await dirty(tx, r, u, 'REGISTRATION_EDIT');
-      return loaded(tx, id);
+      return this.completeEdit(tx, r, u, 'REGISTRATION_EDIT');
     });
   }
   async submit(u: Principal, id: string, body: unknown) {
@@ -911,131 +921,175 @@ export class RegistrationService {
       await lock(tx, r.contestId);
       await lock(tx, `seating:${r.contestId}`);
       r = await loaded(tx, id);
-      validateExamSite(r, r.examSiteId, true);
-      const p = policy(r);
-      const currentPolicy = policySchema.parse(r.contest.policy);
-      if (
-        !r.submittedAt &&
-        currentPolicy.capacity > 0 &&
-        (await tx.registration.count({
-          where: { contestId: r.contestId, submittedAt: { not: null }, id: { not: r.id } },
-        })) >= currentPolicy.capacity
-      )
-        throw new BadRequestException('活动报名名额已满');
-      if (
-        r.people.length < p.minMembers ||
-        r.people.length > p.maxMembers ||
-        r.people.some((x) => !x.confirmed)
-      )
-        throw new BadRequestException('人数不符或成员尚未确认');
-      if (p.mode === 'TEAM' && !r.teamName.trim()) throw new BadRequestException('请填写队名');
-      if (r.participationType === 'UNOFFICIAL' && !p.allowUnofficial)
-        throw new BadRequestException('此竞赛未开放非正式报名');
-      if (p.platformProfiles.length && modulesFor(r.contest).integrations) {
-        if (!r.organization) throw new BadRequestException('请填写代表学校／单位信息');
-        organizationSchema.parse(r.organization);
-        if (r.people.some((x) => !x.email))
-          throw new BadRequestException('平台同步需要成员联系人邮箱');
-      }
-      if (
-        (p.coachMode === 'REQUIRED' && !r.coaches.length) ||
-        r.coaches.length > p.maxCoaches ||
-        (p.coachMode === 'DISABLED' && r.coaches.length)
-      )
-        throw new BadRequestException('指导老师关联不符合竞赛要求');
-      const formVersion = r.quoted ? r.formVersion : r.contest.formVersion;
-      const form = await tx.formVersion.findUniqueOrThrow({
-        where: { contestId_version: { contestId: r.contestId, version: formVersion } },
-      });
-      const fields = fieldsSchema.parse(form.fields);
-      for (const person of r.people) {
-        await this.validateAnswers(tx, u, r, fields, 'PERSON', person.answers as Answers);
-        const uniqueKey = p.uniquePersonFields.length
-          ? p.uniquePersonFields
-              .map((k) =>
-                String((person.answers as Answers)[k] ?? '')
-                  .trim()
-                  .toLowerCase(),
-              )
-              .join('|')
-          : null;
-        if (uniqueKey && uniqueKey.replaceAll('|', ''))
-          await tx.registrationPerson.update({ where: { id: person.id }, data: { uniqueKey } });
-      }
-      const answers = r.answers as Record<string, Answers>;
-      await this.validateAnswers(tx, u, r, fields, 'REGISTRATION', answers.registration ?? {});
-      await this.validateAnswers(tx, u, r, fields, 'TEAM', answers.team ?? {});
-      for (const coach of r.coaches) {
-        await this.validateAnswers(tx, u, r, fields, 'COACH', coach.answers as Answers);
-      }
-      const fee = quoteFee(p, r.people.length);
-      const delta = fee - r.feeCents;
-      const number =
-        r.number ??
-        (
-          await tx.contest.update({
-            where: { id: r.contestId },
-            data: { nextRegistrationNumber: { increment: 1 } },
-            select: { nextRegistrationNumber: true },
-          })
-        ).nextRegistrationNumber - 1;
-      const submittedAt = r.submittedAt ?? new Date();
-      const snapshot = {
-        examSiteId: r.examSiteId,
-        examSite: r.examSite,
-        teamName: r.teamName,
-        teamEnglishName: r.teamEnglishName,
-        participationType: r.participationType,
-        organization: r.organization,
-        answers: r.answers,
-        people: r.people,
-        coaches: r.coaches,
-        fields,
+      return this.persistSubmission(tx, u, r);
+    });
+  }
+  private async validateSubmission(tx: Tx, u: Principal, r: Registration) {
+    const people = r.people.filter((person) => person.active);
+    validateExamSite(r, r.examSiteId, true);
+    const p = policy(r);
+    const currentPolicy = policySchema.parse(r.contest.policy);
+    if (
+      !r.submittedAt &&
+      currentPolicy.capacity > 0 &&
+      (await tx.registration.count({
+        where: { contestId: r.contestId, submittedAt: { not: null }, id: { not: r.id } },
+      })) >= currentPolicy.capacity
+    )
+      throw new BadRequestException('活动报名名额已满');
+    if (
+      (p.mode === 'INDIVIDUAL' && people.length !== 1) ||
+      people.filter((person) => person.captain).length !== 1 ||
+      people.length < p.minMembers ||
+      people.length > p.maxMembers ||
+      people.some((x) => !x.confirmed)
+    )
+      throw new BadRequestException('人数不符或成员尚未确认');
+    if (p.mode === 'TEAM' && !r.teamName.trim()) throw new BadRequestException('请填写队名');
+    if (r.participationType === 'UNOFFICIAL' && !p.allowUnofficial)
+      throw new BadRequestException('此竞赛未开放非正式报名');
+    if (p.platformProfiles.length && modulesFor(r.contest).integrations) {
+      if (!r.organization) throw new BadRequestException('请填写代表学校／单位信息');
+      organizationSchema.parse(r.organization);
+      if (people.some((x) => !x.email)) throw new BadRequestException('平台同步需要成员联系人邮箱');
+    }
+    if (
+      (p.coachMode === 'REQUIRED' && !r.coaches.length) ||
+      r.coaches.length > p.maxCoaches ||
+      (p.coachMode === 'DISABLED' && r.coaches.length)
+    )
+      throw new BadRequestException('指导老师关联不符合竞赛要求');
+    const formVersion = r.quoted ? r.formVersion : r.contest.formVersion;
+    const form = await tx.formVersion.findUniqueOrThrow({
+      where: { contestId_version: { contestId: r.contestId, version: formVersion } },
+    });
+    const fields = fieldsSchema.parse(form.fields);
+    for (const person of people) {
+      await this.validateAnswers(tx, u, r, fields, 'PERSON', person.answers as Answers);
+      const uniqueKey = p.uniquePersonFields.length
+        ? p.uniquePersonFields
+            .map((k) =>
+              String((person.answers as Answers)[k] ?? '')
+                .trim()
+                .toLowerCase(),
+            )
+            .join('|')
+        : null;
+      if (uniqueKey && uniqueKey.replaceAll('|', ''))
+        await tx.registrationPerson.update({ where: { id: person.id }, data: { uniqueKey } });
+    }
+    const answers = r.answers as Record<string, Answers>;
+    await this.validateAnswers(tx, u, r, fields, 'REGISTRATION', answers.registration ?? {});
+    await this.validateAnswers(tx, u, r, fields, 'TEAM', answers.team ?? {});
+    for (const coach of r.coaches) {
+      await this.validateAnswers(tx, u, r, fields, 'COACH', coach.answers as Answers);
+    }
+    return { p, formVersion, fields, people };
+  }
+  private async persistSubmission(tx: Tx, u: Principal, r: Registration, adminEdit = false) {
+    const id = r.id;
+    if (adminEdit && (!r.submittedAt || r.number === null))
+      throw new BadRequestException('管理员仅可修正已经提交的报名');
+    const { p, formVersion, fields, people } = await this.validateSubmission(tx, u, r);
+    if (adminEdit && modulesFor(r.contest).integrations) registrationUsername(r, r.contest.policy);
+    const fee = quoteFee(p, people.length);
+    const delta = fee - r.feeCents;
+    const number =
+      r.number ??
+      (
+        await tx.contest.update({
+          where: { id: r.contestId },
+          data: { nextRegistrationNumber: { increment: 1 } },
+          select: { nextRegistrationNumber: true },
+        })
+      ).nextRegistrationNumber - 1;
+    const submittedAt = r.submittedAt ?? new Date();
+    const snapshot = {
+      examSiteId: r.examSiteId,
+      examSite: r.examSite,
+      teamName: r.teamName,
+      teamEnglishName: r.teamEnglishName,
+      participationType: r.participationType,
+      organization: r.organization,
+      answers: r.answers,
+      people,
+      coaches: r.coaches,
+      fields,
+      number,
+      submittedAt: submittedAt.toISOString(),
+    };
+    await tx.registrationRevision.create({
+      data: {
+        registrationId: id,
+        version: r.version + 1,
+        actorId: u.id,
+        snapshot: json(snapshot),
+        reason: adminEdit ? 'ADMIN_EDIT' : 'SUBMIT',
+      },
+    });
+    await tx.registration.update({
+      where: { id },
+      data: {
+        status: 'SUBMITTED',
+        review:
+          adminEdit || p.manualReview || r.participationType === 'UNOFFICIAL'
+            ? 'PENDING'
+            : 'APPROVED',
+        eligible: false,
+        reviewReason: '',
+        formVersion,
+        policySnapshot: json(p),
+        snapshot: json(snapshot),
+        feeCents: fee,
+        quoted: true,
         number,
-        submittedAt: submittedAt.toISOString(),
-      };
-      await tx.registrationRevision.create({
+        submittedAt,
+        version: { increment: 1 },
+      },
+    });
+    await ensureFinance(tx, await loaded(tx, id));
+    if (delta)
+      await tx.ledgerEntry.create({
         data: {
           registrationId: id,
-          version: r.version + 1,
+          contestId: r.contestId,
+          kind: 'RECEIVABLE',
+          amountCents: delta,
+          sourceId: `quote:${id}:${r.version + 1}`,
           actorId: u.id,
-          snapshot: json(snapshot),
-          reason: 'SUBMIT',
+          note: '报名应收 / 人数调整',
         },
       });
-      await tx.registration.update({
-        where: { id },
-        data: {
-          status: 'SUBMITTED',
-          review: p.manualReview || r.participationType === 'UNOFFICIAL' ? 'PENDING' : 'APPROVED',
-          reviewReason: '',
-          formVersion,
-          policySnapshot: json(p),
-          snapshot: json(snapshot),
-          feeCents: fee,
-          quoted: true,
-          number,
-          submittedAt,
-          version: { increment: 1 },
-        },
+    if (adminEdit) {
+      await tx.admissionDocument.updateMany({
+        where: { registrationId: id },
+        data: { state: 'STALE', releasedAt: null },
       });
-      await ensureFinance(tx, await loaded(tx, id));
-      if (delta)
-        await tx.ledgerEntry.create({
-          data: {
-            registrationId: id,
-            contestId: r.contestId,
-            kind: 'RECEIVABLE',
-            amountCents: delta,
-            sourceId: `quote:${id}:${r.version + 1}`,
-            actorId: u.id,
-            note: '报名应收 / 人数调整',
-          },
-        });
-      await audit(tx, u.id, 'REGISTRATION_SUBMIT', id);
-      await event(tx, 'NOTIFY', id, { message: '您的报名已经提交。' });
-      return refresh(tx, id);
+      await tx.accountMapping.updateMany({
+        where: { registrationId: id },
+        data: { state: 'STALE' },
+      });
+      await event(tx, 'ELIGIBILITY', id, { eligible: false, version: r.version + 1 });
+    }
+    await audit(
+      tx,
+      u.id,
+      adminEdit ? 'REGISTRATION_ADMIN_EDIT' : 'REGISTRATION_SUBMIT',
+      id,
+      adminEdit ? { previousStatus: r.status, previousReview: r.review } : {},
+    );
+    await event(tx, 'NOTIFY', id, {
+      message: adminEdit
+        ? '管理员已修正报名资料，正在等待管理员复核，无需重新提交。'
+        : '您的报名已经提交。',
     });
+    return refresh(tx, id);
+  }
+  private async completeEdit(tx: Tx, r: Registration, u: Principal, reason: string) {
+    if (manages(u, r.contestId, 'REGISTRATIONS'))
+      return this.persistSubmission(tx, u, await loaded(tx, r.id), true);
+    await dirty(tx, r, u, reason);
+    return loaded(tx, r.id);
   }
   private async validateAnswers(
     tx: Tx,
@@ -1110,30 +1164,17 @@ export class RegistrationService {
       await lock(tx, id);
       const r = await loaded(tx, id);
       requireManager(u, r.contestId, 'REGISTRATIONS');
+      if (r.contest.archived) throw new BadRequestException('活动已归档，报名管理只读');
       checkVersion(r.version, b.version);
       const p = policy(r);
+      await lock(tx, r.contestId);
       const phase = registrationReviewPhase(r);
       if (!phase) throw new BadRequestException('当前报名不能审核，请等待报名者提交资料');
-      if (b.decision === 'APPROVED') {
-        if (p.coachMode === 'REQUIRED' && !r.coaches.length)
-          throw new BadRequestException('需要补充指导老师');
-        const form = await tx.formVersion.findUniqueOrThrow({
-          where: { contestId_version: { contestId: r.contestId, version: r.formVersion } },
+      if (b.decision === 'APPROVED')
+        await this.validateSubmission(tx, u, {
+          ...r,
+          participationType: b.participationType ?? r.participationType,
         });
-        const fields = fieldsSchema.parse((r.snapshot as any)?.fields ?? form.fields);
-        const answers = r.answers as Record<string, Answers>;
-        await this.validateAnswers(tx, u, r, fields, 'REGISTRATION', answers.registration ?? {});
-        await this.validateAnswers(tx, u, r, fields, 'TEAM', answers.team ?? {});
-        for (const person of r.people.filter((p) => p.active))
-          await this.validateAnswers(tx, u, r, fields, 'PERSON', person.answers as Answers);
-        for (const coach of r.coaches)
-          await this.validateAnswers(tx, u, r, fields, 'COACH', coach.answers as Answers);
-      }
-      if (
-        b.decision === 'CORRECTION' &&
-        new Date() >= new Date(r.contest.correctionUntil ?? r.contest.closesAt)
-      )
-        throw new BadRequestException('补正时间已结束，请先延长活动补正截止时间');
       if (
         b.decision === r.review &&
         b.reason === r.reviewReason &&
@@ -1192,7 +1233,12 @@ export class RegistrationService {
         data: { state: 'STALE', releasedAt: null },
       });
       await audit(tx, u.id, 'REVIEW', id, b);
-      await event(tx, 'NOTIFY', id, { message: `报名审核：${b.decision}。${b.reason}` });
+      await event(tx, 'NOTIFY', id, {
+        message:
+          b.decision === 'CORRECTION' && !editingWindow({ ...r, status: 'CORRECTION' })
+            ? `报名待补正：${b.reason}。选手补正期限已结束，当前由管理员处理；如需选手补正，请延长期限。`
+            : `报名审核：${b.decision}。${b.reason}`,
+      });
       const current = await refresh(tx, id);
       if (b.participationType && current.eligible)
         await event(tx, 'ELIGIBILITY', id, { eligible: true, version: current.version });
@@ -1407,7 +1453,8 @@ export class RegistrationService {
       await lock(tx, 'role-authorizations');
       await lock(tx, id);
       const r = await loaded(tx, id);
-      if (!canEdit(u, r)) throw new ForbiddenException();
+      requireRegistrationEdit(u, r);
+      await lock(tx, r.contestId);
       checkVersion(r.version, version);
       const coach = r.coaches.find((c) => c.id === coachId);
       await tx.registrationCoach.deleteMany({ where: { registrationId: id, id: coachId } });
@@ -1424,9 +1471,8 @@ export class RegistrationService {
           },
           data: { revoked: true },
         });
-      await dirty(tx, r, u, 'COACH_REMOVE');
-      windowOpen(r);
-      return refresh(tx, id);
+      if (!coach) return r;
+      return this.completeEdit(tx, r, u, 'COACH_REMOVE');
     });
   }
   async personAnswers(u: Principal, id: string, personId: string, body: unknown) {
@@ -1448,13 +1494,21 @@ export class RegistrationService {
       await lock(tx, r.contestId);
       if (!p) throw new ForbiddenException();
       checkVersion(r.version, b.version);
-      windowOpen(r);
+      if (manages(u, r.contestId, 'REGISTRATIONS')) requireRegistrationEdit(u, r);
+      else windowOpen(r);
       const account = await tx.user.findUniqueOrThrow({
         where: { id: p.userId! },
         select: { email: true },
       });
       b.answers = contactAnswers(b.answers, account.email);
       await validateInstitution(tx, b.answers.school, (p.answers as Answers).school);
+      if (
+        p.name === b.name &&
+        isDeepStrictEqual(p.answers, b.answers) &&
+        p.email === account.email &&
+        !(manages(u, r.contestId, 'REGISTRATIONS') && r.status === 'CORRECTION')
+      )
+        return r;
       await tx.registrationPerson.update({
         where: { id: p.id },
         data: {
@@ -1464,8 +1518,7 @@ export class RegistrationService {
           uniqueKey: personUniqueKey(policy(r), b.answers),
         },
       });
-      await dirty(tx, r, u, 'MEMBER_EDIT');
-      return loaded(tx, id);
+      return this.completeEdit(tx, r, u, 'MEMBER_EDIT');
     });
   }
   async coachAnswers(u: Principal, id: string, coachId: string, body: unknown) {
@@ -1480,20 +1533,24 @@ export class RegistrationService {
     return db.$transaction(async (tx) => {
       await lock(tx, id);
       const r = await loaded(tx, id);
-      if (!canEdit(u, r)) throw new ForbiddenException();
+      requireRegistrationEdit(u, r);
+      await lock(tx, r.contestId);
       checkVersion(r.version, b.version);
-      windowOpen(r);
+
       const coach = r.coaches.find((c) => c.id === coachId);
       if (!coach) throw new BadRequestException('指导老师不属于此报名');
       b.answers = contactAnswers(b.answers, coach.user.email);
       await validateInstitution(tx, b.answers.school, (coach.answers as Answers).school);
-      if (isDeepStrictEqual(coach.answers, b.answers)) return r;
+      if (
+        isDeepStrictEqual(coach.answers, b.answers) &&
+        !(manages(u, r.contestId, 'REGISTRATIONS') && r.status === 'CORRECTION')
+      )
+        return r;
       await tx.registrationCoach.update({
         where: { id: coachId, registrationId: id },
         data: { answers: json(b.answers) },
       });
-      await dirty(tx, r, u, 'COACH_EDIT');
-      return loaded(tx, id);
+      return this.completeEdit(tx, r, u, 'COACH_EDIT');
     });
   }
 }

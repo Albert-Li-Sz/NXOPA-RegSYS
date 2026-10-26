@@ -58,6 +58,15 @@ class InspectHandler extends AuthenticatedFixture {
     );
   }
 }
+class PasswordHandler extends AuthenticatedFixture {
+  async post() {
+    const { domainId, username, password } = this.request.body;
+    const user = await UserModel.getByUname(domainId, username);
+    if (!user) throw new ForbiddenError();
+    await UserModel.setPassword(user._id, password);
+    this.response.body = { changed: true };
+  }
+}
 export function apply(ctx: Context) {
   ctx.plugin(onsiteToolkit, {
     extraFields: true,
@@ -66,5 +75,6 @@ export function apply(ctx: Context) {
     submit: false,
   });
   ctx.Route('contest_center_fixture', '/contest-center-fixture/create', FixtureHandler);
+  ctx.Route('contest_center_password', '/contest-center-fixture/password', PasswordHandler);
   ctx.Route('contest_center_inspect', '/contest-center-fixture/inspect', InspectHandler);
 }
