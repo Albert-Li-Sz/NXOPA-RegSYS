@@ -37,7 +37,11 @@ async function remove() {
 }
 </script>
 <template>
-  <span v-if="auth.user?.isAdmin" class="action-control delete-contest-control">
+  <span
+    v-if="auth.user?.isAdmin"
+    class="action-control delete-contest-control"
+    :class="{ 'delete-contest-control--text': text }"
+  >
     <el-button
       :text="text"
       type="danger"
@@ -73,6 +77,15 @@ async function remove() {
   flex: 1;
   min-width: 0;
   width: auto;
+}
+.delete-contest-control:not(.delete-contest-control--text) {
+  position: relative;
+}
+.delete-contest-control:not(.delete-contest-control--text) .delete-reason {
+  position: absolute;
+  inset-inline-end: 4px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 .delete-reason {
   display: inline-flex;
