@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import {
   hydroExportFields,
   requiredHydroExportFields,
+  hydroMappableFields,
+  hydroBuiltinSourceKeys,
+  hydroBuiltinSourceLabels,
   type HydroExportField,
+  type HydroFieldMappings,
+  type HydroFieldSource,
+  type HydroMappingField,
+  type HydroMappableField,
 } from '@contest-center/contracts';
 import { ElMessage } from 'element-plus';
-import { downloadArchive } from '../api';
+import { api, downloadArchive } from '../api';
 import { canManage } from '../permissions';
 import type { ContestView } from '../types';
 const props = defineProps<{ contests: ContestView[]; initialContestId?: string }>();
@@ -21,6 +28,77 @@ const officialGroupId = ref(''),
   unofficialGroupId = ref(''),
   busy = ref(false);
 const selectedFields = ref<HydroExportField[]>([...hydroExportFields]);
+const sources = ref<Partial<Record<HydroMappableField, string>>>({});
+const mappingFields = ref<HydroMappingField[]>([]);
+const mappingLoading = ref(false),
+  mappingError = ref('');
+const scopeLabels = {
+  PERSON: '成员资料',
+  TEAM: '队伍资料',
+  REGISTRATION: '报名资料',
+  COACH: '教练资料',
+};
+const defaultSources: Partial<Record<HydroExportField, string>> = {
+  id: '固定：报名 UUID',
+  name: '固定：本人／队长学号',
+  displayName: '系统默认：队名，个人赛为本人姓名',
+  password: '固定：与准考证共用的比赛密码',
+  school: '系统默认：代表学校／单位',
+  members: '系统默认：全部有效成员姓名',
+  coach: '系统默认：关联教练姓名',
+  seat: '系统默认：考场编号＋座位序号',
+  rank: '固定：按参赛性质导出策略',
+};
+const isMappable = (field: HydroExportField): field is HydroMappableField =>
+  (hydroMappableFields as readonly string[]).includes(field);
+function restoreDefaults() {
+  selectedFields.value = [...hydroExportFields];
+  sources.value = {};
+}
+async function loadFields() {
+  const id = contestId.value;
+  if (!id) return;
+  mappingLoading.value = true;
+  mappingError.value = '';
+  try {
+    const fields = await api<HydroMappingField[]>(`/contests/${id}/platform-exports/fields`);
+    if (id === contestId.value) mappingFields.value = fields;
+  } catch {
+    if (id === contestId.value) mappingError.value = '报名字段加载失败，请重试；默认导出仍可使用。';
+  } finally {
+    if (id === contestId.value) mappingLoading.value = false;
+  }
+}
+watch(
+  contestId,
+  () => {
+    restoreDefaults();
+    mappingFields.value = [];
+    mappingError.value = '';
+    mappingLoading.value = false;
+    void loadFields();
+  },
+  { immediate: true },
+);
+function mappings(): HydroFieldMappings {
+  return Object.fromEntries(
+    hydroMappableFields
+      .filter(
+        (field) =>
+          selectedFields.value.includes(field) &&
+          sources.value[field] &&
+          sources.value[field] !== 'DEFAULT',
+      )
+      .map((field) => {
+        const [type, key, fieldKey] = sources.value[field]!.split(':');
+        const source: HydroFieldSource =
+          type === 'BUILTIN'
+            ? { type, key: key as (typeof hydroBuiltinSourceKeys)[number] }
+            : { type: 'FORM_FIELD', scope: key as HydroMappingField['scope'], key: fieldKey! };
+        return [field, source];
+      }),
+  );
+}
 const fieldLabels: Record<HydroExportField, string> = {
   id: '报名 ID',
   name: '登录学号',
@@ -40,7 +118,12 @@ async function download(custom = false) {
       `/contests/${contestId.value}/platform-exports`,
       {
         platform: platform.value,
-        ...(custom && platform.value === 'HYDRO' ? { hydroFields: selectedFields.value } : {}),
+        ...(custom && platform.value === 'HYDRO'
+          ? {
+              hydroFields: selectedFields.value,
+              hydroFieldMappings: mappings(),
+            }
+          : {}),
         includeUnofficial: includeUnofficial.value,
         importMode: importMode.value,
         ...(platform.value === 'DOMJUDGE'
@@ -109,31 +192,85 @@ async function download(custom = false) {
           />
         </el-form-item>
       </div>
-      <el-form-item v-if="platform === 'HYDRO'" label="Hydro 自选字段">
-        <el-checkbox-group v-model="selectedFields" class="export-fields" :disabled="busy">
-          <el-checkbox
-            v-for="field in hydroExportFields"
-            :key="field"
-            :value="field"
-            :disabled="requiredHydroExportFields.includes(field) || busy"
-          >
-            {{ fieldLabels[field] }}（{{ field }}）{{
-              requiredHydroExportFields.includes(field) ? ' · 必选' : ''
-            }}
-          </el-checkbox>
-        </el-checkbox-group>
-        <el-button text :disabled="busy" @click="selectedFields = [...hydroExportFields]"
-          >恢复默认</el-button
-        >
+      <fieldset v-if="platform === 'HYDRO'" class="export-mappings" :disabled="busy">
+        <legend>Hydro 字段与报名资料关联</legend>
         <p class="form-help">
-          默认导出包含全部字段；自选字段导出仅包含勾选内容。取消比赛密码时整个 ZIP
+          勾选需要输出的字段，并为其选择报名资料来源；取消勾选则不输出该字段。关联只对本次导出生效。
+        </p>
+        <el-checkbox-group
+          v-model="selectedFields"
+          class="mapping-rows"
+          :disabled="busy"
+          aria-label="输出的 Hydro 字段"
+        >
+          <div v-for="field in hydroExportFields" :key="field" class="mapping-row">
+            <el-checkbox
+              :value="field"
+              :disabled="requiredHydroExportFields.includes(field) || busy"
+            >
+              {{ fieldLabels[field] }}（{{ field }}）{{
+                requiredHydroExportFields.includes(field) ? ' · 必选' : ''
+              }}
+            </el-checkbox>
+            <el-select
+              v-if="isMappable(field)"
+              :id="`hydro-source-${field}`"
+              :model-value="sources[field] || 'DEFAULT'"
+              @update:model-value="sources[field] = $event"
+              :aria-label="`${fieldLabels[field]}（${field}）的报名资料来源`"
+              :disabled="busy || !selectedFields.includes(field)"
+              :loading="mappingLoading"
+              filterable
+            >
+              <el-option value="DEFAULT" :label="defaultSources[field]" />
+              <el-option-group label="基础报名资料">
+                <el-option
+                  v-for="key in hydroBuiltinSourceKeys"
+                  :key="key"
+                  :value="`BUILTIN:${key}`"
+                  :label="hydroBuiltinSourceLabels[key]"
+                />
+              </el-option-group>
+              <el-option-group
+                v-for="(scopeLabel, scope) in scopeLabels"
+                :key="scope"
+                :label="scopeLabel"
+              >
+                <el-option
+                  v-for="f in mappingFields.filter((f) => f.scope === scope)"
+                  :key="f.key"
+                  :value="`FORM_FIELD:${f.scope}:${f.key}`"
+                  :label="`${scopeLabel} · ${f.label}（${f.key}）${f.historical ? ' · 历史字段' : ''}`"
+                />
+              </el-option-group>
+            </el-select>
+            <span v-else class="fixed-source">{{ defaultSources[field] }}</span>
+          </div>
+        </el-checkbox-group>
+        <div v-if="mappingError" class="mapping-error" role="alert">
+          {{ mappingError }}
+          <el-button text :disabled="mappingLoading || busy" @click="loadFields"
+            >重新加载字段</el-button
+          >
+        </div>
+        <el-button text :disabled="busy" @click="restoreDefaults">恢复默认</el-button>
+        <p class="form-help">
+          单值字段关联成员资料时取本人／队长；members
+          逐一读取全部有效成员，缺值的成员回退姓名。多选值保留为数组，写入单值字段时以“、”连接；单个文本作为一名成员，不按逗号拆分。教练资料读取全部关联教练，附件、照片不参与关联。
+        </p>
+        <p class="form-help">
+          关联值为空时自动回退该项系统默认来源，包内说明列出各项回退数量。默认导出始终使用系统原有规则，不应用本次关联。
+        </p>
+        <p class="form-help">
+          默认导出包含全部字段；按关联导出仅包含勾选内容。取消比赛密码时整个 ZIP
           均不包含密码。省略密码后新建的 Hydro 账号可能与准考证密码不同；省略队员可能清空远端成员。
         </p>
-      </el-form-item>
+      </fieldset>
       <p class="notice" v-if="platform === 'HYDRO'">
         包含 teams.json、账号密码表和导入说明。使用官方 Onsite Toolkit 的 onsiteImport
-        命令，个人本人／团队队长的学号作为登录名，队名／姓名写入
-        displayName。座位使用考场编号加序号（如 A01），未排座或未填编号时为空。
+        命令，个人本人／团队队长的学号作为登录名。默认将队名／姓名写入
+        displayName，座位使用考场编号加序号（如
+        A01），未排座或未填编号时为空；按关联导出时使用上方选择的资料来源。
       </p>
       <p class="notice" v-else>
         包含
@@ -160,7 +297,7 @@ async function download(custom = false) {
           :loading="busy"
           :disabled="!contestId"
           @click="download(true)"
-          >自选字段导出</el-button
+          >按关联导出</el-button
         >
         <a href="https://albert-li-sz.github.io/NXOPA-RegSYS/#hydro" target="_blank" rel="noopener"
           >查看导入教程</a
@@ -173,16 +310,43 @@ async function download(custom = false) {
 .platform-exports {
   max-width: 1000px;
 }
-.export-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  width: 100%;
+.export-mappings {
+  min-width: 0;
+  margin: 0 0 20px;
+  padding: 12px 16px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
 }
-.export-fields .el-checkbox {
+.export-mappings legend {
+  padding: 0 4px;
+}
+.mapping-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 0;
+}
+.mapping-rows {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.mapping-row .el-checkbox {
   margin-right: 0;
   white-space: normal;
   height: auto;
   min-height: 32px;
+}
+.fixed-source {
+  color: var(--el-text-color-secondary);
+}
+.mapping-error {
+  color: var(--el-color-danger);
+}
+@media (max-width: 600px) {
+  .mapping-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .actions > .el-button {
   min-width: 136px;

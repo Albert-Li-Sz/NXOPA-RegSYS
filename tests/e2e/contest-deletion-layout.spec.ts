@@ -52,6 +52,97 @@ async function login(page: Page) {
   await expect(page.locator('.user-menu')).toBeVisible();
 }
 
+test('catalogue actions use matching side-by-side boxes and literal double arrows', async ({
+  page,
+}) => {
+  const c = await contest();
+  await db.contest.update({ where: { id: c.id }, data: { publicRosterEnabled: true } });
+  await login(page);
+  await page.goto('/contests');
+  await page.getByRole('textbox', { name: '搜索竞赛', exact: true }).fill(c.title);
+  const card = page.locator('.contest-card').filter({ hasText: c.title });
+  for (const width of [1440, 831, 390, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await expect(card.locator('.view-arrow')).toHaveText('>>');
+    const boxes = await card.locator('.contest-actions a').evaluateAll((elements) =>
+      elements.map((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+          fits: el.scrollWidth <= el.clientWidth,
+        };
+      }),
+    );
+    expect(boxes).toHaveLength(2);
+    expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(boxes[0]!.width - boxes[1]!.width)).toBeLessThanOrEqual(1);
+    expect(boxes[0]!.height).toBe(boxes[1]!.height);
+    expect(boxes[1]!.x).toBeGreaterThan(boxes[0]!.x + boxes[0]!.width);
+    expect(boxes.every((box) => box.fits)).toBe(true);
+  }
+  await card.getByRole('link', { name: '队伍公示', exact: true }).click();
+  await expect(page).toHaveURL(`/contests/${c.id}/public-teams`);
+  await page.goto('/contests');
+  await page.getByRole('textbox', { name: '搜索竞赛', exact: true }).fill(c.title);
+  await card.getByRole('link', { name: '查看竞赛', exact: true }).click();
+  await expect(page).toHaveURL(`/contests/${c.id}`);
+  await db.contest.update({ where: { id: c.id }, data: { publicRosterEnabled: false } });
+  await page.goto('/contests');
+  await page.getByRole('textbox', { name: '搜索竞赛', exact: true }).fill(c.title);
+  await expect(card.locator('.contest-actions a')).toHaveCount(1);
+  expect(
+    await card
+      .locator('.contest-actions')
+      .evaluate((el) =>
+        Math.abs(el.clientWidth - el.firstElementChild!.getBoundingClientRect().width),
+      ),
+  ).toBeLessThanOrEqual(1);
+});
+
+test('contest management keeps actions in one row and reveals blocked deletion only on demand', async ({
+  page,
+}) => {
+  const c = await contest();
+  await alice.api('/registrations', 'POST', { contestId: c.id });
+  await login(page);
+  await page.goto('/admin/contests');
+  await page.getByPlaceholder('搜索活动或赛季').fill(c.title);
+  const row = page.locator('tr.el-table__row').filter({ hasText: c.title });
+  const dot = row.getByRole('button', { name: /^无法删除：/ });
+  await expect(row.getByRole('button', { name: '删除', exact: true })).toBeDisabled();
+  await expect(dot).toBeVisible();
+  const reason = (await dot.getAttribute('aria-label'))!.replace('无法删除：', '');
+  expect(await row.innerText()).not.toContain(reason);
+  for (const width of [1440, 831, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const boxes = await row
+      .locator('.contest-table-actions > a, .delete-contest-control > .el-button')
+      .evaluateAll((elements) =>
+        elements.map((el) => {
+          const r = el.getBoundingClientRect();
+          return { cy: r.y + r.height / 2, fits: el.scrollWidth <= el.clientWidth };
+        }),
+      );
+    expect(boxes).toHaveLength(3);
+    expect(boxes.every((box) => Math.abs(box.cy - boxes[0]!.cy) <= 1 && box.fits)).toBe(true);
+  }
+  await dot.hover();
+  const tooltip = page.getByRole('tooltip').filter({ hasText: reason });
+  await expect(tooltip).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toBeHidden();
+  await dot.focus();
+  await expect(tooltip).toBeVisible();
+  await dot.blur();
+  await expect(tooltip).toBeHidden();
+  await dot.click();
+  await expect(tooltip).toBeVisible();
+  expect(await db.contest.count({ where: { id: c.id } })).toBe(1);
+});
+
 test('empty contest can be deleted from management after confirmation', async ({ page }) => {
   const c = await contest();
   await login(page);

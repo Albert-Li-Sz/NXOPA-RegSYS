@@ -590,10 +590,64 @@ export const hydroExportFields = [
 ] as const;
 export type HydroExportField = (typeof hydroExportFields)[number];
 export const requiredHydroExportFields: readonly HydroExportField[] = ['id', 'name', 'rank'];
+export const hydroMappableFields = ['displayName', 'school', 'members', 'coach', 'seat'] as const;
+export type HydroMappableField = (typeof hydroMappableFields)[number];
+export const hydroBuiltinSourceKeys = [
+  'PERSON_NAME',
+  'TEAM_NAME',
+  'TEAM_ENGLISH_NAME',
+  'MEMBER_NAMES',
+  'ORGANIZATION',
+  'COACH_NAMES',
+  'SEAT',
+  'REGISTRATION_NUMBER',
+  'EXAM_SITE',
+] as const;
+export const hydroBuiltinSourceLabels: Record<(typeof hydroBuiltinSourceKeys)[number], string> = {
+  PERSON_NAME: '本人／队长姓名',
+  TEAM_NAME: '队名',
+  TEAM_ENGLISH_NAME: '队伍英文名',
+  MEMBER_NAMES: '全部队员姓名',
+  ORGANIZATION: '代表学校／单位',
+  COACH_NAMES: '关联教练姓名',
+  SEAT: '已分配座位（考场编号＋序号）',
+  REGISTRATION_NUMBER: '报名编号',
+  EXAM_SITE: '所选考点名称',
+};
+export const hydroFieldSourceSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('BUILTIN'), key: z.enum(hydroBuiltinSourceKeys) }).strict(),
+  z
+    .object({
+      type: z.literal('FORM_FIELD'),
+      scope: fieldSchema.shape.scope,
+      key: fieldSchema.shape.key,
+    })
+    .strict(),
+]);
+export type HydroFieldSource = z.infer<typeof hydroFieldSourceSchema>;
+export const hydroFieldMappingsSchema = z
+  .object({
+    displayName: hydroFieldSourceSchema.optional(),
+    school: hydroFieldSourceSchema.optional(),
+    members: hydroFieldSourceSchema.optional(),
+    coach: hydroFieldSourceSchema.optional(),
+    seat: hydroFieldSourceSchema.optional(),
+  })
+  .strict();
+export type HydroFieldMappings = z.infer<typeof hydroFieldMappingsSchema>;
+export const hydroMappingFieldSchema = z.object({
+  scope: fieldSchema.shape.scope,
+  key: fieldSchema.shape.key,
+  label: fieldSchema.shape.label,
+  type: fieldSchema.shape.type.exclude(['file', 'photo']),
+  historical: z.boolean(),
+});
+export type HydroMappingField = z.infer<typeof hydroMappingFieldSchema>;
 export const platformExportSchema = z
   .object({
     platform: z.enum(['HYDRO', 'DOMJUDGE']),
     hydroFields: z.array(z.enum(hydroExportFields)).max(hydroExportFields.length).optional(),
+    hydroFieldMappings: hydroFieldMappingsSchema.optional(),
     includeUnofficial: z.boolean().default(true),
     importMode: z.enum(['FOLLOW', 'FORCE_UNOFFICIAL']).default('FOLLOW'),
     officialGroupId: z
@@ -608,6 +662,25 @@ export const platformExportSchema = z
       .optional(),
   })
   .superRefine((options, ctx) => {
+    if (options.hydroFieldMappings !== undefined) {
+      if (options.platform !== 'HYDRO')
+        ctx.addIssue({
+          code: 'custom',
+          path: ['hydroFieldMappings'],
+          message: 'DOMjudge 不支持 Hydro 字段关联',
+        });
+      for (const key of hydroMappableFields)
+        if (
+          options.hydroFieldMappings[key] &&
+          options.hydroFields &&
+          !options.hydroFields.includes(key)
+        )
+          ctx.addIssue({
+            code: 'custom',
+            path: ['hydroFieldMappings', key],
+            message: '只能关联本次包含的导出字段',
+          });
+    }
     if (options.hydroFields === undefined) return;
     if (options.platform !== 'HYDRO') {
       ctx.addIssue({

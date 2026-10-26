@@ -23,7 +23,7 @@ import archiver from 'archiver';
 import { AuthService, user, csrf, type AuthRequest } from './auth.js';
 import { RegistrationService } from './registrations.js';
 import { removeContest } from './contest-removal.js';
-import { platformExport } from './platform-export.js';
+import { platformExport, platformExportFields } from './platform-export.js';
 import { registrationCsv } from './registration-export.js';
 import { SeatingService } from './seating.js';
 import { FinanceService } from './finance.js';
@@ -855,6 +855,14 @@ export class ApiController {
       .setHeader('Content-Disposition', 'attachment; filename="preview.pdf"')
       .setHeader('X-Content-Type-Options', 'nosniff')
       .send(d.buffer);
+  }
+  @Get('contests/:id/platform-exports/fields') exportPlatformFields(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    res.setHeader('Cache-Control', 'private, no-store');
+    return platformExportFields(user(r), z.string().uuid().parse(id));
   }
   @Post('contests/:id/platform-exports') async exportPlatform(
     @Req() r: AuthRequest,

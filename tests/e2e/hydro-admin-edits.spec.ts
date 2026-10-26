@@ -24,19 +24,38 @@ test.afterAll(async () => {
   await redis.quit();
 });
 
-test('Hydro default and selected ZIP downloads obey field selection on desktop and mobile', async ({
+test('Hydro default and mapped ZIP downloads obey registration source selection on desktop and mobile', async ({
   page,
 }) => {
   await mkdir(evidence, { recursive: true });
   const stage = await mkdtemp(path.join(tmpdir(), 'hydro-ui-'));
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'warning' || message.type() === 'error') errors.push(message.text());
+  });
   await login(page);
   const admin = await new Client().login('admin');
   const f = await exportFixture(admin.user.id);
   try {
     await db.formVersion.create({
-      data: { contestId: f.contest.id, version: 1, fields: [], schema: {} },
+      data: {
+        contestId: f.contest.id,
+        version: 1,
+        fields: [
+          { key: 'contest_name', label: '自定义参赛名称', scope: 'TEAM', type: 'text' },
+          { key: 'alias', label: '成员别名', scope: 'PERSON', type: 'text' },
+        ],
+        schema: {},
+      },
+    });
+    await db.registration.update({
+      where: { id: f.rows[0]!.id },
+      data: { answers: { team: { contest_name: '自定义展示队' } } },
+    });
+    await db.registrationPerson.updateMany({
+      where: { registrationId: f.rows[0]!.id },
+      data: { name: '队长姓名', answers: { student_id: f.studentIds[0], alias: '队员别名001' } },
     });
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`/admin/contests/${f.contest.id}?tab=integrations`);
@@ -46,6 +65,8 @@ test('Hydro default and selected ZIP downloads obey field selection on desktop a
     await expect(page.getByRole('checkbox', { name: /排名性质/ })).toBeDisabled();
     await page.locator('label.el-checkbox').filter({ hasText: '比赛密码' }).click();
     await expect(page.getByRole('checkbox', { name: /比赛密码/ })).not.toBeChecked();
+    await page.locator('#hydro-source-displayName').click();
+    await page.getByRole('option', { name: '本人／队长姓名', exact: true }).click();
     async function downloaded(button: string) {
       const requested = page.waitForRequest(
         (request) => request.url().endsWith('/platform-exports') && request.method() === 'POST',
@@ -61,15 +82,46 @@ test('Hydro default and selected ZIP downloads obey field selection on desktop a
     }
     const full = await downloaded('默认导出');
     expect(full.request.hydroFields).toBeUndefined();
+    expect(full.request.hydroFieldMappings).toBeUndefined();
     const teams = JSON.parse(full.get('teams.json'));
     expect(teams[0].password.length).toBeGreaterThan(20);
-    const custom = await downloaded('自选字段导出');
+    expect(teams[0].displayName).toBe('NULL');
+    const custom = await downloaded('按关联导出');
     expect(custom.request.hydroFields).not.toContain('password');
     expect(JSON.parse(custom.get('teams.json'))[0].password).toBeUndefined();
+    expect(JSON.parse(custom.get('teams.json'))[0].displayName).toBe('队长姓名');
     for (const file of ['teams.json', 'credentials.csv', 'README.txt'])
       for (const team of teams) expect(custom.get(file)).not.toContain(team.password);
+    await page.locator('#hydro-source-displayName').click();
+    await page
+      .getByRole('option', { name: '队伍资料 · 自定义参赛名称（contest_name）', exact: true })
+      .click();
+    await page.locator('#hydro-source-members').click();
+    await page
+      .getByRole('listbox', { name: '队员（members）的报名资料来源', exact: true })
+      .getByRole('option', { name: '成员资料 · 成员别名（alias）', exact: true })
+      .click();
+    const mapped = await downloaded('按关联导出');
+    const mappedTeams = JSON.parse(mapped.get('teams.json'));
+    expect(mappedTeams[0].displayName).toBe('自定义展示队');
+    expect(mappedTeams[0].members).toEqual(['队员别名001']);
+    expect(mappedTeams[1].displayName).toBe(teams[1].displayName);
+    expect(mappedTeams[1].members).toEqual(teams[1].members);
+    expect(mapped.get('credentials.csv')).toContain('自定义展示队');
+    expect(mapped.get('README.txt')).toContain(
+      'displayName ← TEAM·自定义参赛名称（contest_name）；缺值回退 1 份报名',
+    );
+    expect(mappedTeams.map((team: any) => [team.id, team.name, team.rank])).toEqual(
+      teams.map((team: any) => [team.id, team.name, team.rank]),
+    );
     await page.getByRole('button', { name: '恢复默认', exact: true }).click();
     await expect(page.getByRole('checkbox', { name: /比赛密码/ })).toBeChecked();
+    await expect(
+      page.locator('.mapping-row').filter({ has: page.locator('#hydro-source-displayName') }),
+    ).toContainText('系统默认：队名，个人赛为本人姓名');
+    const reset = await downloaded('按关联导出');
+    expect(reset.request.hydroFieldMappings).toEqual({});
+    expect(JSON.parse(reset.get('teams.json'))).toEqual(teams);
     await page
       .locator('.platform-exports')
       .screenshot({ path: path.join(evidence, 'hydro-fields-desktop.png') });
@@ -77,7 +129,7 @@ test('Hydro default and selected ZIP downloads obey field selection on desktop a
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
       true,
     );
-    await expect(page.getByRole('button', { name: '自选字段导出', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '按关联导出', exact: true })).toBeVisible();
     await page
       .locator('.platform-exports')
       .screenshot({ path: path.join(evidence, 'hydro-fields-mobile.png') });

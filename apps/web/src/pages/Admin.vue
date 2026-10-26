@@ -474,9 +474,9 @@ async function webhook() {
               非正式 {{ row.registrationCounts?.unofficial ?? 0 }} 人
             </div></template
           ></el-table-column
-        ><el-table-column label="操作" width="250"
+        ><el-table-column label="操作" width="280"
           ><template #default="{ row }"
-            ><div class="table-actions">
+            ><div class="table-actions contest-table-actions">
               <router-link :to="`/admin/contests/${row.id}`">编辑配置</router-link>
               <router-link :to="`/admin/contests/${row.id}?tab=registrations`"
                 >报名管理</router-link
@@ -1173,3 +1173,9 @@ async function webhook() {
     ></el-dialog
   >
 </template>
+<style scoped>
+.contest-table-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  white-space: nowrap;
+}
+</style>

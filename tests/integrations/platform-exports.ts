@@ -282,6 +282,16 @@ try {
   );
   assert.match(seated.get('credentials.csv'), /"A01"/);
   assert.match(seated.get('credentials.csv'), /"B100"/);
+  const seatAsName = await bundle(admin, f.contest.id, {
+    platform: 'HYDRO',
+    hydroFields: ['id', 'name', 'rank', 'displayName'],
+    hydroFieldMappings: { displayName: { type: 'BUILTIN', key: 'SEAT' } },
+  });
+  assert.deepEqual(
+    seatAsName.teams.map((team: any) => team.displayName),
+    ['A01', 'B100'],
+  );
+  assert.ok(seatAsName.teams.every((team: any) => !('seat' in team)));
   roomA = await admin.api(`${roomPath}/${roomA.id}`, 'PUT', { ...roomA, code: 'c' });
   assert.equal(roomA.code, 'C');
   assert.equal((await bundle(admin, f.contest.id, { platform: 'HYDRO' })).teams[0].seat, 'C01');
@@ -389,6 +399,143 @@ try {
   assert.equal((await admin.raw(route, 'POST', { platform: 'HYDRO' })).status, 400);
   checks.push(
     'Hydro 忽略人工队伍编号作为座位回退，DOMjudge 保留原编号规则；缺少代表单位和停用导出模块仍拒绝导出',
+  );
+  await redis.del(`rate:exports:${admin.user.id}`);
+  const mappedFixture = await exportFixture(alice.user.id);
+  fixtures.push(mappedFixture);
+  const mappedRoute = `/api/v1/contests/${mappedFixture.contest.id}/platform-exports`;
+  const mappedFields = [
+    { key: 'title', label: '参赛名称', scope: 'TEAM', type: 'text' },
+    { key: 'unit', label: '参赛单位', scope: 'REGISTRATION', type: 'text' },
+    { key: 'place', label: '自填座位', scope: 'TEAM', type: 'text' },
+    { key: 'alias', label: '队员别名', scope: 'PERSON', type: 'text' },
+    { key: 'coach_alias', label: '教练别名', scope: 'COACH', type: 'text' },
+    { key: 'attachment', label: '附件', scope: 'TEAM', type: 'file' },
+  ];
+  await db.formVersion.create({
+    data: { contestId: mappedFixture.contest.id, version: 1, fields: mappedFields, schema: {} },
+  });
+  await db.formVersion.create({
+    data: {
+      contestId: mappedFixture.contest.id,
+      version: 2,
+      fields: mappedFields.filter((f) => f.key !== 'title'),
+      schema: {},
+    },
+  });
+  await db.contest.update({ where: { id: mappedFixture.contest.id }, data: { formVersion: 2 } });
+  const metadata = await admin.raw(`${mappedRoute}/fields`);
+  assert.equal(metadata.status, 200);
+  assert.equal(metadata.headers.get('cache-control'), 'private, no-store');
+  const catalog = await metadata.json();
+  assert.ok(catalog.some((f: any) => f.key === 'title' && f.historical));
+  assert.ok(!catalog.some((f: any) => f.key === 'attachment'));
+  assert.equal(
+    (await admin.raw(mappedRoute, 'POST', { platform: 'DOMJUDGE', hydroFieldMappings: {} })).status,
+    400,
+  );
+  assert.equal((await alice.raw(`${mappedRoute}/fields`)).status, 403);
+  assert.equal((await manager.raw(`${mappedRoute}/fields`)).status, 403);
+  assert.equal((await new Client().raw(`${mappedRoute}/fields`)).status, 401);
+  assert.equal(
+    (await admin.raw(`/api/v1/contests/${f.contest.id}/platform-exports/fields`)).status,
+    400,
+  );
+  await db.registration.update({
+    where: { id: mappedFixture.rows[0]!.id },
+    data: {
+      answers: {
+        team: { title: '自定义展示名', place: 'M001' },
+        registration: { unit: '报名填写单位' },
+      },
+    },
+  });
+  await db.registrationPerson.updateMany({
+    where: { registrationId: mappedFixture.rows[0]!.id },
+    data: { answers: { student_id: mappedFixture.studentIds[0], alias: '000张三' } },
+  });
+  await db.registrationPerson.create({
+    data: {
+      registrationId: mappedFixture.rows[0]!.id,
+      contestId: mappedFixture.contest.id,
+      name: '缺值成员',
+      answers: {},
+    },
+  });
+  await db.registrationCoach.create({
+    data: {
+      registrationId: mappedFixture.rows[0]!.id,
+      userId: admin.user.id,
+      answers: { coach_alias: '报名教练' },
+    },
+  });
+  const defaultMapped = await bundle(admin, mappedFixture.contest.id, { platform: 'HYDRO' });
+  const hydroFieldMappings = {
+    displayName: { type: 'FORM_FIELD', scope: 'TEAM', key: 'title' },
+    school: { type: 'FORM_FIELD', scope: 'REGISTRATION', key: 'unit' },
+    members: { type: 'FORM_FIELD', scope: 'PERSON', key: 'alias' },
+    coach: { type: 'FORM_FIELD', scope: 'COACH', key: 'coach_alias' },
+    seat: { type: 'FORM_FIELD', scope: 'TEAM', key: 'place' },
+  };
+  const mapped = await bundle(admin, mappedFixture.contest.id, {
+    platform: 'HYDRO',
+    hydroFieldMappings,
+  });
+  assert.equal(mapped.teams[0].displayName, '自定义展示名');
+  assert.equal(mapped.teams[0].school, '报名填写单位');
+  assert.deepEqual(mapped.teams[0].members, ['000张三', '缺值成员']);
+  assert.equal(mapped.teams[0].coach, '报名教练');
+  assert.equal(mapped.teams[0].seat, 'M001');
+  assert.deepEqual(mapped.teams[1], defaultMapped.teams[1]);
+  for (let i = 0; i < 2; i++)
+    for (const key of ['id', 'name', 'password', 'rank'])
+      assert.equal(mapped.teams[i][key], defaultMapped.teams[i][key]);
+  assert.match(mapped.get('credentials.csv'), /"自定义展示名"/);
+  assert.match(mapped.get('credentials.csv'), /"M001"/);
+  assert.match(mapped.get('README.txt'), /displayName ← TEAM·参赛名称（title）；缺值回退 1 份报名/);
+  assert.deepEqual(
+    (await bundle(admin, mappedFixture.contest.id, { platform: 'HYDRO' })).teams,
+    defaultMapped.teams,
+  );
+  const fromName = await bundle(admin, mappedFixture.contest.id, {
+    platform: 'HYDRO',
+    hydroFieldMappings: { displayName: { type: 'BUILTIN', key: 'PERSON_NAME' } },
+  });
+  assert.equal(fromName.teams[1].displayName, '同名选手');
+  for (const source of [
+    { type: 'FORM_FIELD', scope: 'PERSON', key: 'not_in_this_contest' },
+    { type: 'FORM_FIELD', scope: 'TEAM', key: 'attachment' },
+  ])
+    assert.equal(
+      (
+        await admin.raw(mappedRoute, 'POST', {
+          platform: 'HYDRO',
+          hydroFieldMappings: { displayName: source },
+        })
+      ).status,
+      400,
+    );
+  await db.registration.update({
+    where: { id: mappedFixture.rows[0]!.id },
+    data: { organization: { invalid: true } },
+  });
+  assert.equal(
+    (await bundle(admin, mappedFixture.contest.id, { platform: 'HYDRO', hydroFieldMappings }))
+      .teams[0].school,
+    '报名填写单位',
+  );
+  assert.equal((await admin.raw(mappedRoute, 'POST', { platform: 'HYDRO' })).status, 400);
+  const mappedWithoutPassword = await bundle(admin, mappedFixture.contest.id, {
+    platform: 'HYDRO',
+    hydroFieldMappings,
+    hydroFields: ['id', 'name', 'rank', 'displayName', 'school', 'members', 'coach', 'seat'],
+  });
+  for (const file of ['teams.json', 'credentials.csv', 'README.txt'])
+    for (const team of defaultMapped.teams)
+      assert.ok(!mappedWithoutPassword.get(file).includes(team.password));
+  await redis.del(`rate:exports:${admin.user.id}`);
+  checks.push(
+    'Hydro 本次字段关联支持基础及当前／历史表单资料、缺值回退、CSV 同步、凭据稳定、附件与跨活动字段保护，默认及 DOMjudge 规则保持兼容',
   );
   for (const [url, method] of [
     ['/integrations/instances', 'GET'],

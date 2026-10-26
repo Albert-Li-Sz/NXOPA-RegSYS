@@ -8,6 +8,7 @@ import { Client, until } from './client.js';
 import { exportFixture } from './platform-export-fixture.js';
 import { db } from '../../apps/server/src/db.js';
 import { redis } from '../../apps/server/src/auth.js';
+import type { HydroFieldMappings } from '../../packages/contracts/src/index.js';
 const exec = promisify(execFile);
 const stage = await mkdtemp(path.join(tmpdir(), 'platform-import-'));
 const reports: Record<string, unknown>[] = [];
@@ -26,7 +27,13 @@ const compose = (platform: string, args: string[]) =>
     ],
     { timeout: 180000, maxBuffer: 4 * 1024 * 1024 },
   );
-async function exported(admin: Client, platform: string, force = false, hydroFields?: string[]) {
+async function exported(
+  admin: Client,
+  platform: string,
+  force = false,
+  hydroFields?: string[],
+  hydroFieldMappings?: HydroFieldMappings,
+) {
   const response = await admin.raw(
     `/api/v1/contests/${fixture!.contest.id}/platform-exports`,
     'POST',
@@ -34,6 +41,7 @@ async function exported(admin: Client, platform: string, force = false, hydroFie
       platform,
       importMode: force ? 'FORCE_UNOFFICIAL' : 'FOLLOW',
       ...(hydroFields ? { hydroFields } : {}),
+      ...(hydroFieldMappings ? { hydroFieldMappings } : {}),
     },
   );
   if (!response.ok) throw new Error(`Export failed ${response.status}: ${await response.text()}`);
@@ -170,6 +178,61 @@ async function hydro(admin: Client) {
   const data = (await view.json()) as any;
   assert.equal(String(data.UserContext?._id ?? data.user?._id), String(first[0].uid));
   assert.ok(data.tsdoc?.attend);
+  const mappingFields = [
+    { key: 'export_title', label: '参赛展示名', scope: 'TEAM', type: 'text' },
+    { key: 'export_school', label: '参赛单位', scope: 'REGISTRATION', type: 'text' },
+    { key: 'export_seat', label: '参赛座位', scope: 'REGISTRATION', type: 'text' },
+    { key: 'export_name', label: '成员别名', scope: 'PERSON', type: 'text' },
+    { key: 'export_coach', label: '教练别名', scope: 'COACH', type: 'text' },
+  ];
+  await db.formVersion.create({
+    data: { contestId: fixture!.contest.id, version: 1, fields: mappingFields, schema: {} },
+  });
+  await db.registration.update({
+    where: { id: fixture!.rows[0]!.id },
+    data: {
+      answers: {
+        team: { export_title: '自定义参赛展示名' },
+        registration: { export_school: '自定义参赛单位', export_seat: 'M01' },
+      },
+    },
+  });
+  await db.registrationPerson.updateMany({
+    where: { registrationId: fixture!.rows[0]!.id, captain: true },
+    data: { answers: { student_id: fixture!.studentIds[0], export_name: '队长别名' } },
+  });
+  await db.registrationCoach.updateMany({
+    where: { registrationId: fixture!.rows[0]!.id },
+    data: { answers: { export_coach: '指导教练别名' } },
+  });
+  const mapped = await exported(admin, 'HYDRO', true, undefined, {
+    displayName: { type: 'FORM_FIELD', scope: 'TEAM', key: 'export_title' },
+    school: { type: 'FORM_FIELD', scope: 'REGISTRATION', key: 'export_school' },
+    seat: { type: 'FORM_FIELD', scope: 'REGISTRATION', key: 'export_seat' },
+    members: { type: 'FORM_FIELD', scope: 'PERSON', key: 'export_name' },
+    coach: { type: 'FORM_FIELD', scope: 'COACH', key: 'export_coach' },
+  });
+  await importFile();
+  const mappedRemote = await inspect();
+  assert.deepEqual(
+    mappedRemote.map((team) => team.uid),
+    first.map((team) => team.uid),
+  );
+  for (const field of ['displayName', 'school', 'seat', 'coach', 'members'])
+    assert.deepEqual(mappedRemote[0][field], mapped[0][field]);
+  assert.equal(mappedRemote[0].displayName, '自定义参赛展示名');
+  assert.equal(mappedRemote[0].members[0], '队长别名');
+  assert.equal(mappedRemote[0].members.length, 5);
+  assert.equal(mappedRemote[1].displayName, teams[1].displayName);
+  assert.deepEqual(
+    mapped.map((team) => [team.id, team.name, team.password]),
+    teams.map((team) => [team.id, team.name, team.password]),
+  );
+  await exported(admin, 'HYDRO', true);
+  await importFile();
+  const restoredRemote = await inspect();
+  for (const field of ['displayName', 'school', 'seat', 'coach', 'members'])
+    assert.deepEqual(restoredRemote[0][field], first[0][field]);
   const remotePassword = `Remote-${crypto.randomUUID()}`;
   const changed = await fetch(`${base}/contest-center-fixture/password`, {
     method: 'POST',
@@ -247,6 +310,10 @@ async function hydro(admin: Client) {
     roomCodeSeats: ['A01', 'A100'],
     actualLoginAndContestAccess: true,
     selectedFieldsReimport: true,
+    customSourceMappingsReimport: true,
+    mappedMissingValuesFallback: true,
+    mappedCredentialsStable: true,
+    defaultSourcesRestoredAfterMappedImport: true,
     omittedPasswordPreservesRemoteChange: true,
     omittedMembersClearsArray: true,
     newAccountWithoutPassword: true,

@@ -16594,6 +16594,155 @@
         ]
       }
     },
+    "/api/v1/contests/{id}/platform-exports/fields": {
+      "get": {
+        "operationId": "ApiController_exportPlatformFields",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Compatible form fields; removed fields are marked historical",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "PERSON",
+                          "TEAM",
+                          "COACH",
+                          "REGISTRATION"
+                        ]
+                      },
+                      "key": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "textarea",
+                          "number",
+                          "date",
+                          "year",
+                          "email",
+                          "institution",
+                          "select",
+                          "multiselect",
+                          "boolean"
+                        ]
+                      },
+                      "historical": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "scope",
+                      "key",
+                      "label",
+                      "type",
+                      "historical"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Scope or role denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or duplicate identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "contests"
+        ],
+        "security": [
+          {
+            "cookie": []
+          },
+          {
+            "hostCookie": []
+          }
+        ],
+        "description": "INTEGRATIONS permission and enabled platform exports required. Lists compatible current and historical form-field definitions for transient Hydro mappings. Returns no registration answers or credentials. Private, no-store."
+      }
+    },
     "/api/v1/contests/{id}/platform-exports": {
       "post": {
         "operationId": "ApiController_exportPlatform",
@@ -16700,7 +16849,7 @@
             "hostCookie": []
           }
         ],
-        "description": "INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Hydro, DOMjudge and admission PDFs share the participant/captain student-ID username and one encrypted stable random password per registration. DOMjudge team/account IDs and team_id use the registration UUID. Hydro accepts optional hydroFields (id, name and rank required); omitted fields are excluded from teams.json and matching CSV columns. Omitting password excludes plaintext passwords from the entire ZIP; DOMjudge rejects hydroFields. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay.",
+        "description": "INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Hydro, DOMjudge and admission PDFs share the participant/captain student-ID username and one encrypted stable random password per registration. DOMjudge team/account IDs and team_id use the registration UUID. Hydro accepts optional hydroFields (id, name and rank required) and transient hydroFieldMappings for displayName, school, members, coach and seat. Mappings select whitelisted BUILTIN sources or FORM_FIELD scope/key belonging to the contest; files/photos are excluded. Blank mapped values fall back to system defaults. PERSON mappings use the captain for scalar targets and all active members for members, falling back per member to their name. Omitting a mapping preserves the original default. Mappings do not change stored registrations or credentials. Omitted fields are excluded from teams.json and matching CSV columns. Omitting password excludes plaintext passwords from the entire ZIP; DOMjudge rejects both Hydro options. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay.",
         "requestBody": {
           "required": true,
           "content": {
@@ -16732,6 +16881,332 @@
                         "rank"
                       ]
                     }
+                  },
+                  "hydroFieldMappings": {
+                    "type": "object",
+                    "properties": {
+                      "displayName": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "BUILTIN"
+                                ]
+                              },
+                              "key": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSON_NAME",
+                                  "TEAM_NAME",
+                                  "TEAM_ENGLISH_NAME",
+                                  "MEMBER_NAMES",
+                                  "ORGANIZATION",
+                                  "COACH_NAMES",
+                                  "SEAT",
+                                  "REGISTRATION_NUMBER",
+                                  "EXAM_SITE"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "key"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "FORM_FIELD"
+                                ]
+                              },
+                              "scope": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSON",
+                                  "TEAM",
+                                  "COACH",
+                                  "REGISTRATION"
+                                ]
+                              },
+                              "key": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "scope",
+                              "key"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "school": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "BUILTIN"
+                                ]
+                              },
+                              "key": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSON_NAME",
+                                  "TEAM_NAME",
+                                  "TEAM_ENGLISH_NAME",
+                                  "MEMBER_NAMES",
+                                  "ORGANIZATION",
+                                  "COACH_NAMES",
+                                  "SEAT",
+                                  "REGISTRATION_NUMBER",
+                                  "EXAM_SITE"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "key"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "FORM_FIELD"
+                                ]
+                              },
+                              "scope": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSON",
+                                  "TEAM",
+                                  "COACH",
+                                  "REGISTRATION"
+                                ]
+                              },
+                              "key": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "scope",
+                              "key"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "members": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "BUILTIN"
+                                ]
+                              },
+                              "key": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSON_NAME",
+                                  "TEAM_NAME",
+                                  "TEAM_ENGLISH_NAME",
+                                  "MEMBER_NAMES",
+                                  "ORGANIZATION",
+                                  "COACH_NAMES",
+                                  "SEAT",
+                                  "REGISTRATION_NUMBER",
+                                  "EXAM_SITE"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "key"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "FORM_FIELD"
+                                ]
+                              },
+                              "scope": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSON",
+                                  "TEAM",
+                                  "COACH",
+                                  "REGISTRATION"
+                                ]
+                              },
+                              "key": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "scope",
+                              "key"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "coach": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "BUILTIN"
+                                ]
+                              },
+                              "key": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSON_NAME",
+                                  "TEAM_NAME",
+                                  "TEAM_ENGLISH_NAME",
+                                  "MEMBER_NAMES",
+                                  "ORGANIZATION",
+                                  "COACH_NAMES",
+                                  "SEAT",
+                                  "REGISTRATION_NUMBER",
+                                  "EXAM_SITE"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "key"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "FORM_FIELD"
+                                ]
+                              },
+                              "scope": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSON",
+                                  "TEAM",
+                                  "COACH",
+                                  "REGISTRATION"
+                                ]
+                              },
+                              "key": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "scope",
+                              "key"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "seat": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "BUILTIN"
+                                ]
+                              },
+                              "key": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSON_NAME",
+                                  "TEAM_NAME",
+                                  "TEAM_ENGLISH_NAME",
+                                  "MEMBER_NAMES",
+                                  "ORGANIZATION",
+                                  "COACH_NAMES",
+                                  "SEAT",
+                                  "REGISTRATION_NUMBER",
+                                  "EXAM_SITE"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "key"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "FORM_FIELD"
+                                ]
+                              },
+                              "scope": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSON",
+                                  "TEAM",
+                                  "COACH",
+                                  "REGISTRATION"
+                                ]
+                              },
+                              "key": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "scope",
+                              "key"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
                   },
                   "includeUnofficial": {
                     "default": true,
