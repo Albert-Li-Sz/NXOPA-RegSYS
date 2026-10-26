@@ -46,6 +46,6 @@
   ],
   "version": "0.10.1",
   "updates": {
-    "07-platform-hydro-export": "2026-10-26: v2.1.0 Hydro field selection, captured with connected Browser on isolated local fixtures."
+    "07-platform-hydro-export": "2026-10-26: v2.2.0 Hydro registration source mappings, captured with connected Browser on isolated local fixtures."
   }
 }

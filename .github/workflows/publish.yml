@@ -6,7 +6,7 @@ on:
         description: 已完成镜像与安装验收的完整版本标签
         type: string
         required: true
-        default: v2.1.0
+        default: v2.2.1
 permissions:
   contents: read
 concurrency:

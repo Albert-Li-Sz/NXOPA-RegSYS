@@ -1853,6 +1853,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/contests/{id}/platform-exports/fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description INTEGRATIONS permission and enabled platform exports required. Lists compatible current and historical form-field definitions for transient Hydro mappings. Returns no registration answers or credentials. Private, no-store. */
+        get: operations["ApiController_exportPlatformFields"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/contests/{id}/platform-exports": {
         parameters: {
             query?: never;
@@ -1862,7 +1879,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Hydro, DOMjudge and admission PDFs share the participant/captain student-ID username and one encrypted stable random password per registration. DOMjudge team/account IDs and team_id use the registration UUID. Hydro accepts optional hydroFields (id, name and rank required); omitted fields are excluded from teams.json and matching CSV columns. Omitting password excludes plaintext passwords from the entire ZIP; DOMjudge rejects hydroFields. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay. */
+        /** @description INTEGRATIONS permission required. Exports qualified registrations as an import ZIP; never contacts a judging platform. Hydro, DOMjudge and admission PDFs share the participant/captain student-ID username and one encrypted stable random password per registration. DOMjudge team/account IDs and team_id use the registration UUID. Hydro accepts optional hydroFields (id, name and rank required) and transient hydroFieldMappings for displayName, school, members, coach and seat. Mappings select whitelisted BUILTIN sources or FORM_FIELD scope/key belonging to the contest; files/photos are excluded. Blank mapped values fall back to system defaults. PERSON mappings use the captain for scalar targets and all active members for members, falling back per member to their name. Omitting a mapping preserves the original default. Mappings do not change stored registrations or credentials. Omitted fields are excluded from teams.json and matching CSV columns. Omitting password excludes plaintext passwords from the entire ZIP; DOMjudge rejects both Hydro options. Maximum 10000 registrations and 50 MB. Response is no-store and is excluded from idempotency replay. */
         post: operations["ApiController_exportPlatform"];
         delete?: never;
         options?: never;
@@ -14010,6 +14027,90 @@ export interface operations {
             };
         };
     };
+    ApiController_exportPlatformFields: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Compatible form fields; removed fields are marked historical */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        scope: "PERSON" | "TEAM" | "COACH" | "REGISTRATION";
+                        key: string;
+                        label: string;
+                        /** @enum {string} */
+                        type: "text" | "textarea" | "number" | "date" | "year" | "email" | "institution" | "select" | "multiselect" | "boolean";
+                        historical: boolean;
+                    }[];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Scope or role denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Record missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or duplicate identity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     ApiController_exportPlatform: {
         parameters: {
             query?: never;
@@ -14027,6 +14128,68 @@ export interface operations {
                     /** @enum {string} */
                     platform: "HYDRO" | "DOMJUDGE";
                     hydroFields?: ("id" | "name" | "displayName" | "password" | "school" | "members" | "coach" | "seat" | "rank")[];
+                    hydroFieldMappings?: {
+                        displayName?: {
+                            /** @enum {string} */
+                            type: "BUILTIN";
+                            /** @enum {string} */
+                            key: "PERSON_NAME" | "TEAM_NAME" | "TEAM_ENGLISH_NAME" | "MEMBER_NAMES" | "ORGANIZATION" | "COACH_NAMES" | "SEAT" | "REGISTRATION_NUMBER" | "EXAM_SITE";
+                        } | {
+                            /** @enum {string} */
+                            type: "FORM_FIELD";
+                            /** @enum {string} */
+                            scope: "PERSON" | "TEAM" | "COACH" | "REGISTRATION";
+                            key: string;
+                        };
+                        school?: {
+                            /** @enum {string} */
+                            type: "BUILTIN";
+                            /** @enum {string} */
+                            key: "PERSON_NAME" | "TEAM_NAME" | "TEAM_ENGLISH_NAME" | "MEMBER_NAMES" | "ORGANIZATION" | "COACH_NAMES" | "SEAT" | "REGISTRATION_NUMBER" | "EXAM_SITE";
+                        } | {
+                            /** @enum {string} */
+                            type: "FORM_FIELD";
+                            /** @enum {string} */
+                            scope: "PERSON" | "TEAM" | "COACH" | "REGISTRATION";
+                            key: string;
+                        };
+                        members?: {
+                            /** @enum {string} */
+                            type: "BUILTIN";
+                            /** @enum {string} */
+                            key: "PERSON_NAME" | "TEAM_NAME" | "TEAM_ENGLISH_NAME" | "MEMBER_NAMES" | "ORGANIZATION" | "COACH_NAMES" | "SEAT" | "REGISTRATION_NUMBER" | "EXAM_SITE";
+                        } | {
+                            /** @enum {string} */
+                            type: "FORM_FIELD";
+                            /** @enum {string} */
+                            scope: "PERSON" | "TEAM" | "COACH" | "REGISTRATION";
+                            key: string;
+                        };
+                        coach?: {
+                            /** @enum {string} */
+                            type: "BUILTIN";
+                            /** @enum {string} */
+                            key: "PERSON_NAME" | "TEAM_NAME" | "TEAM_ENGLISH_NAME" | "MEMBER_NAMES" | "ORGANIZATION" | "COACH_NAMES" | "SEAT" | "REGISTRATION_NUMBER" | "EXAM_SITE";
+                        } | {
+                            /** @enum {string} */
+                            type: "FORM_FIELD";
+                            /** @enum {string} */
+                            scope: "PERSON" | "TEAM" | "COACH" | "REGISTRATION";
+                            key: string;
+                        };
+                        seat?: {
+                            /** @enum {string} */
+                            type: "BUILTIN";
+                            /** @enum {string} */
+                            key: "PERSON_NAME" | "TEAM_NAME" | "TEAM_ENGLISH_NAME" | "MEMBER_NAMES" | "ORGANIZATION" | "COACH_NAMES" | "SEAT" | "REGISTRATION_NUMBER" | "EXAM_SITE";
+                        } | {
+                            /** @enum {string} */
+                            type: "FORM_FIELD";
+                            /** @enum {string} */
+                            scope: "PERSON" | "TEAM" | "COACH" | "REGISTRATION";
+                            key: string;
+                        };
+                    };
                     /** @default true */
                     includeUnofficial: boolean;
                     /**

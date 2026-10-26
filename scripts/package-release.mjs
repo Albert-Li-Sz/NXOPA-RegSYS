@@ -202,6 +202,27 @@ try {
       join(output, `installation-interactive-legacy-${arch}.json`),
       JSON.stringify(legacyUpgrade, null, 2),
     );
+    const previousUpgrade = JSON.parse(
+      await readFile(
+        join(
+          root,
+          'dist/installation-reports',
+          `installation-${arch}`,
+          'install-interactive-previous.json',
+        ),
+        'utf8',
+      ),
+    );
+    assert.equal(previousUpgrade.success, true);
+    assert.equal(previousUpgrade.initialTag, 'v2.1.0');
+    assert.equal(previousUpgrade.targetTag, tag);
+    assert.equal(previousUpgrade.platform, 'linux');
+    assert.equal(previousUpgrade.architecture, arch === 'amd64' ? 'x64' : 'arm64');
+    assert.ok(previousUpgrade.checks.some((check) => check.includes('共享比赛凭据')));
+    await writeFile(
+      join(output, `installation-interactive-previous-${arch}.json`),
+      JSON.stringify(previousUpgrade, null, 2),
+    );
     const proxy = JSON.parse(
       await readFile(
         join(root, 'dist/installation-reports', `installation-${arch}`, 'install-proxy.json'),

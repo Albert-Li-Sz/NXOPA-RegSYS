@@ -1,6 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 import {
   hydroExportFields,
+  hydroMappableFields,
+  hydroBuiltinSourceLabels,
   organizationSchema,
   policySchema,
   platformExportSchema,
@@ -11,6 +13,7 @@ import { requireManager, sha } from './security.js';
 import { ensureCompetitionAccount, validateCompetitionUsernames } from './competition-accounts.js';
 import { modulesFor } from './workflow.js';
 import { withExportBudget } from './export-budget.js';
+import { hydroMappingFields, resolveHydroMapping } from './platform-export-mapping.js';
 
 const jsonFile = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
 const csvCell = (value: unknown) => {
@@ -18,6 +21,14 @@ const csvCell = (value: unknown) => {
   if (/^\s*[=+\-@]|^[\t\r\n]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 };
+
+export async function platformExportFields(u: Principal, contestId: string) {
+  requireManager(u, contestId, 'INTEGRATIONS');
+  const contest = await db.contest.findUniqueOrThrow({ where: { id: contestId } });
+  if (!modulesFor(contest).integrations) throw new BadRequestException('此活动未启用平台文件导出');
+  const forms = await db.formVersion.findMany({ where: { contestId } });
+  return hydroMappingFields(forms, contest.formVersion);
+}
 
 // Generates a local snapshot only. Never contacts a judging platform.
 export async function platformExport(u: Principal, contestId: string, body: unknown) {
@@ -38,6 +49,22 @@ export async function platformExport(u: Principal, contestId: string, body: unkn
         const contest = await tx.contest.findUniqueOrThrow({ where: { id: contestId } });
         if (!modulesFor(contest).integrations)
           throw new BadRequestException('此活动未启用平台文件导出');
+        const mappings = options.hydroFieldMappings ?? {};
+        const mappingFields = Object.values(mappings).some((source) => source.type === 'FORM_FIELD')
+          ? hydroMappingFields(
+              await tx.formVersion.findMany({ where: { contestId } }),
+              contest.formVersion,
+            )
+          : [];
+        for (const source of Object.values(mappings))
+          if (
+            source.type === 'FORM_FIELD' &&
+            !mappingFields.some((f) => f.scope === source.scope && f.key === source.key)
+          )
+            throw new BadRequestException(
+              `字段 ${source.scope}:${source.key} 不属于此活动的可关联报名字段`,
+            );
+        const fallbacks: Partial<Record<(typeof hydroMappableFields)[number], number>> = {};
         const where = {
           contestId,
           eligible: true,
@@ -61,6 +88,7 @@ export async function platformExport(u: Principal, contestId: string, body: unkn
               version: true,
               teamName: true,
               teamEnglishName: true,
+              examSite: { select: { name: true } },
               participationType: true,
               organization: true,
               policySnapshot: true,
@@ -70,7 +98,10 @@ export async function platformExport(u: Principal, contestId: string, body: unkn
                 select: { id: true, name: true, captain: true, answers: true },
                 orderBy: [{ captain: 'desc' }, { id: 'asc' }],
               },
-              coaches: { select: { user: { select: { name: true } } }, orderBy: { id: 'asc' } },
+              coaches: {
+                select: { answers: true, user: { select: { name: true } } },
+                orderBy: { id: 'asc' },
+              },
               seats: {
                 select: {
                   seat: true,
@@ -105,37 +136,64 @@ export async function platformExport(u: Principal, contestId: string, body: unkn
         for (const r of rows) {
           const individual =
             policySchema.parse(r.policySnapshot ?? contest.policy).mode === 'INDIVIDUAL';
-          const name = (individual ? r.people[0]?.name : r.teamName)?.trim();
-          if ((included('displayName') && !name) || (included('members') && !r.people.length))
-            throw new BadRequestException(`报名 ${r.number ?? r.id} 缺少队名或成员姓名`);
+          let name = (individual ? r.people[0]?.name : r.teamName)?.trim() ?? '';
           const info = organizationSchema.safeParse(r.organization);
-          if (included('school') && !info.success)
-            throw new BadRequestException(
-              `报名 ${r.number ?? r.id} 缺少完整代表单位，请补正后重新审核`,
-            );
-          if (included('seat') && r.seats.length > 1)
-            throw new BadRequestException(
-              `报名 ${r.number ?? r.id} 有多个成员座位，无法映射到一个平台队伍座位`,
-            );
           const fields =
             (r.answers as { registration?: Record<string, unknown> }).registration ?? {};
           const assigned = r.seats[0];
           const rawSeat = assigned
             ? `${assigned.room.name}-${assigned.seat}`
             : String(fields.team_label ?? '').trim();
-          const seat = !included('seat')
-            ? ''
-            : options.platform === 'HYDRO'
+          let seat =
+            options.platform === 'HYDRO'
               ? assigned?.room.code
                 ? `${assigned.room.code}${String(assigned.seat).padStart(2, '0')}`
                 : ''
               : `${prefix}-${rawSeat || r.number || r.id}`;
+          let school = info.success ? info.data.name : '';
+          let members = r.people.map((p) => p.name);
+          let coach = r.coaches.map((c) => c.user.name).join('、');
+          let usesDefaultSchool = true,
+            usesDefaultSeat = true;
+          if (options.platform === 'HYDRO') {
+            const defaults = { displayName: name, school, members, coach, seat };
+            for (const field of hydroMappableFields) {
+              if (!included(field)) continue;
+              const result = resolveHydroMapping(field, mappings[field], r, defaults);
+              if (result.fallback) fallbacks[field] = (fallbacks[field] ?? 0) + 1;
+              if (field === 'displayName') name = result.value as string;
+              if (field === 'school') {
+                school = result.value as string;
+                usesDefaultSchool = result.usesDefault;
+              }
+              if (field === 'members') members = result.value as string[];
+              if (field === 'coach') coach = result.value as string;
+              if (field === 'seat') {
+                seat = result.value as string;
+                usesDefaultSeat = result.usesDefault;
+              }
+            }
+          }
+          if (!included('seat')) seat = '';
+          if ((included('displayName') && !name) || (included('members') && !members.length))
+            throw new BadRequestException(`报名 ${r.number ?? r.id} 缺少队名或成员姓名`);
+          if (included('school') && usesDefaultSchool && !info.success)
+            throw new BadRequestException(
+              `报名 ${r.number ?? r.id} 缺少完整代表单位，请补正后重新审核`,
+            );
+          const usesSeatSource = Object.values(mappings).some(
+            (source) => source.type === 'BUILTIN' && source.key === 'SEAT',
+          );
+          if (((included('seat') && usesDefaultSeat) || usesSeatSource) && r.seats.length > 1)
+            throw new BadRequestException(
+              `报名 ${r.number ?? r.id} 有多个成员座位，无法映射到一个平台队伍座位`,
+            );
           if (seat && seats.has(seat))
             throw new BadRequestException(
               `报名 ${seats.get(seat)} 与 ${r.number ?? r.id} 座位重复：${seat}，请调整后重新导出`,
             );
           if (options.platform === 'HYDRO' && /[,\r\n]/.test(seat))
-            throw new BadRequestException('Hydro 座位不能包含逗号或换行，请调整考场编号');
+            throw new BadRequestException('Hydro 座位不能包含逗号或换行，请调整考场编号或关联资料');
           if (seat) seats.set(seat, r.number ?? r.id);
           const account = await ensureCompetitionAccount(tx, r.id, r.version, usernames);
           if (!account) throw new BadRequestException('此活动已关闭平台文件导出');
@@ -149,9 +207,9 @@ export async function platformExport(u: Principal, contestId: string, body: unkn
               name: loginName,
               displayName: name,
               password,
-              school: info.success ? info.data.name : '',
-              members: r.people.map((p) => p.name),
-              coach: r.coaches.map((c) => c.user.name).join('、'),
+              school,
+              members,
+              coach,
               seat,
               rank: !unrank,
             };
@@ -234,6 +292,21 @@ export async function platformExport(u: Principal, contestId: string, body: unkn
         if (options.platform === 'HYDRO')
           files['README.txt'] +=
             `\n本次字段：${hydroExportFields.filter((field) => selected.has(field)).join('、')}。\n取消 password 时整个包不含比赛密码；已有 Hydro 账号不会重设密码，新账号由 Hydro 随机生成密码，可能与准考证密码不同。\n省略 members 时，Hydro 默认空数组，重新导入可能清空已有成员。自选字段控制文件内容，不代表远端部分更新。\n`;
+        if (options.platform === 'HYDRO' && Object.keys(mappings).length) {
+          files['README.txt'] += '\n本次报名资料关联（仅本次导出生效）：\n';
+          for (const field of hydroMappableFields) {
+            const source = mappings[field];
+            if (!source) continue;
+            const description =
+              source.type === 'BUILTIN'
+                ? hydroBuiltinSourceLabels[source.key]
+                : `${source.scope}·${mappingFields.find((f) => f.scope === source.scope && f.key === source.key)!.label}（${source.key}）`;
+            files['README.txt'] +=
+              `${field} ← ${description}；缺值回退 ${fallbacks[field] ?? 0} 份报名。\n`;
+          }
+          files['README.txt'] +=
+            '成员字段逐人取值，缺值逐人回退姓名；其他单值字段取本人／队长资料，多个选项或教练用“、”连接。映射值为空时回退该项系统默认来源；成员数组保留多选项，单个文本作为一名成员，不按逗号拆分。附件和照片不能作为来源。默认一键导出始终使用系统规则。\n';
+        }
         files['README.txt'] +=
           '\n本包只包含本次取得参赛资格的报名，不会自动导入或删除远端账号。资格撤销／报名删除后，请在远端手动处理。\n凭据表仅在选择 password 时包含明文比赛密码，请妥善分发和销毁。本站密码与比赛密码独立；两个平台和准考证共用比赛凭据。\n完整教程：https://albert-li-sz.github.io/NXOPA-RegSYS/\n';
         await audit(tx, u.id, 'PLATFORM_EXPORT', contestId, {
@@ -242,7 +315,11 @@ export async function platformExport(u: Principal, contestId: string, body: unkn
           includeUnofficial: options.includeUnofficial,
           importMode: options.importMode,
           ...(options.platform === 'HYDRO'
-            ? { hydroFields: hydroExportFields.filter((field) => selected.has(field)) }
+            ? {
+                hydroFields: hydroExportFields.filter((field) => selected.has(field)),
+                hydroFieldMappings: mappings,
+                fallbacks,
+              }
             : {}),
         });
         return {

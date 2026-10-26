@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import ListPagination from './ListPagination.vue';
 import { useLocalPagination } from '../composables/useLocalPagination';
-import { Calendar, User, Search, ArrowRight } from '@element-plus/icons-vue';
+import { Calendar, User, Search } from '@element-plus/icons-vue';
 import { shortDate, date, money } from '../api';
 import { useRoute } from 'vue-router';
 import type { ContestView } from '../types';
@@ -96,16 +96,17 @@ watch([filter, search, season], list.reset);
             : '独立参赛'
         }}</span>
       </div>
-      <router-link :to="`/contests/${c.id}`" class="el-button el-button--primary view-button"
-        >查看竞赛 <el-icon><ArrowRight /></el-icon> ></router-link
-      >
-      <router-link
-        v-if="c.publicRosterEnabled"
-        :to="`/contests/${c.id}/public-teams`"
-        class="el-button view-button"
-        style="margin-top: 10px"
-        >队伍公示</router-link
-      >
+      <div class="contest-actions">
+        <router-link :to="`/contests/${c.id}`" class="el-button el-button--primary view-button"
+          >查看竞赛 <span class="view-arrow" aria-hidden="true">&gt;&gt;</span></router-link
+        >
+        <router-link
+          v-if="c.publicRosterEnabled"
+          :to="`/contests/${c.id}/public-teams`"
+          class="el-button view-button"
+          >队伍公示</router-link
+        >
+      </div>
     </article>
   </section>
   <ListPagination
@@ -169,12 +170,20 @@ watch([filter, search, season], list.reset);
   color: #626b78;
   margin: 20px 0 17px;
 }
-.view-button {
+.contest-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.contest-actions .view-button {
   width: 100%;
+  min-width: 0;
   height: 39px;
+  margin: 0;
   font-size: 15px;
 }
-.view-button .el-icon {
+.view-arrow {
   margin-left: 8px;
 }
 .filter-label {

@@ -159,12 +159,31 @@ try {
   assert.equal(originalVolumes.length, 6);
   passed('默认内部 Caddy 的空卷交互安装、隐藏密码创建管理员，经外部 Nginx 实际登录');
 
+  // Prepare a normal participant without depending on outbound registration mail.
+  // Administrators may not amend draft registrations in v2.1 and later.
+  await run('install.sh', '', [
+    'compose',
+    'exec',
+    '-T',
+    'api',
+    'node',
+    '--import',
+    'tsx',
+    '--input-type=module',
+    '-e',
+    `import { db } from './src/db.ts';
+     const admin = await db.user.findUniqueOrThrow({where:{id:${JSON.stringify(admin.user.id)}}});
+     await db.user.create({data:{email:'upgrade-participant@example.test',username:'upgrade_participant',name:'升级验收选手',passwordHash:admin.passwordHash,verified:true}});
+     await db.$disconnect();`,
+  ]);
+  const participant = await new Client().login('upgrade_participant', password);
+  assert.equal(participant.user.isAdmin, false);
   // Initialize identity fields together; later changes correctly require review.
-  admin.user = await admin.api('/auth/profile', 'PUT', {
-    version: admin.user.version,
-    name: admin.user.name,
+  participant.user = await participant.api('/auth/profile', 'PUT', {
+    version: participant.user.version,
+    name: participant.user.name,
     profile: {
-      ...admin.user.profile,
+      ...participant.user.profile,
       student_id: '0020260001',
       class_name: '验收一班',
       college: '验收学院',
@@ -186,15 +205,15 @@ try {
     policy: policySchema.parse({ manualReview: false, coachMode: 'DISABLED' }),
     fields: [],
   });
-  let registration = await admin.api('/registrations', 'POST', { contestId: contest.id });
-  registration = await admin.api(`/registrations/${registration.id}`, 'PUT', {
+  let registration = await participant.api('/registrations', 'POST', { contestId: contest.id });
+  registration = await participant.api(`/registrations/${registration.id}`, 'PUT', {
     ...registration,
     organization: { name: '南京晓庄学院', shortName: 'TEST', country: 'CHN', icpcId: '' },
   });
-  registration = await admin.api(`/registrations/${registration.id}/submit`, 'POST', {
+  registration = await participant.api(`/registrations/${registration.id}/submit`, 'POST', {
     version: registration.version,
   });
-  const attachment = await admin.upload(registration.id);
+  const attachment = await participant.upload(registration.id);
   const attachmentContents = await (await admin.raw(`/api/v1/files/${attachment.id}`)).text();
   assert.match(attachmentContents, /^offline payment proof [0-9a-f-]{36}$/);
   assert.equal(registration.eligible, true);
@@ -235,7 +254,8 @@ try {
     updatedConfig === originalConfig.replace(`IMAGE_TAG=${initialTag}`, `IMAGE_TAG=${targetTag}`),
   );
   assert.equal(await version(), targetTag.slice(1));
-  const migratedUser = (await admin.api('/auth/me')).user;
+  assert.equal((await admin.api('/auth/me')).user.isAdmin, true);
+  const migratedUser = (await participant.api('/auth/me')).user;
   assert.equal(migratedUser.profile.student_id, '0020260001');
   if (/^v0\.10\./.test(initialTag)) assert.equal(migratedUser.profile.enrollment_year, undefined);
   const directory = await admin.api('/institutions');
@@ -244,7 +264,7 @@ try {
   const upgradedEntry = await admin.api(`/registrations/${registration.id}`);
   if (/^v0\.10\./.test(initialTag))
     assert.equal(upgradedEntry.people[0].answers.enrollment_year, undefined);
-  assert.equal(upgradedEntry.people[0].answers.email, admin.user.email);
+  assert.equal(upgradedEntry.people[0].answers.email, participant.user.email);
   assert.equal((await admin.api(`/registrations/${registration.id}`)).eligible, true);
   assert.equal(
     await (await admin.raw(`/api/v1/files/${attachment.id}`)).text(),

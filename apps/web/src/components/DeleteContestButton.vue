@@ -37,24 +37,78 @@ async function remove() {
 }
 </script>
 <template>
-  <el-tooltip
+  <span
     v-if="auth.user?.isAdmin"
-    :content="contest.deletion?.reason || ''"
-    :disabled="contest.deletion?.allowed !== false"
+    class="action-control delete-contest-control"
+    :class="{ 'delete-contest-control--text': text }"
   >
-    <span class="action-control" :title="contest.deletion?.reason">
-      <el-button
-        :text="text"
-        type="danger"
-        :disabled="contest.deletion?.allowed === false"
-        :aria-disabled="contest.deletion?.allowed === false"
-        :loading="busy"
-        @click="remove"
-        >{{ text ? '删除' : '删除活动' }}</el-button
+    <el-button
+      :text="text"
+      type="danger"
+      :disabled="contest.deletion?.allowed === false"
+      :aria-disabled="contest.deletion?.allowed === false"
+      :loading="busy"
+      @click="remove"
+      >{{ text ? '删除' : '删除活动' }}</el-button
+    >
+    <el-tooltip
+      v-if="contest.deletion?.allowed === false"
+      :content="contest.deletion.reason"
+      :trigger="['hover', 'focus', 'click']"
+      placement="top-end"
+    >
+      <button
+        type="button"
+        class="delete-reason"
+        :aria-label="`无法删除：${contest.deletion.reason}`"
       >
-      <span v-if="contest.deletion?.allowed === false" class="form-help">{{
-        contest.deletion.reason
-      }}</span>
-    </span>
-  </el-tooltip>
+        <span class="reason-dot" aria-hidden="true" />
+      </button>
+    </el-tooltip>
+  </span>
 </template>
+<style scoped>
+.delete-contest-control {
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+}
+.delete-contest-control > .el-button {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.delete-contest-control:not(.delete-contest-control--text) {
+  position: relative;
+}
+.delete-contest-control:not(.delete-contest-control--text) .delete-reason {
+  position: absolute;
+  inset-inline-end: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.delete-reason {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #73767a;
+  cursor: help;
+}
+.delete-reason:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 1px;
+}
+.reason-dot {
+  width: 10px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+</style>
