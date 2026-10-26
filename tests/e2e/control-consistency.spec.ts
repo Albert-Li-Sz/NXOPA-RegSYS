@@ -275,7 +275,9 @@ test('disabled module links select an available tab without mounting inactive op
       'true',
     );
     await expect(page.getByRole('button', { name: '新增考场', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '导出平台导入包', exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: /^(默认导出|导出平台导入包)$/, exact: true }),
+    ).toHaveCount(0);
   }
   await page.goto('/admin/contests/new?tab=rooms');
   await expect(page.getByRole('tab', { name: '活动设置', exact: true })).toHaveAttribute(

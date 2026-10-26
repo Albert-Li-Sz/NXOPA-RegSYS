@@ -243,6 +243,7 @@ try {
   r = await detail(r.id);
   assert.equal(r.actions.edit, false);
   assert.equal(r.actions.amendReview, false);
+  assert.equal(r.actions.delete, false);
   assert.equal(
     (await admin.raw(`/api/v1/registrations/${r.id}`, 'PUT', { ...r, teamName: '归档修改' }))
       .status,
@@ -256,6 +257,19 @@ try {
         reason: '归档打回',
       })
     ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await admin.raw(`/api/v1/registrations/${r.id}`, 'DELETE', {
+        version: r.version,
+        reason: '禁止删除已归档报名',
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await admin.raw(`/api/v1/registrations/${r.id}/public-rank`, 'PUT', { rank: 1 })).status,
     400,
   );
   await db.contest.update({ where: { id: f.c.id }, data: { archived: false } });

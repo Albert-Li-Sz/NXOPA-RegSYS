@@ -93,8 +93,9 @@ test('Markdown renders tables and code safely and preserves plaintext mode', asy
 test('unofficial individual application requires review and basic organization fields', async ({
   page,
 }) => {
-  const r = await admin.api('/registrations', 'POST', { contestId });
-  await login(page);
+  const applicant = await new Client().login('alice');
+  const r = await applicant.api('/registrations', 'POST', { contestId });
+  await login(page, 'alice');
   await page.goto(`/registrations/${r.id}`);
   await editRegistration(page);
   await page.locator('.el-radio').filter({ hasText: '非正式参赛' }).click();
@@ -114,6 +115,8 @@ test('unofficial individual application requires review and basic organization f
   expect(submitted.participationType).toBe('UNOFFICIAL');
   expect(submitted.review).toBe('PENDING');
   expect(submitted.eligible).toBe(false);
+  await login(page);
+  await page.goto(`/registrations/${r.id}`);
   await Promise.all([
     page.waitForResponse(
       (response) =>

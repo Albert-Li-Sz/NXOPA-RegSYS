@@ -240,7 +240,7 @@ jobs:
     name: 发布镜像实际安装 / ${{ matrix.arch }}
     needs: [validate, manifests]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: read

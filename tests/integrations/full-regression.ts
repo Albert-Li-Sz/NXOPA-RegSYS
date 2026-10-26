@@ -14,6 +14,7 @@ const exec = promisify(execFile);
 await mkdir(path.join(root, '.runtime/reports'), { recursive: true });
 const stage = await mkdtemp(path.join(root, '.runtime/full-regression-'));
 const project = `nxopa-regression-${process.pid}`;
+const latexImage = process.env.PLATFORM_TEST_LATEX_IMAGE || `${project}-latex:source`;
 const children: ChildProcess[] = [];
 const results: {
   suite: string;
@@ -115,8 +116,7 @@ await writeFile(
         ports: [`127.0.0.1:${smtp}:1025`, `127.0.0.1:${mail}:8025`],
       },
       latex: {
-        image:
-          process.env.PLATFORM_TEST_LATEX_IMAGE || 'ghcr.io/albert-li-sz/nxopa-regsys-latex:v0.3.5',
+        image: latexImage,
         network_mode: 'none',
         read_only: true,
         cap_drop: ['ALL'],
@@ -271,6 +271,12 @@ async function runSuite(suite: string, variables: NodeJS.ProcessEnv = env) {
   );
 }
 try {
+  if (!process.env.PLATFORM_TEST_LATEX_IMAGE)
+    await exec('docker', ['build', '-t', latexImage, 'infra/latex-runner'], {
+      cwd: root,
+      timeout: 1200000,
+      maxBuffer: 5 * 1024 * 1024,
+    });
   await compose(['up', '-d', '--wait']);
   for (const script of ['db:migrate', 'seed'])
     await exec('pnpm', [script], { cwd: root, env, timeout: 60000, maxBuffer: 1024 * 1024 });

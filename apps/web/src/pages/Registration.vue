@@ -792,7 +792,8 @@ async function memberSave(id: string, index: number) {
       </div>
       <div v-if="manager" class="card">
         <h3>公示排名</h3>
-        <EditActions :session="rankEdit" /><template v-if="rankEdit.editing.value"
+        <EditActions :session="rankEdit" :allow="!r.contest.archived" /><template
+          v-if="rankEdit.editing.value"
           ><el-input-number v-model="rank.rank" :min="1" aria-label="网络赛排名" /><el-button
             @click="saveRank"
             >保存排名</el-button

@@ -1266,6 +1266,7 @@ export class RegistrationService {
         await lock(tx, id);
         const r = await loaded(tx, id);
         requireManager(u, r.contestId, 'REGISTRATIONS');
+        if (r.contest.archived) throw new BadRequestException('活动已归档，报名管理只读');
         checkVersion(r.version, b.version);
         return removeRegistration(tx, r, u.id, b.reason, 'DELETE');
       },

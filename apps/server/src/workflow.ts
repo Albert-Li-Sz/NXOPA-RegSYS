@@ -43,7 +43,7 @@ export function registrationActions(u: Principal, r: Registration) {
     submit: applicant && open && ['DRAFT', 'CORRECTION'].includes(r.status),
     withdraw: applicant && open && reviewPhase === 'INITIAL' && !r.netPaidCents,
     cancel: owns(u, r.ownerId),
-    delete: manager,
+    delete: manager && !r.contest.archived,
     review: manager && reviewOpen && reviewPhase === 'INITIAL',
     amendReview: manager && reviewOpen && reviewPhase === 'AMEND',
     requestFinance: applicant,
