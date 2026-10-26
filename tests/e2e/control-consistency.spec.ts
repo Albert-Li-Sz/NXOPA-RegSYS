@@ -120,7 +120,8 @@ for (const width of [1440, 390, 360]) {
       await assertControls(page);
     }
     await expect(page.getByRole('button', { name: '删除活动', exact: true })).toBeDisabled();
-    await expect(page.locator('.action-control .form-help')).toContainText('报名');
+    await expect(page.locator('.action-control .form-help')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^无法删除：.*报名/ })).toBeVisible();
     await page
       .getByRole('button', { name: /^(审核|修改审核)$/ })
       .first()
