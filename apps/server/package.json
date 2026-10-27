@@ -47,6 +47,6 @@
     "@types/multer": "^2.0.0",
     "@types/nodemailer": "^7.0.0",
     "@types/pg": "^8.15.0",
-    "prisma": "7.10.0"
+    "prisma": "7.10.1"
   }
 }
