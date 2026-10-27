@@ -424,6 +424,11 @@ export class FinanceService {
           note: reason,
         },
       });
+      // Keep the original references in the ledger while releasing only their
+      // active uniqueness reservation. The reversal and release commit together.
+      await tx.ledgerEntry.update({ where: { id: e.id }, data: { reversedAt: result.createdAt } });
+      if (e.sourceId.startsWith('voucher:'))
+        await tx.paymentProofClaim.deleteMany({ where: { voucherId: e.sourceId.slice(8) } });
       await balanceChange(tx, r, -e.amountCents);
       await audit(tx, u.id, 'PAYMENT_REVERSE', r.id, {
         ledgerId: id,

@@ -1,5 +1,5 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { policySchema, type Principal } from '@contest-center/contracts';
+import { policySchema, registrationEligible, type Principal } from '@contest-center/contracts';
 import { db, json, event, registrationInclude, type Tx, type Registration } from './db.js';
 import { canReadFinanceRecords, canActForApplicant, owns, manages } from './security.js';
 
@@ -59,14 +59,30 @@ export async function balanceChange(tx: Tx, r: FinanceContext, delta: number) {
       version: { increment: 1 },
     },
   });
-  if (r.registration)
-    await tx.registration.update({
+  if (r.registration) {
+    const updated = await tx.registration.update({
       where: { id: r.id },
       data: {
         netPaidCents: { increment: delta },
         version: { increment: 1 },
       },
     });
+    // A balance update changes optimistic concurrency, but not the PDF's content.
+    // Carry forward only documents valid for the previous version while the
+    // registration stays eligible. Lost eligibility still invalidates them in refresh().
+    if (
+      r.registration.eligible &&
+      registrationEligible({ ...r.registration, ...updated }, financePolicy(r))
+    )
+      await tx.admissionDocument.updateMany({
+        where: {
+          registrationId: r.id,
+          registrationVersion: r.registration.version,
+          state: { in: ['READY', 'RELEASED'] },
+        },
+        data: { registrationVersion: updated.version },
+      });
+  }
 }
 export async function financeNotify(tx: Tx, r: FinanceContext, payload: Record<string, unknown>) {
   // Resolve recipients now: settlement notifications must remain deliverable if the

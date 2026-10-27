@@ -411,6 +411,7 @@ model PaymentProofClaim {
   proofSha256 String?
   @@unique([registrationId,proofSha256])
 }
+/// Active-reference partial unique indexes are maintained by SQL migrations. Never use db push.
 model LedgerEntry {
   id String @id @default(uuid()) @db.Uuid
   registrationId String @db.Uuid
@@ -421,12 +422,11 @@ model LedgerEntry {
   sourceId String @unique
   channelReference String?
   normalizedReference String?
+  reversedAt DateTime?
   requiresReconciliation Boolean @default(false)
   actorId String @db.Uuid
   note String
   createdAt DateTime @default(now())
-  @@unique([contestId,channelReference])
-  @@unique([contestId,normalizedReference])
   @@index([registrationId])
 }
 model Refund {

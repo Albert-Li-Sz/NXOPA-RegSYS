@@ -223,6 +223,27 @@ try {
       join(output, `installation-interactive-previous-${arch}.json`),
       JSON.stringify(previousUpgrade, null, 2),
     );
+    const immediateUpgrade = JSON.parse(
+      await readFile(
+        join(
+          root,
+          'dist/installation-reports',
+          `installation-${arch}`,
+          'install-interactive-v2.2.1.json',
+        ),
+        'utf8',
+      ),
+    );
+    assert.equal(immediateUpgrade.success, true);
+    assert.equal(immediateUpgrade.initialTag, 'v2.2.1');
+    assert.equal(immediateUpgrade.targetTag, tag);
+    assert.equal(immediateUpgrade.platform, 'linux');
+    assert.equal(immediateUpgrade.architecture, arch === 'amd64' ? 'x64' : 'arm64');
+    assert.ok(immediateUpgrade.checks.some((check) => check.includes('共享比赛凭据')));
+    await writeFile(
+      join(output, `installation-interactive-v2.2.1-${arch}.json`),
+      JSON.stringify(immediateUpgrade, null, 2),
+    );
     const proxy = JSON.parse(
       await readFile(
         join(root, 'dist/installation-reports', `installation-${arch}`, 'install-proxy.json'),

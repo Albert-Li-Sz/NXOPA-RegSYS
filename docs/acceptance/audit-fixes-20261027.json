@@ -1,0 +1,296 @@
+{
+  "date": "2026-10-27",
+  "baseCommit": "3c233d034104dc2923d5c24dfe7fc25ffba796ed",
+  "workingTreeChanges": true,
+  "status": "PASS",
+  "fixedIssues": ["BUG-01", "BUG-02", "BUG-03", "BUG-04", "BUG-05"],
+  "checks": [
+    {
+      "command": "pnpm test",
+      "status": "PASS",
+      "checks": 77
+    },
+    {
+      "command": "pnpm typecheck",
+      "status": "PASS"
+    },
+    {
+      "command": "pnpm build",
+      "status": "PASS"
+    },
+    {
+      "command": "pnpm test:auth",
+      "status": "PASS",
+      "checks": 4,
+      "evidence": [
+        "Mailbox code delivered and consumed before the account is created",
+        "Mailpit delivery, email verification and single-use token",
+        "password recovery and revocation of previous sessions",
+        "GitHub provider discovery remains available; retired generic OAuth routes return 404"
+      ]
+    },
+    {
+      "command": "pnpm test:profile-fields",
+      "status": "PASS",
+      "checks": 6,
+      "evidence": [
+        "Official directory is complete, bounded, searchable and administration is permission checked",
+        "Custom names and aliases are unique; optimistic edits, disabling and restart-safe seeds preserve admin changes",
+        "Profile writes reject invalid years and unknown new institutions, retain leading zeroes and permit next year",
+        "Bound and manual member emails are canonical; year fields, submission snapshots and CSV avoid duplicate email fields",
+        "Verified email changes update current registrations and snapshots, invalidate documents and preserve eligibility",
+        "Upgrade cleanup clears unreasonable live years, normalizes valid legacy years, preserves audit revisions and is idempotent"
+      ]
+    },
+    {
+      "command": "pnpm test:permissions",
+      "status": "PASS",
+      "checks": 18,
+      "evidence": [
+        "job search retains contest authorization scope",
+        "VIEW grant cannot enumerate other users support tickets",
+        "VIEW grant cannot read standalone ticket",
+        "VIEW grant cannot read standalone support file",
+        "VIEW grant cannot upload to standalone ticket",
+        "VIEW grant cannot read standalone support mail status",
+        "VIEW grant cannot read registration-linked ticket",
+        "VIEW grant cannot read registration-linked support file",
+        "VIEW grant cannot upload to registration-linked ticket",
+        "VIEW grant cannot read registration-linked support mail status",
+        "invalid student year returns a validation error",
+        "invalid calendar date cannot enter identity approval queue",
+        "deleting a submitted form attachment invalidates qualification",
+        "deleted files cannot be bound to a new support ticket",
+        "a support attachment cannot be moved to another ticket",
+        "SUPPORT grant permits ticket, file and delivery reads",
+        "SUPPORT revocation removes access immediately",
+        "SUPPORT revocation also blocks idempotent reply replay"
+      ]
+    },
+    {
+      "command": "pnpm test:bugs",
+      "status": "PASS",
+      "checks": 21,
+      "evidence": [
+        {
+          "case": "reversed-payment-releases-active-reference-only",
+          "status": "PASS"
+        },
+        {
+          "case": "save-and-submit-share-contest-seating-lock-order",
+          "status": "PASS"
+        },
+        {
+          "case": "personal-form-attachment-survives-cross-role-review",
+          "status": "PASS"
+        },
+        {
+          "case": "financial-version-preserves-only-still-valid-admissions",
+          "status": "PASS"
+        },
+        {
+          "case": "member-name-rejects-whitespace-and-validates-legacy-data",
+          "status": "PASS"
+        },
+        {
+          "case": "required-text-rejects-whitespace-without-rejecting-zero-or-false",
+          "status": "PASS"
+        },
+        {
+          "case": "duplicate-member-identifiers",
+          "status": "PASS"
+        },
+        {
+          "case": "unchanged-room-preserves-admission",
+          "status": "PASS"
+        },
+        {
+          "case": "registration-ticket-attachment-isolation",
+          "status": "PASS"
+        },
+        {
+          "case": "distribution-registration-deletion-race",
+          "status": "PASS"
+        },
+        {
+          "case": "old-verification-link",
+          "status": "PASS"
+        },
+        {
+          "case": "old-reset-link",
+          "status": "PASS"
+        },
+        {
+          "case": "cancellation-eligibility-event",
+          "status": "PASS"
+        },
+        {
+          "case": "unofficial-review-before-payment",
+          "status": "PASS"
+        },
+        {
+          "case": "team-member-support-list",
+          "status": "PASS"
+        },
+        {
+          "case": "registration-upload-deletion-race",
+          "status": "PASS"
+        },
+        {
+          "case": "support-creation-deletion-race",
+          "status": "PASS"
+        },
+        {
+          "case": "finance-current-invoice-policy",
+          "status": "PASS"
+        },
+        {
+          "case": "financial-attachment-context",
+          "status": "PASS"
+        },
+        {
+          "case": "removed-registration-financial-notifications",
+          "status": "PASS"
+        },
+        {
+          "case": "support-attachment-context",
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "command": "pnpm test:audit-20261022",
+      "status": "PASS",
+      "checks": 17,
+      "evidence": [
+        "H1: stolen session cannot change mailbox; pending mailbox cannot reset password",
+        "H2: split refunds require a second reviewer after cumulative fee",
+        "H3: normalized references and reuploaded identical proof cannot double-credit",
+        "H4: unauthorized arbitrary IDs fail before bulk locks and oversized manager batches fail",
+        "M1/L50: VIEW cannot read financial audit events or registration PII",
+        "M2: banning revokes email-only invitations",
+        "M3: mixed-case financial replay rechecks revoked permissions",
+        "M5/M7: webhook management rotates, disables, revokes approval and deletes",
+        "M12: SMTP password reuse is bound to endpoint and preserves sender-only edits",
+        "M29: database uniqueness and capacity safeguards survive migrations",
+        "M15/M16: expired preview objects and abandoned spool are removed, active lease remains",
+        "M6: token issuer expiry immediately revokes consumer access",
+        "M8: integration permission cannot retry admission jobs",
+        "M4: post-deadline evidence loss still permits an explicit review decision",
+        "M31: removing a person clears stale seats and supports a fresh plan",
+        "M18: compiler scheduling bounds each activity and serves a waiting activity first",
+        "M32: duplicate active authorization is rejected and a revoke removes legacy duplicates"
+      ]
+    },
+    {
+      "command": "pnpm test:security",
+      "status": "PASS",
+      "checks": 20,
+      "evidence": [
+        {
+          "name": "preauth-cross-site-request",
+          "status": "PASS"
+        },
+        {
+          "name": "voucher-declared-amount-is-immutable",
+          "status": "PASS"
+        },
+        {
+          "name": "transaction-reference-required-and-unique",
+          "status": "PASS"
+        },
+        {
+          "name": "finance-manager-cannot-confirm-own-receipt",
+          "status": "PASS"
+        },
+        {
+          "name": "duplicate-voucher-attachment",
+          "status": "PASS"
+        },
+        {
+          "name": "excess-refund-requires-independent-completion",
+          "status": "PASS"
+        },
+        {
+          "name": "administrator-cannot-replace-login-email",
+          "status": "PASS"
+        },
+        {
+          "name": "unique-participant-fields",
+          "status": "PASS"
+        },
+        {
+          "name": "concurrent-registration-capacity",
+          "status": "PASS"
+        },
+        {
+          "name": "reserved-capacity-survives-correction",
+          "status": "PASS"
+        },
+        {
+          "name": "deletion-retains-redacted-audit-and-separates-cancellations",
+          "status": "PASS"
+        },
+        {
+          "name": "export-permission-and-field-columns",
+          "status": "PASS"
+        },
+        {
+          "name": "deep-pagination-is-bounded",
+          "status": "PASS"
+        },
+        {
+          "name": "team-export-all-scopes-and-historical-fields",
+          "status": "PASS"
+        },
+        {
+          "name": "webhook-cannot-target-loopback",
+          "status": "PASS"
+        },
+        {
+          "name": "secure-session-uses-public-https-without-proxy-header",
+          "status": "PASS"
+        },
+        {
+          "name": "invalid-reset-requests-are-rate-limited",
+          "status": "PASS"
+        },
+        {
+          "name": "retired-platform-sync-never-contacts-remote-or-blocks-removal",
+          "status": "PASS"
+        },
+        {
+          "name": "finance-history-rejects-prototype-key",
+          "status": "PASS"
+        },
+        {
+          "name": "invalid-file-id-is-validation-error",
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "command": "pnpm test:workflow-upgrade",
+      "status": "PASS",
+      "checks": 6,
+      "evidence": [
+        "建立真实 v0.4.0 表结构、取消／未取消报名、财务及后台任务，并备份",
+        "旧考场编号迁移为空且不从名称推测，多个空编号与原座位完整保留",
+        "迁移清除历史取消报名及资料副本，财务余额与四类单据逐项一致，撤权待办保留",
+        "历史冲正迁移保留账簿及凭证，释放流水号与凭证占用，并继续阻止有效收款重复入账",
+        "历史版本不符的准考证明确失效，当前有效证件保持已发放",
+        "升级前备份可恢复旧报名与账目，验证回退需要完整备份"
+      ]
+    },
+    {
+      "command": "pnpm test:file-race",
+      "status": "PASS",
+      "checks": 1
+    }
+  ],
+  "migrations": ["202610270001_active_payment_references", "202610270002_stale_admission_versions"],
+  "limitations": [
+    "Full browser E2E and LaTeX compilation were not run.",
+    "Previously version-mismatched admission documents are marked STALE and require regeneration."
+  ]
+}

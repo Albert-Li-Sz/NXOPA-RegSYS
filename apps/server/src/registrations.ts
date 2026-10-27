@@ -20,6 +20,7 @@ import {
   policySchema,
   fieldsSchema,
   registrationSchema,
+  personSchema,
   fieldsJsonSchema,
   fieldVisible,
   quoteFee,
@@ -747,6 +748,8 @@ export class RegistrationService {
       await lock(tx, id);
       let r = await loaded(tx, id);
       if (!canEdit(u, r)) throw new ForbiddenException();
+      // Submission and contest configuration acquire the contest before seating.
+      await lock(tx, r.contestId);
       await lock(tx, `seating:${r.contestId}`);
       r = await loaded(tx, id);
       checkVersion(r.version, b.version);
@@ -754,7 +757,6 @@ export class RegistrationService {
       const examSiteId = b.examSiteId === undefined ? r.examSiteId : b.examSiteId;
       validateExamSite(r, examSiteId);
       const p = policy(r);
-      await lock(tx, r.contestId);
       const participationType = b.participationType ?? r.participationType;
       if (participationType === 'UNOFFICIAL' && !p.allowUnofficial)
         throw new BadRequestException('此竞赛未开放非正式报名');
@@ -926,6 +928,8 @@ export class RegistrationService {
   }
   private async validateSubmission(tx: Tx, u: Principal, r: Registration) {
     const people = r.people.filter((person) => person.active);
+    if (people.some((person) => !person.name.trim()))
+      throw new BadRequestException('请填写参赛成员姓名');
     validateExamSite(r, r.examSiteId, true);
     const p = policy(r);
     const currentPolicy = policySchema.parse(r.contest.policy);
@@ -1120,7 +1124,7 @@ export class RegistrationService {
     for (const f of relevant) {
       if (
         f.required &&
-        (values[f.key] === '' ||
+        ((typeof values[f.key] === 'string' && !(values[f.key] as string).trim()) ||
           (Array.isArray(values[f.key]) && !(values[f.key] as unknown[]).length))
       )
         throw new BadRequestException(`请填写${f.label}`);
@@ -1133,7 +1137,9 @@ export class RegistrationService {
           file.ticketId ||
           (file.contestId && file.contestId !== r.contestId) ||
           (file.registrationId && file.registrationId !== r.id) ||
-          (!file.registrationId && !owns(u, file.ownerId))
+          (!file.registrationId &&
+            !owns(u, file.ownerId) &&
+            !(await tx.teamFile.count({ where: { attachmentId: file.id, registrationId: r.id } })))
         )
           throw new ForbiddenException('附件不属于此报名');
         if (f.type === 'photo' && !file.mime.startsWith('image/'))
@@ -1480,7 +1486,7 @@ export class RegistrationService {
     const b = z
       .object({
         version: z.number().int(),
-        name: z.string().min(1).max(100),
+        name: personSchema.shape.name,
         answers: z
           .record(z.string(), z.json())
           .refine((a) => Buffer.byteLength(JSON.stringify(a)) <= 65536, '资料最多 64 KB'),

@@ -8,6 +8,7 @@ import { redis } from '../../apps/server/src/auth.js';
 import { config } from '../../apps/server/src/config.js';
 import { policySchema, type ContestPolicy } from '../../packages/contracts/src/index.js';
 import { mailpitBase } from './mailpit.js';
+import { putBlob } from '../../apps/server/src/storage.js';
 
 if (config.production) throw new Error('Bug regression fixtures are development-only');
 const run = randomUUID().replaceAll('-', '').slice(0, 12);
@@ -153,6 +154,350 @@ try {
     contestIds.push(c.id);
     return c;
   }
+
+  async function submitted(contestId: string, owner = alice) {
+    const r = await owner.api('/registrations', 'POST', { contestId });
+    return owner.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version });
+  }
+  async function voucher(
+    registrationId: string,
+    reference: string,
+    amountCents = 1000,
+    owner = alice,
+    attachmentId?: string,
+    channel = '回归测试',
+  ) {
+    return owner.api(`/finance/${registrationId}/vouchers`, 'POST', {
+      amountCents,
+      reference,
+      channel,
+      payer: '回归付款人',
+      paidAt: new Date().toISOString(),
+      attachmentId: attachmentId ?? (await owner.upload(registrationId)).id,
+    });
+  }
+  async function confirm(id: string) {
+    return admin.api(`/finance/vouchers/${id}/review`, 'POST', { decision: 'CONFIRMED' });
+  }
+
+  await check('reversed-payment-releases-active-reference-only', async () => {
+    const c = await contest({ feeMode: 'FIXED', feeCents: 1000 });
+    const a = await submitted(c.id),
+      b = await submitted(c.id, bob);
+    await admin.api('/admin/grants', 'POST', {
+      userId: bob.user.id,
+      level: 'CONTEST',
+      contestId: c.id,
+      permissions: ['FINANCE'],
+    });
+    const reference = `reverse-reenter-${run}`;
+    const original = await voucher(a.id, reference);
+    await confirm(original.id);
+    const ledger = await db.ledgerEntry.findUniqueOrThrow({
+      where: { sourceId: `voucher:${original.id}` },
+    });
+    const duplicate = await voucher(b.id, reference, 1000, bob, undefined, '另一渠道');
+    const reviewPath = `/api/v1/finance/vouchers/${duplicate.id}/review`;
+    assert.equal((await admin.raw(reviewPath, 'POST', { decision: 'CONFIRMED' })).status, 409);
+    assert.equal(
+      (
+        await bob.raw(`/api/v1/finance/${a.id}/vouchers`, 'POST', {
+          amountCents: 1000,
+          channel: '回归',
+          payer: '其他人',
+          paidAt: new Date().toISOString(),
+          reference: 'different',
+          attachmentId: original.attachmentId,
+        })
+      ).status,
+      403,
+    );
+    const reverse = () =>
+      bob.api(`/finance/ledger/${ledger.id}/reverse`, 'POST', { reason: '更正收款归属' });
+    await reverse();
+    const history = await db.ledgerEntry.findUniqueOrThrow({ where: { id: ledger.id } });
+    assert.ok(history.reversedAt);
+    assert.equal(history.channelReference, ledger.channelReference);
+    assert.equal(history.normalizedReference, ledger.normalizedReference);
+    assert.equal(
+      (await db.paymentVoucher.findUniqueOrThrow({ where: { id: original.id } })).status,
+      'CONFIRMED',
+    );
+    assert.equal(await db.paymentProofClaim.count({ where: { voucherId: original.id } }), 0);
+
+    // The same proof and reference can be corrected on the same account.
+    const corrected = await voucher(a.id, reference, 1000, alice, original.attachmentId);
+    await confirm(corrected.id);
+    const correctedLedger = await db.ledgerEntry.findUniqueOrThrow({
+      where: { sourceId: `voucher:${corrected.id}` },
+    });
+    await bob.api(`/finance/ledger/${correctedLedger.id}/reverse`, 'POST', {
+      reason: '转至正确报名',
+    });
+    await confirm(duplicate.id);
+    // Retrying an old reversal must not release the new account's active claim.
+    await reverse();
+    const replay = await voucher(a.id, reference);
+    assert.equal(
+      (
+        await admin.raw(`/api/v1/finance/vouchers/${replay.id}/review`, 'POST', {
+          decision: 'CONFIRMED',
+        })
+      ).status,
+      409,
+    );
+    assert.equal((await alice.api(`/finance/accounts/${a.id}`)).netPaidCents, 0);
+    assert.equal((await bob.api(`/finance/accounts/${b.id}`)).netPaidCents, 1000);
+  });
+
+  await check('save-and-submit-share-contest-seating-lock-order', async () => {
+    const c = await contest();
+    const a = await alice.api('/registrations', 'POST', { contestId: c.id });
+    const b = await bob.api('/registrations', 'POST', { contestId: c.id });
+    let ready!: () => void, release!: () => void;
+    const locked = new Promise<void>((resolve) => (ready = resolve));
+    const unlock = new Promise<void>((resolve) => (release = resolve));
+    const submitting = atomicRequest(async () => {
+      await lock(db, c.id);
+      ready();
+      await unlock;
+      return new RegistrationService().submit(bob.user, b.id, { version: b.version });
+    });
+    await locked;
+    const saving = alice.raw(`/api/v1/registrations/${a.id}`, 'PUT', {
+      ...a,
+      teamName: '并发保存',
+    });
+    const pending = Promise.allSettled([saving, submitting]);
+    try {
+      await until(() => waitingFor(c.id), Boolean, 10000);
+    } finally {
+      release();
+    }
+    const [saved, sent] = await pending;
+    assert.equal(saved.status, 'fulfilled');
+    assert.equal(sent.status, 'fulfilled', sent.status === 'rejected' ? String(sent.reason) : '');
+    if (saved.status === 'fulfilled') assert.equal(saved.value.status, 200);
+    assert.equal((await bob.api(`/registrations/${b.id}`)).status, 'SUBMITTED');
+  });
+
+  await check('personal-form-attachment-survives-cross-role-review', async () => {
+    let c = await contest({ manualReview: true });
+    c = await admin.api(`/contests/${c.id}`, 'PUT', {
+      ...c,
+      fields: [
+        { key: 'personal_proof', label: '个人证明', scope: 'PERSON', type: 'file', required: true },
+      ],
+    });
+    const upload = new FormData();
+    upload.append(
+      'file',
+      new Blob([`personal proof ${run}`], { type: 'text/plain' }),
+      'personal.txt',
+    );
+    const file = await alice.api('/files?purpose=PERSONAL', 'POST', upload);
+    let r = await alice.api('/registrations', 'POST', { contestId: c.id });
+    r = await alice.api(`/registrations/${r.id}`, 'PUT', {
+      ...r,
+      people: r.people.map((p: any) => ({
+        ...p,
+        answers: { ...p.answers, personal_proof: file.id },
+      })),
+    });
+    r = await alice.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version });
+    assert.equal(
+      await db.teamFile.count({ where: { attachmentId: file.id, registrationId: r.id } }),
+      1,
+    );
+    r = await admin.api(`/registrations/${r.id}/review`, 'POST', {
+      version: r.version,
+      decision: 'APPROVED',
+    });
+    assert.equal(r.eligible, true);
+    assert.equal(
+      (await db.attachment.findUniqueOrThrow({ where: { id: file.id } })).registrationId,
+      null,
+    );
+    // Knowing another person's file ID or sharing it with a different registration is insufficient.
+    let other = await bob.api('/registrations', 'POST', { contestId: c.id });
+    other = await bob.api(`/registrations/${other.id}`, 'PUT', {
+      ...other,
+      people: other.people.map((p: any) => ({
+        ...p,
+        answers: { ...p.answers, personal_proof: file.id },
+      })),
+    });
+    assert.equal(
+      (
+        await bob.raw(`/api/v1/registrations/${other.id}/submit`, 'POST', {
+          version: other.version,
+        })
+      ).status,
+      403,
+    );
+  });
+
+  await check('financial-version-preserves-only-still-valid-admissions', async () => {
+    const c = await contest({ feeMode: 'FIXED', feeCents: 1000 });
+    let r = await submitted(c.id);
+    await admin.api('/admin/grants', 'POST', {
+      userId: bob.user.id,
+      level: 'CONTEST',
+      contestId: c.id,
+      permissions: ['FINANCE'],
+    });
+    await confirm((await voucher(r.id, `admission-initial-${run}`)).id);
+    r = await alice.api(`/registrations/${r.id}`);
+    const template = await db.admissionTemplate.findFirstOrThrow({
+      where: { contestId: null, active: true },
+      orderBy: { version: 'desc' },
+    });
+    const bytes = Buffer.from('%PDF-1.4\n% financial version download fixture\n%%EOF\n');
+    const ref = await putBlob(`audit-admission-${randomUUID()}`, bytes, 'application/pdf');
+    const document = await db.admissionDocument.create({
+      data: {
+        registrationId: r.id,
+        number: `AUDIT-${randomUUID()}`,
+        location: '回归考点',
+        registrationVersion: r.version,
+        templateId: template.id,
+        templateVersion: template.version,
+        state: 'READY',
+        ...ref,
+      },
+    });
+    const stale = await db.admissionDocument.create({
+      data: {
+        registrationId: r.id,
+        number: `OLD-${randomUUID()}`,
+        location: '旧资料',
+        registrationVersion: r.version - 1,
+        templateId: template.id,
+        templateVersion: template.version,
+        state: 'STALE',
+      },
+    });
+    const extra = await voucher(r.id, `admission-extra-${run}`, 100);
+    await confirm(extra.id);
+    let current = await alice.api(`/registrations/${r.id}`);
+    let ticket = await db.admissionDocument.findUniqueOrThrow({ where: { id: document.id } });
+    assert.equal(ticket.state, 'READY');
+    assert.equal(ticket.registrationVersion, current.version);
+    assert.equal((await alice.raw(`/api/v1/admissions/${document.id}/download`)).status, 403);
+    await admin.api(`/admissions/${document.id}/release`, 'POST', {});
+    const extraLedger = await db.ledgerEntry.findUniqueOrThrow({
+      where: { sourceId: `voucher:${extra.id}` },
+    });
+    await bob.api(`/finance/ledger/${extraLedger.id}/reverse`, 'POST', { reason: '退回多缴部分' });
+    current = await alice.api(`/registrations/${r.id}`);
+    ticket = await db.admissionDocument.findUniqueOrThrow({ where: { id: document.id } });
+    assert.equal(current.eligible, true);
+    assert.equal(ticket.state, 'RELEASED');
+    assert.equal(ticket.registrationVersion, current.version);
+    assert.ok((await alice.api('/admissions/mine')).some((a: any) => a.id === ticket.id));
+    const download = await alice.raw(`/api/v1/admissions/${ticket.id}/download`);
+    assert.equal(download.status, 200);
+    assert.deepEqual(Buffer.from(await download.arrayBuffer()), bytes);
+    assert.equal(
+      (await db.admissionDocument.findUniqueOrThrow({ where: { id: stale.id } })).state,
+      'STALE',
+    );
+
+    const refund = await alice.api(`/finance/${r.id}/refunds`, 'POST', {
+      amountCents: 1,
+      reason: '验证余额不足使资格失效',
+    });
+    await admin.api(`/finance/refunds/${refund.id}/review`, 'POST', { decision: 'APPROVED' });
+    await admin.api(`/finance/refunds/${refund.id}/review`, 'POST', {
+      decision: 'COMPLETED',
+      reference: `admission-refund-${run}`,
+    });
+    assert.equal((await alice.api(`/registrations/${r.id}`)).eligible, false);
+    assert.equal(
+      (await db.admissionDocument.findUniqueOrThrow({ where: { id: ticket.id } })).state,
+      'STALE',
+    );
+    assert.equal((await alice.raw(`/api/v1/admissions/${ticket.id}/download`)).status, 403);
+  });
+
+  await check('member-name-rejects-whitespace-and-validates-legacy-data', async () => {
+    const c = await contest();
+    let r = await submitted(c.id);
+    const path = `/api/v1/registrations/${r.id}/people/${r.people[0].id}`;
+    for (const name of ['   ', '\t\n', '\u3000'])
+      assert.equal(
+        (await alice.raw(path, 'PUT', { version: r.version, name, answers: r.people[0].answers }))
+          .status,
+        400,
+      );
+    r = await alice.api(path.replace('/api/v1', ''), 'PUT', {
+      version: r.version,
+      name: '  有效姓名  ',
+      answers: r.people[0].answers,
+    });
+    assert.equal(r.people[0].name, '有效姓名');
+    // Previously persisted bad names must not pass a later resubmission or review.
+    await db.registrationPerson.update({ where: { id: r.people[0].id }, data: { name: '   ' } });
+    assert.equal(
+      (await alice.raw(`/api/v1/registrations/${r.id}/submit`, 'POST', { version: r.version }))
+        .status,
+      400,
+    );
+  });
+
+  await check('required-text-rejects-whitespace-without-rejecting-zero-or-false', async () => {
+    let c = await contest();
+    c = await admin.api(`/contests/${c.id}`, 'PUT', {
+      ...c,
+      fields: [
+        {
+          key: 'required_text',
+          label: '必填说明',
+          scope: 'REGISTRATION',
+          type: 'text',
+          required: true,
+        },
+        {
+          key: 'required_number',
+          label: '必填数字',
+          scope: 'REGISTRATION',
+          type: 'number',
+          required: true,
+        },
+        {
+          key: 'required_bool',
+          label: '必填开关',
+          scope: 'REGISTRATION',
+          type: 'boolean',
+          required: true,
+        },
+      ],
+    });
+    let r = await alice.api('/registrations', 'POST', { contestId: c.id });
+    for (const text of ['   ', '\t\n', '\u3000']) {
+      r = await alice.api(`/registrations/${r.id}`, 'PUT', {
+        ...r,
+        answers: {
+          registration: { required_text: text, required_number: 0, required_bool: false },
+        },
+      });
+      assert.equal(
+        (await alice.raw(`/api/v1/registrations/${r.id}/submit`, 'POST', { version: r.version }))
+          .status,
+        400,
+      );
+    }
+    r = await alice.api(`/registrations/${r.id}`, 'PUT', {
+      ...r,
+      answers: {
+        registration: { required_text: '有效内容', required_number: 0, required_bool: false },
+      },
+    });
+    r = await alice.api(`/registrations/${r.id}/submit`, 'POST', { version: r.version });
+    assert.equal(r.eligible, true);
+    assert.equal(r.answers.registration.required_number, 0);
+    assert.equal(r.answers.registration.required_bool, false);
+  });
 
   await check('duplicate-member-identifiers', async () => {
     const c = await contest({ mode: 'TEAM', memberMode: 'MANUAL', maxMembers: 3 });

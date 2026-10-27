@@ -1,10 +1,10 @@
 # 一键部署
 
-v2.2.1 支持将 Hydro 导出字段关联到报名资料，修正竞赛卡片与管理操作布局。管理员可直接修正报名后送复核，无需选手重新提交。保留 v2.0.0 的年份选择、院校搜索和邮箱功能；支持从 v2.1.0、v2.0.0、v0.10.2 备份后保留数据升级，Hydro、DOMjudge 与准考证继续共用稳定比赛凭据。v0.9.x／v1.0.0 请使用独立安装目录和数据卷全新部署；v1.0.0 已弃用。
+v2.2.2 修复报名并发死锁、冲正后的更正入账、个人附件审核、财务变动导致准考证失效，以及空白必填内容校验。保留 Hydro 字段关联、报名管理和共享比赛凭据；支持从 v2.2.1、v2.1.0、v2.0.0、v0.10.2 备份后保留数据升级。v0.9.x／v1.0.0 请使用独立安装目录和数据卷全新部署；v1.0.0 已弃用。
 
 V0.6.3 使用仓库根目录的单一入口 `install.sh`，支持安装、更新、卸载和日常维护。旧 `install` 目录不再使用；Compose 配置、示例及辅助函数放在 `deploy`，不需要逐个运行脚本。宿主机需要 Docker、Compose 2.24.4 以上、Bash、OpenSSL、curl 和 tar，无需 Node.js、pnpm、PostgreSQL 或 LaTeX。
 
-v2.2.1 的原地升级验收覆盖 v2.1.0、v2.0.0 与 v0.10.2。更早版本使用独立目录和数据卷全新部署；原备份须连同原加密密钥保留。升级后核对报名、准考证、财务单据与余额；降级前恢复升级前的数据库和文件备份。
+v2.2.2 的原地升级验收覆盖 v2.2.1、v2.1.0、v2.0.0 与 v0.10.2。更早版本使用独立目录和数据卷全新部署；原备份须连同原加密密钥保留。升级后核对报名、准考证、财务单据与余额；降级前恢复升级前的数据库和文件备份。
 
 ## 首次安装
 
@@ -21,7 +21,7 @@ bash install.sh --dir /opt/my-registration
 
 菜单提供安装、更新、卸载与状态；也可执行 `bash install.sh install`。向导选择项目名、镜像版本、Caddy 的本机端口与邮件链接的站点地址，生成随机数据库密码和 32 字节加密密钥，保存为权限 `600` 的 `deploy/.env`，启动后交互创建管理员。密码输入不显示，正式实例不创建演示账号。
 
-从 Release 下载的 `nxopa-regsys-v2.2.1-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
+从 Release 下载的 `nxopa-regsys-v2.2.2-install.tar.gz` 也可核验后解压，在解压目录运行 `bash install.sh`。发布安装包默认镜像模式。完整源码仓库还支持源码构建。
 
 ## 更新与卸载
 
@@ -81,7 +81,7 @@ bash install.sh compose ps
 
 多个实例用 `INSTALL_ENV_FILE=/absolute/path/.env` 选择配置。`init` 保留已有文件，`up` 按配置构建或拉取，`update --yes` 按已保存版本先备份再更新。不要公开 `.env` 或完整 `compose config`，其中包含密钥。
 
-业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v2.2.1`，支持 amd64/arm64。所有安装服务使用固定版本标签：PostgreSQL 为 `postgres:17.6-alpine`，Redis 为 `redis:7.4.5-alpine`，Caddy 为 `caddy:2.10.2-alpine`；按 Docker 服务端选择平台，不附加 `@sha256`。`IMAGE_TAG` 必须为完整版本号，不能填写 `latest` 或浮动小版本。
+业务镜像为 `ghcr.io/albert-li-sz/nxopa-regsys-{api,worker,web,latex,minio}:v2.2.2`，支持 amd64/arm64。所有安装服务使用固定版本标签：PostgreSQL 为 `postgres:17.6-alpine`，Redis 为 `redis:7.4.5-alpine`，Caddy 为 `caddy:2.10.2-alpine`；按 Docker 服务端选择平台，不附加 `@sha256`。`IMAGE_TAG` 必须为完整版本号，不能填写 `latest` 或浮动小版本。
 
 从 `main` 获取的新 `install.sh` 会在校验下载包后转换旧包的哈希覆盖，也会处理已有安装目录中的旧材料。新版安装、更新、备份和恢复不再自动加载遗留的 `compose.digest.yaml`；发布记录 `images.json` 仍保留摘要供核验，安装包 SHA-256 校验继续执行。保持原数据库版本和卷名；`content descriptor ... not found` 时检查具体镜像及镜像代理，不能把拉取失败当成安装完成。
 

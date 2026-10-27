@@ -12,7 +12,8 @@ const pgContainer = process.env.WORKFLOW_UPGRADE_PG_CONTAINER || 'contest-center
 const originalUrl = process.env.DATABASE_URL!;
 const target = new URL(originalUrl),
   database = `workflow_upgrade_${Date.now()}`,
-  rollback = `${database}_rollback`;
+  rollback = `${database}_rollback`,
+  references = `${database}_references`;
 const checks: string[] = [];
 function run(cmd: string, args: string[], input?: string | Buffer, env = process.env) {
   const r = spawnSync(cmd, args, {
@@ -53,7 +54,10 @@ const pass = (s: string) => {
 };
 await mkdir(path.join(stage, 'migrations'), { recursive: true });
 try {
-  sql('postgres', `CREATE DATABASE "${database}"; CREATE DATABASE "${rollback}";`);
+  sql(
+    'postgres',
+    `CREATE DATABASE "${database}"; CREATE DATABASE "${rollback}"; CREATE DATABASE "${references}";`,
+  );
   for (const name of (await readdir('apps/server/prisma/migrations')).filter(
     (name) => /^\d/.test(name) && name < '202610150001_activity_workflows',
   ))
@@ -257,6 +261,103 @@ try {
     await db.$disconnect();
     process.env.DATABASE_URL = originalUrl;
   }
+
+  // The staged migration directory still represents the schema before the new
+  // partial indexes. Verify real reversed payments survive the upgrade intact.
+  const referenceUrl = new URL(originalUrl);
+  referenceUrl.pathname = `/${references}`;
+  const referenceEnv = { ...isolated, DATABASE_URL: referenceUrl.toString() };
+  run(
+    'pnpm',
+    [
+      '--filter',
+      '@contest-center/server',
+      'exec',
+      'prisma',
+      'migrate',
+      'deploy',
+      '--config',
+      path.join(stage, 'prisma.config.ts'),
+    ],
+    undefined,
+    referenceEnv,
+  );
+  const [
+    referenceContest,
+    accountId,
+    attachmentId,
+    voucherId,
+    paymentId,
+    reversalId,
+    admissionRegistration,
+    admissionTemplate,
+    invalidAdmission,
+    validAdmission,
+  ] = Array.from({ length: 10 }, randomUUID);
+  sql(
+    references,
+    `
+    INSERT INTO "Contest" (id,title,season,description,"startsAt","opensAt","closesAt",policy)
+      VALUES ('${referenceContest}','流水号升级','验收','测试',NOW(),NOW(),NOW(),'{}');
+    INSERT INTO "FinanceAccount" (id,"contestId","ownerId","policySnapshot")
+      VALUES ('${accountId}','${referenceContest}','${owner}','{}');
+    INSERT INTO "Attachment" (id,"ownerId",name,mime,size,"storageKey",sha256)
+      VALUES ('${attachmentId}','${owner}','proof.txt','text/plain',5,'reference-upgrade','${'a'.repeat(64)}');
+    INSERT INTO "PaymentVoucher" (id,"registrationId","amountCents",channel,reference,payer,"paidAt","attachmentId",status,"createdBy")
+      VALUES ('${voucherId}','${accountId}',1000,'TEST','legacy-001','付款人',NOW(),'${attachmentId}','CONFIRMED','${owner}');
+    INSERT INTO "LedgerEntry" (id,"registrationId","contestId",kind,"amountCents","sourceId","channelReference","normalizedReference","actorId",note) VALUES
+      ('${paymentId}','${accountId}','${referenceContest}','PAYMENT',1000,'voucher:${voucherId}','TEST:legacy-001','payment:legacy-001','${owner}','原收款'),
+      ('${reversalId}','${accountId}','${referenceContest}','REVERSAL',-1000,'reverse:${paymentId}',NULL,NULL,'${owner}','历史冲正');
+    INSERT INTO "PaymentProofClaim" ("attachmentId","voucherId","registrationId","proofSha256")
+      VALUES ('${attachmentId}','${voucherId}','${accountId}','${'a'.repeat(64)}');
+    INSERT INTO "Registration" (id,"contestId","ownerId","formVersion",version,"updatedAt")
+      VALUES ('${admissionRegistration}','${referenceContest}','${owner}',1,3,NOW());
+    INSERT INTO "AdmissionTemplate" (id,name,source,version) VALUES ('${admissionTemplate}','迁移模板','test-template',1);
+    INSERT INTO "AdmissionDocument" (id,"registrationId",number,location,"registrationVersion","templateId","templateVersion",state,"releasedAt") VALUES
+      ('${invalidAdmission}','${admissionRegistration}','INVALID-OLD','旧版',2,'${admissionTemplate}',1,'RELEASED',NOW()),
+      ('${validAdmission}','${admissionRegistration}','VALID-CURRENT','当前',3,'${admissionTemplate}',1,'RELEASED',NOW());
+  `,
+  );
+  run('pnpm', ['db:migrate'], undefined, referenceEnv);
+  assert.equal(
+    sql(
+      references,
+      `SELECT payment."reversedAt"=reversal."createdAt" AND payment."channelReference"='TEST:legacy-001' AND payment."normalizedReference"='payment:legacy-001' AND payment."amountCents"=1000 FROM "LedgerEntry" payment JOIN "LedgerEntry" reversal ON reversal.id='${reversalId}' WHERE payment.id='${paymentId}'`,
+    ),
+    't',
+  );
+  assert.equal(sql(references, 'SELECT count(*) FROM "PaymentProofClaim"'), '0');
+  assert.equal(
+    sql(
+      references,
+      `SELECT state='STALE' AND "releasedAt" IS NULL AND version=2 FROM "AdmissionDocument" WHERE id='${invalidAdmission}'`,
+    ),
+    't',
+  );
+  assert.equal(
+    sql(
+      references,
+      `SELECT state='RELEASED' AND "releasedAt" IS NOT NULL AND version=1 FROM "AdmissionDocument" WHERE id='${validAdmission}'`,
+    ),
+    't',
+  );
+  assert.equal(
+    sql(references, `SELECT status FROM "PaymentVoucher" WHERE id='${voucherId}'`),
+    'CONFIRMED',
+  );
+  const insert = (channel: string, normalized: string) =>
+    sql(
+      references,
+      `INSERT INTO "LedgerEntry" (id,"registrationId","contestId",kind,"amountCents","sourceId","channelReference","normalizedReference","actorId",note) VALUES ('${randomUUID()}','${accountId}','${referenceContest}','PAYMENT',1000,'${randomUUID()}','${channel}','${normalized}','${owner}','更正收款')`,
+    );
+  insert('TEST:legacy-001', 'payment:legacy-001');
+  assert.throws(() => insert('OTHER:legacy-001', 'payment:legacy-001'), /normalizedReference_key/);
+  assert.throws(() => insert('TEST:legacy-001', 'payment:other'), /channelReference_key/);
+  run('pnpm', ['db:migrate'], undefined, referenceEnv);
+  assert.equal(sql(references, 'SELECT count(*) FROM "LedgerEntry"'), '3');
+  pass('历史冲正迁移保留账簿及凭证，释放流水号与凭证占用，并继续阻止有效收款重复入账');
+  pass('历史版本不符的准考证明确失效，当前有效证件保持已发放');
+
   run(
     'docker',
     [
@@ -287,6 +388,6 @@ try {
   process.env.DATABASE_URL = originalUrl;
   sql(
     'postgres',
-    `DROP DATABASE IF EXISTS "${database}" WITH (FORCE); DROP DATABASE IF EXISTS "${rollback}" WITH (FORCE);`,
+    `DROP DATABASE IF EXISTS "${database}" WITH (FORCE); DROP DATABASE IF EXISTS "${rollback}" WITH (FORCE); DROP DATABASE IF EXISTS "${references}" WITH (FORCE);`,
   );
 }
