@@ -401,14 +401,21 @@ test('personal activity tabs never inherit administrator list scope', async ({ p
   await login(page);
   await page.goto(`/contests/${c.id}`);
   await page.getByRole('tab', { name: '报名', exact: true }).click();
-  await expect(page.getByText('您尚未报名此竞赛', { exact: true })).toBeVisible();
+  await expect(page.getByText('您尚未报名此活动', { exact: true })).toBeVisible();
   expect(await admin.api(`/registrations?contestId=${c.id}&role=mine`)).toHaveLength(0);
   const own = await admin.api('/registrations', 'POST', { contestId: c.id });
   await page.reload();
   await page.getByRole('tab', { name: '报名', exact: true }).click();
   await expect(page.getByRole('link', { name: '查看报名', exact: true })).toHaveCount(1);
-  await expect(page.locator(`a[href="/registrations/${own.id}"]`)).toBeVisible();
+  await expect(
+    page.locator(`#pane-registrations a[href="/registrations/${own.id}"]`),
+  ).toBeVisible();
   await expect(page.locator('#pane-registrations')).not.toContainText(alice.user.name);
+  // An existing entry replaces both creation entry points with a link to it.
+  await expect(page.getByRole('button', { name: '创建报名', exact: true })).toHaveCount(0);
+  await expect(
+    page.locator(`#pane-info a[href="/registrations/${own.id}"]`, { hasText: '查看我的报名' }),
+  ).toHaveCount(1);
 });
 test('view-only management grants do not expose applicant actions or contest credentials', async ({
   page,

@@ -385,8 +385,8 @@ async function revokeSession(id: string) {
 }
 .auth-layout {
   display: grid;
-  grid-template-columns: 1fr 440px;
-  gap: 70px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+  gap: clamp(32px, 6vw, 70px);
   max-width: 1050px;
   margin: 50px auto;
 }
@@ -396,7 +396,7 @@ async function revokeSession(id: string) {
 .eyebrow {
   font-size: 12px;
   letter-spacing: 3px;
-  color: #2080f0;
+  color: var(--el-color-primary);
 }
 .auth-intro h1 {
   font-size: 40px;
@@ -405,7 +405,7 @@ async function revokeSession(id: string) {
   margin: 20px 0;
 }
 .auth-intro p {
-  color: #909399;
+  color: var(--muted);
   line-height: 2;
   margin-bottom: 32px;
 }
@@ -426,9 +426,10 @@ async function revokeSession(id: string) {
   min-width: 0;
   flex: 1;
 }
-@media (max-width: 760px) {
+@media (max-width: 960px) {
   .auth-layout {
     grid-template-columns: 1fr;
+    max-width: 560px;
     margin: 10px auto;
     gap: 22px;
   }

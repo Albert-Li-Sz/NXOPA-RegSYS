@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { api, date, label } from '../api';
+import { api, date, jobLabel } from '../api';
 import { usePagedList } from '../composables/usePagedList';
 import ListPagination from './ListPagination.vue';
 const props = defineProps<{ resourceId: string }>();
@@ -44,7 +44,7 @@ watch(
         ><template #default="{ row }"
           ><el-tag
             :type="row.state === 'FAILED' ? 'danger' : row.state === 'SUCCESS' ? 'success' : 'info'"
-            >{{ row.state === 'SUCCESS' ? '已发送' : label(row.state) }}</el-tag
+            >{{ row.state === 'SUCCESS' ? '已发送' : jobLabel(row.state) }}</el-tag
           ></template
         ></el-table-column
       >

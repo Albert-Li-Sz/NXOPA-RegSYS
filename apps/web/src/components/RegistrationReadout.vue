@@ -66,7 +66,11 @@ async function viewFile(id: string) {
     else if (content !== undefined) text.value = content;
     else text.value = '此文件格式或大小暂不支持预览，请从附件列表下载查看。';
   } catch (e) {
-    if (current === sequence) text.value = (e as Error).message;
+    if (current === sequence)
+      text.value =
+        e instanceof TypeError || e instanceof DOMException
+          ? '附件加载失败，请检查网络后重试'
+          : (e as Error).message;
   } finally {
     clearTimeout(timer);
     if (current === sequence) loading.value = false;

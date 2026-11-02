@@ -14,7 +14,16 @@ import {
   registrationReviewPhase,
   fieldSchema,
 } from '@contest-center/contracts';
-import { api, auth, date, label, money, downloadArchive, handleAuthResponse } from '../api';
+import {
+  api,
+  auth,
+  date,
+  label,
+  jobLabel,
+  money,
+  downloadArchive,
+  handleAuthResponse,
+} from '../api';
 import type { Data, FieldDefinition } from '../types';
 import EditActions from '../components/EditActions.vue';
 import RegistrationReview from '../components/RegistrationReview.vue';
@@ -1099,7 +1108,7 @@ function insertVariable(v: string) {
               >下载预览 PDF</a
             >
           </div>
-          <p v-if="preview">任务：{{ label(preview.state) }} {{ preview.error }}</p>
+          <p v-if="preview">任务：{{ jobLabel(preview.state) }} {{ preview.error }}</p>
         </div>
         <aside>
           <div class="card">

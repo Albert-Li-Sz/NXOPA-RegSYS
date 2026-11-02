@@ -2,7 +2,14 @@
   font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   color: #303133;
   background: #fff;
+  /* Default brand scale; App.vue recomputes the same steps from the site colour. */
   --el-color-primary: #1765c1;
+  --el-color-primary-light-3: #5d93d4;
+  --el-color-primary-light-5: #8bb2e0;
+  --el-color-primary-light-7: #b9d1ec;
+  --el-color-primary-light-8: #d1e0f3;
+  --el-color-primary-light-9: #e8f0f9;
+  --el-color-primary-dark-2: #12519a;
   --ink: #303133;
   --muted: #626b78;
   --panel: #f5f6f8;
@@ -158,7 +165,7 @@ button {
 }
 .avatar {
   flex-shrink: 0;
-  background: #1765c1;
+  background: var(--el-color-primary);
   color: white;
   border-radius: 50%;
   display: inline-flex;
@@ -303,7 +310,7 @@ input[type='file']::file-selector-button {
 .stat .value {
   font-size: 28px;
   font-weight: 600;
-  color: #1765c1;
+  color: var(--el-color-primary);
   margin: 12px 0 8px;
 }
 .stat .hint {
@@ -891,9 +898,9 @@ h2 {
 .markdown-content blockquote {
   margin: 16px 0;
   padding: 4px 18px;
-  border-left: 3px solid #1765c1;
+  border-left: 3px solid var(--el-color-primary);
   color: #66758b;
-  background: #f6f9ff;
+  background: var(--el-color-primary-light-9);
 }
 .markdown-content table {
   display: block;

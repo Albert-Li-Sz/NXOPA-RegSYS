@@ -38,6 +38,17 @@ export const mailCategoryLabels: Record<string, string> = {
   ADMISSION: '准考证发放',
   GENERIC: '其他通知',
 };
+// Workflow events carry stored states; recipients only ever see the Chinese wording.
+const mailStatusLabels: Record<string, string> = {
+  REQUESTED: '待处理',
+  APPROVED: '审核通过',
+  REJECTED: '未通过',
+  COMPLETED: '已完成',
+  ISSUED: '已开票',
+  VOID: '已作废',
+  RELEASED: '已发放',
+  CONFIRMED: '确认到账',
+};
 export async function formatMail(message: {
   subject: string;
   text: string;
@@ -64,7 +75,7 @@ export async function formatMail(message: {
     code: message.code ?? '',
     actionUrl: message.actionPath ? await publicLink(message.actionPath) : '',
     name: message.name ?? '',
-    status: message.status ?? '',
+    status: mailStatusLabels[message.status ?? ''] ?? message.status ?? '',
   };
   return {
     ...renderMailTemplate(

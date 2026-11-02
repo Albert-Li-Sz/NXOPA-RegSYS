@@ -76,30 +76,22 @@ onMounted(async () => {
         .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
         .reduce((n, v, i) => n + v * [0.2126, 0.7152, 0.0722][i]!, 0);
     while (luminance() > 0.16) rgb = rgb.map((v) => Math.floor(v * 0.9));
-    const color = '#' + rgb.map((v) => v.toString(16).padStart(2, '0')).join('');
-    document.documentElement.style.setProperty('--el-color-primary', color);
-    document.documentElement.style.setProperty(
-      '--el-color-primary-light-3',
+    // Element Plus derives hover, disabled, plain and focus colours from these steps:
+    // light-N mixes N0% white into the primary colour and dark-2 mixes 20% black.
+    const hex = (mix: number, target: number) =>
       '#' +
-        rgb
-          .map((v) =>
-            Math.floor(v * 0.9)
-              .toString(16)
-              .padStart(2, '0'),
-          )
-          .join(''),
-    );
-    document.documentElement.style.setProperty(
-      '--el-color-primary-dark-2',
-      '#' +
-        rgb
-          .map((v) =>
-            Math.floor(v * 0.8)
-              .toString(16)
-              .padStart(2, '0'),
-          )
-          .join(''),
-    );
+      rgb
+        .map((v) =>
+          Math.round(v + (target - v) * mix)
+            .toString(16)
+            .padStart(2, '0'),
+        )
+        .join('');
+    const style = document.documentElement.style;
+    style.setProperty('--el-color-primary', hex(0, 0));
+    for (const step of [3, 5, 7, 8, 9])
+      style.setProperty(`--el-color-primary-light-${step}`, hex(step / 10, 255));
+    style.setProperty('--el-color-primary-dark-2', hex(0.2, 0));
   } catch {}
 });
 async function logout() {
@@ -187,7 +179,7 @@ async function logout() {
         </div>
       </div>
       <div class="footer-links">
-        <router-link to="/contests">竞赛报名</router-link
+        <router-link to="/contests">活动及竞赛</router-link
         ><router-link to="/account">账号中心</router-link
         ><router-link to="/support">工单中心</router-link>
       </div>

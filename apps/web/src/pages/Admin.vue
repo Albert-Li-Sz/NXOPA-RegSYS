@@ -5,7 +5,7 @@ import RemoteRevocations from '../components/RemoteRevocations.vue';
 import PaginatedList from '../components/PaginatedList.vue';
 import { ref, onMounted, watch, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { api, auth, date, label, loadAuth } from '../api';
+import { api, auth, date, label, jobLabel, loadAuth } from '../api';
 import {
   defaultTemplate,
   accountInvitationLabels,
@@ -560,7 +560,7 @@ async function webhook() {
             jobKinds[row.kind] ?? '后台任务'
           }}</template></el-table-column
         ><el-table-column label="状态" width="100"
-          ><template #default="{ row }">{{ label(row.state) }}</template></el-table-column
+          ><template #default="{ row }">{{ jobLabel(row.state) }}</template></el-table-column
         ><el-table-column label="尝试" prop="attempts" width="70" /><el-table-column
           label="说明"
           min-width="220"

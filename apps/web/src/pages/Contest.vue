@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter, RouterLink } from 'vue-router';
-import { api, auth, date, money, label } from '../api';
+import { api, ApiError, auth, date, money, label } from '../api';
 import FinanceList from '../components/FinanceList.vue';
 import MarkdownContent from '../components/MarkdownContent.vue';
 import ListPagination from '../components/ListPagination.vue';
 import { usePagedList } from '../composables/usePagedList';
+import { ownUser } from '../permissions';
 import type { ContestView, RegistrationView } from '../types';
 const route = useRoute(),
   router = useRouter();
@@ -17,14 +18,25 @@ const c = ref<ContestView>(),
   tab = ref('info'),
   busy = ref(false),
   error = ref('');
+let loaded = false;
+// Each participant holds one entry per activity; link to it instead of offering a new one.
+const ownRegistration = computed(() =>
+  registrations.value.find(
+    (r) => ownUser(r.ownerId) || r.people.some((p) => p.active && p.userId && ownUser(p.userId)),
+  ),
+);
 onMounted(async () => {
   try {
     c.value = await api(`/contests/${route.params.id}`);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '竞赛无法加载';
+    error.value = e instanceof Error ? e.message : '活动无法加载';
+    return;
+  }
+  if (auth.user) {
+    await list.load();
+    loaded = !list.error.value;
   }
 });
-let loaded = false;
 watch(tab, async (current) => {
   if (auth.user && ['registrations', 'admissions'].includes(current) && !loaded) {
     await list.load();
@@ -44,13 +56,16 @@ async function create() {
   try {
     const r = await api<RegistrationView>('/registrations', 'POST', { contestId: c.value!.id });
     router.push(`/registrations/${r.id}?edit=1`);
+  } catch (e) {
+    // Another tab may have created the entry; refresh so the page links to it.
+    if (e instanceof ApiError && e.status === 409) await list.load();
   } finally {
     busy.value = false;
   }
 }
 </script>
 <template>
-  <el-result v-if="error" icon="warning" title="竞赛无法加载" :sub-title="error" /><el-skeleton
+  <el-result v-if="error" icon="warning" title="活动无法加载" :sub-title="error" /><el-skeleton
     v-else-if="!c"
     :rows="8"
     animated
@@ -122,6 +137,14 @@ async function create() {
                   >活动开始</el-timeline-item
                 ></el-timeline
               ><el-button
+                v-if="ownRegistration"
+                :tag="RouterLink"
+                :to="`/registrations/${ownRegistration.id}`"
+                type="primary"
+                style="width: 100%"
+                >查看我的报名</el-button
+              ><el-button
+                v-else
                 type="primary"
                 style="width: 100%"
                 :disabled="c.status !== 'OPEN'"
@@ -141,28 +164,22 @@ async function create() {
       >
       <el-tab-pane :label="c.policy.mode === 'TEAM' ? '队伍' : '报名'" name="registrations"
         ><div class="panel">
-          <div
-            v-if="auth.user && (auth.user.isAdmin || auth.user.contestIds.includes(c.id))"
-            class="toolbar"
-          >
-            <el-input
-              v-model="list.filters.value.tag"
-              clearable
-              placeholder="按用户标签筛选报名"
-              aria-label="按用户标签筛选报名"
-            />
-          </div>
           <div class="actions">
-            <el-button type="primary" :disabled="c.status !== 'OPEN'" @click="create"
+            <el-button
+              v-if="!ownRegistration"
+              type="primary"
+              :disabled="c.status !== 'OPEN'"
+              :loading="busy"
+              @click="create"
               >创建报名</el-button
             ><el-button
               :tag="RouterLink"
               v-if="auth.user && (auth.user.isAdmin || auth.user.contestIds.includes(c.id))"
               :to="`/admin/contests/${c.id}`"
-              >管理竞赛</el-button
+              >管理活动</el-button
             >
           </div>
-          <el-empty v-if="!registrations.length" description="您尚未报名此竞赛" />
+          <el-empty v-if="!registrations.length" description="您尚未报名此活动" />
           <div v-for="r in registrations" :key="r.id" class="card">
             <div class="member-heading">
               <h3>
@@ -204,7 +221,7 @@ async function create() {
           </div>
         </div></el-tab-pane
       >
-      <el-tab-pane label="财务" name="finance"
+      <el-tab-pane v-if="c.policy.feeMode !== 'FREE'" label="财务" name="finance"
         ><div class="panel">
           <p class="notice pre-line" v-if="c.policy.paymentInstructions">
             {{ c.policy.paymentInstructions }}
@@ -214,9 +231,9 @@ async function create() {
       <el-tab-pane label="工单" name="support"
         ><div class="card">
           <h3>遇到报名问题？</h3>
-          <p class="muted">提交工单，竞赛管理员将协助处理。</p>
+          <p class="muted">提交工单，活动管理员将协助处理。</p>
           <el-button :tag="RouterLink" :to="`/support?contestId=${c.id}`" type="primary" plain
-            >提交竞赛工单</el-button
+            >提交活动工单</el-button
           >
         </div></el-tab-pane
       >

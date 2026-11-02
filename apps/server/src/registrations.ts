@@ -160,6 +160,11 @@ function registrationFilters(query: ListQuery) {
 const ajv = new (Ajv as unknown as typeof import('ajv').Ajv)({ allErrors: true, strict: false });
 (addFormats as unknown as (a: typeof ajv) => void)(ajv);
 export const policy = (r: Registration) => policySchema.parse(r.policySnapshot ?? r.contest.policy);
+const reviewDecisionLabels = {
+  APPROVED: '审核通过',
+  CORRECTION: '需要补正',
+  REJECTED: '未通过',
+} as const;
 function personUniqueKey(p: ReturnType<typeof policy>, answers: Answers) {
   const key = p.uniquePersonFields
     .map((name) =>
@@ -718,6 +723,20 @@ export class RegistrationService {
       const c = await tx.contest.findUniqueOrThrow({ where: { id: contestId } });
       if (!c.published || c.archived || contestStatus(c) !== 'OPEN')
         throw new BadRequestException('当前无法报名');
+      // The contest lock serializes creation, so one participant cannot open parallel entries.
+      const accounts = ownerIds(u);
+      if (
+        await tx.registration.count({
+          where: {
+            contestId,
+            OR: [
+              { ownerId: { in: accounts } },
+              { people: { some: { userId: { in: accounts }, active: true } } },
+            ],
+          },
+        })
+      )
+        throw new ConflictException('您已报名此活动，请在“我的报名”中继续填写或查看');
       const r = await tx.registration.create({
         data: {
           contestId,
@@ -1243,7 +1262,7 @@ export class RegistrationService {
         message:
           b.decision === 'CORRECTION' && !editingWindow({ ...r, status: 'CORRECTION' })
             ? `报名待补正：${b.reason}。选手补正期限已结束，当前由管理员处理；如需选手补正，请延长期限。`
-            : `报名审核：${b.decision}。${b.reason}`,
+            : `报名审核结果：${reviewDecisionLabels[b.decision]}。${b.reason}`,
       });
       const current = await refresh(tx, id);
       if (b.participationType && current.eligible)

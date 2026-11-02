@@ -373,7 +373,9 @@ export class AdmissionService {
       )
         throw new BadRequestException(`准考证编号 ${assignment.number} 已被使用，请修改后重试`);
     }
-    for (const [index, id] of b.registrationIds.entries()) {
+    // Skipped entries do not consume a seat, so incremented seats stay contiguous.
+    let seatOffset = 0;
+    for (const id of b.registrationIds) {
       const r = registrations.get(id)!;
       if (r.contest.examSites.length && !r.examSiteId) {
         results.push({ registrationId: id, error: '请先补充参赛考点' });
@@ -387,7 +389,7 @@ export class AdmissionService {
       let room = assignment?.room ?? b.room;
       let seat =
         assignment?.seat ??
-        (b.incrementSeats && /^\d+$/.test(b.seat) ? String(Number(b.seat) + index) : b.seat);
+        (b.incrementSeats && /^\d+$/.test(b.seat) ? String(Number(b.seat) + seatOffset) : b.seat);
       let location = r.examSite
         ? examSiteLocation(r.examSite)
         : (assignment?.location ?? (b.location || r.contest.location));
@@ -536,6 +538,7 @@ export class AdmissionService {
           return document;
         });
         results.push({ registrationId: id, documentId: a.id, state: a.state });
+        seatOffset++;
       } catch (error) {
         if ((error as { code?: string }).code === 'P2002') {
           // A failed SQL statement aborts the outer HTTP idempotency transaction.

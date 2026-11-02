@@ -20,6 +20,8 @@ import {
   normalizeTransactionReference,
 } from './finance-integrity.js';
 const cents = z.number().int().positive().max(100_000_000);
+const refundDecisionLabels = { APPROVED: '已批准', REJECTED: '未通过', COMPLETED: '已完成退款' };
+const invoiceDecisionLabels = { ISSUED: '已开具', REJECTED: '未通过', VOID: '已作废' };
 async function ledgerWithReversalState<T extends { id: string; kind: string }>(rows: T[]) {
   const payments = rows.filter((row) => row.kind === 'PAYMENT').map((row) => `reverse:${row.id}`);
   const reversals = payments.length
@@ -390,7 +392,9 @@ export class FinanceService {
       });
       if (b.decision === 'REJECTED')
         await tx.paymentProofClaim.deleteMany({ where: { voucherId: id } });
-      await financeNotify(tx, r, { message: `缴费核账：${b.decision}。${b.reason}` });
+      await financeNotify(tx, r, {
+        message: `缴费核账：${b.decision === 'CONFIRMED' ? '已确认到账' : '凭证已退回'}。${b.reason}`,
+      });
       if (r.registration) await refresh(tx, r.id);
       return result;
     });
@@ -556,7 +560,7 @@ export class FinanceService {
         reason: b.reason,
       });
       await financeNotify(tx, r, {
-        message: `退款处理：${b.decision}${b.reason ? `；${b.reason}` : ''}`,
+        message: `退款处理：${refundDecisionLabels[b.decision]}${b.reason ? `；${b.reason}` : ''}`,
       });
       if (r.registration) await refresh(tx, r.id);
       return result;
@@ -648,14 +652,14 @@ export class FinanceService {
         reason: b.reason,
       });
       await financeNotify(tx, r, {
-        message: `开票处理：${b.decision}`,
+        message: `开票处理：${invoiceDecisionLabels[b.decision]}${b.reason ? `；${b.reason}` : ''}`,
         category: 'INVOICE',
         status: b.decision,
       });
       await event(tx, 'MAIL', r.id, {
         to: current.email,
         subject: '开票申请处理结果',
-        text: `开票状态：${b.decision}${b.reason ? `；${b.reason}` : ''}`,
+        text: `开票状态：${invoiceDecisionLabels[b.decision]}${b.reason ? `；${b.reason}` : ''}`,
         category: 'INVOICE',
         actionPath: `/finance/${r.id}`,
         finance: true,

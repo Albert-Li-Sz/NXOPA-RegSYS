@@ -89,7 +89,10 @@ async function preview(row: Data) {
       previewUrl.value = URL.createObjectURL(blob);
   } catch (error) {
     if (sequence === previewSequence)
-      previewError.value = error instanceof Error ? error.message : 'PDF 加载失败，请重试';
+      previewError.value =
+        error instanceof Error && !(error instanceof TypeError || error instanceof DOMException)
+          ? error.message
+          : 'PDF 加载失败，请检查网络后重试';
   } finally {
     if (sequence === previewSequence) previewLoading.value = false;
   }

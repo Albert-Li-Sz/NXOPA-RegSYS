@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-vi.mock('element-plus', () => ({ ElMessage: { error: vi.fn() } }));
+// element-plus is a web workspace dependency, so mock it by the path api.ts resolves.
+vi.mock('../../apps/web/node_modules/element-plus/es/index.mjs', () => ({
+  ElMessage: { error: vi.fn() },
+}));
 import { api } from '../../apps/web/src/api.ts';
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -58,9 +61,7 @@ describe('write submission and retry identities', () => {
       .mockRejectedValueOnce(new TypeError('Connection interrupted'))
       .mockResolvedValueOnce(new Response('{"id":"saved"}', { status: 201 }));
     vi.stubGlobal('fetch', fetch);
-    await expect(api('/support/retry', 'POST', { text: 'draft' })).rejects.toThrow(
-      'Connection interrupted',
-    );
+    await expect(api('/support/retry', 'POST', { text: 'draft' })).rejects.toThrow('网络连接失败');
     await expect(api('/support/retry', 'POST', { text: 'draft' })).resolves.toEqual({
       id: 'saved',
     });

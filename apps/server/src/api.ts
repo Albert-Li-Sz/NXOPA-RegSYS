@@ -837,7 +837,10 @@ export class ApiController {
     res.setHeader('Cache-Control', 'private, no-store');
     res
       .type('application/pdf')
-      .setHeader('Content-Disposition', `attachment; filename="${d.name}"`);
+      .setHeader(
+        'Content-Disposition',
+        `attachment; filename*=UTF-8''${encodeURIComponent(d.name)}`,
+      );
     res.send(d.buffer);
   }
   @Get('jobs/:id') job(@Req() r: AuthRequest, @Param('id') id: string) {
@@ -872,7 +875,10 @@ export class ApiController {
   ) {
     const bundle = await platformExport(user(r), z.string().uuid().parse(id), body);
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${bundle.filename}"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(bundle.filename)}`,
+    );
     res.setHeader('Cache-Control', 'no-store');
     const archive = archiver('zip', { zlib: { level: 6 } });
     archive.on('error', (error) => res.destroy(error));

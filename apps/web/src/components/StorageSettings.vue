@@ -3,7 +3,7 @@ import { onMounted, onScopeDispose, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useEditSession } from '../composables/useEditSession';
 import EditActions from './EditActions.vue';
-import { api, label } from '../api';
+import { api, jobLabel } from '../api';
 import type { Data } from '../types';
 const form = ref<Data>({ mode: 'LOCAL', version: 0 }),
   busy = ref(false),
@@ -141,7 +141,7 @@ onScopeDispose(() => {
     </p>
     <el-button :disabled="form.mode !== 'S3'" @click="migrate">迁移历史文件至当前 S3</el-button>
     <p v-if="job">
-      任务 {{ label(job.state) }} · 已复制 {{ job.result?.copied || 0 }} 个对象
+      任务 {{ jobLabel(job.state) }} · 已复制 {{ job.result?.copied || 0 }} 个对象
       <span v-if="job.error">{{ job.error }}</span>
     </p>
   </div>

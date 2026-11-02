@@ -571,7 +571,7 @@ const contestName = (id: string | null) =>
   margin: 7px 0;
 }
 .profile-login-info small {
-  color: #909399;
+  color: var(--muted);
 }
 .identity-summary {
   background: #f7f9fc;

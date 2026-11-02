@@ -3,7 +3,7 @@ import PaginatedTable from '../components/PaginatedTable.vue';
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
-import { api, ApiError, money, date, label, upload } from '../api';
+import { api, ApiError, money, date, label, financeLabel, upload } from '../api';
 import type { Data } from '../types';
 import { ownUser } from '../permissions';
 import InvoiceApplication from '../components/InvoiceApplication.vue';
@@ -189,7 +189,9 @@ async function reverse(row: Data) {
           /><el-table-column prop="payer" label="付款人" /><el-table-column label="金额"
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
           ><el-table-column label="状态"
-            ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
+            ><template #default="{ row }">{{
+              financeLabel('vouchers', row.status)
+            }}</template></el-table-column
           ><el-table-column label="凭证"
             ><template #default="{ row }"
               ><a :href="`/api/v1/files/${row.attachmentId}`" target="_blank">查看凭证</a></template
@@ -227,7 +229,9 @@ async function reverse(row: Data) {
           ><el-table-column label="金额"
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
           ><el-table-column prop="reason" label="原因" /><el-table-column label="状态"
-            ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
+            ><template #default="{ row }">{{
+              financeLabel('refunds', row.status)
+            }}</template></el-table-column
           ><el-table-column prop="reference" label="退款参考号" /><el-table-column
             prop="rejectionReason"
             label="拒绝原因"
@@ -264,7 +268,9 @@ async function reverse(row: Data) {
           ><el-table-column prop="title" label="抬头" /><el-table-column label="金额"
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
           ><el-table-column label="状态"
-            ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
+            ><template #default="{ row }">{{
+              financeLabel('invoices', row.status)
+            }}</template></el-table-column
           ><el-table-column label="发票文件"
             ><template #default="{ row }"
               ><a

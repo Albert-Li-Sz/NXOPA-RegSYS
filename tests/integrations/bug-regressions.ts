@@ -1128,6 +1128,42 @@ try {
       'Creating and replying to tickets must preserve the attachment activity scope',
     );
   });
+
+  await check('one-registration-per-participant', async () => {
+    const c = await contest();
+    const first = await alice.api('/registrations', 'POST', { contestId: c.id });
+    const again = await alice.raw('/api/v1/registrations', 'POST', { contestId: c.id });
+    assert.equal(again.status, 409, 'An owner cannot open a second entry in the same activity');
+    await db.registrationPerson.create({
+      data: {
+        registrationId: first.id,
+        contestId: c.id,
+        userId: bob.user.id,
+        name: 'BUG 回归队员',
+        email: bob.user.email,
+        confirmed: true,
+        answers: {},
+      },
+    });
+    const member = await bob.raw('/api/v1/registrations', 'POST', { contestId: c.id });
+    assert.equal(member.status, 409, 'An active member cannot open a parallel entry');
+    assert.equal(await db.registration.count({ where: { contestId: c.id } }), 1);
+  });
+
+  await check('review-notifications-use-chinese-wording', async () => {
+    const c = await contest({ manualReview: true });
+    const r = await submitted(c.id);
+    await admin.api(`/registrations/${r.id}/review`, 'POST', {
+      version: r.version,
+      decision: 'REJECTED',
+      reason: '资料不完整',
+    });
+    const messages = (
+      await db.outboxEvent.findMany({ where: { resourceId: r.id, type: 'NOTIFY' } })
+    ).map((e) => String((e.payload as { message?: unknown }).message));
+    assert.ok(messages.includes('报名审核结果：未通过。资料不完整'), messages.join(' | '));
+    assert.ok(messages.every((m) => !/APPROVED|REJECTED|CORRECTION/.test(m)));
+  });
 } finally {
   if (contestIds.length)
     await db.contest.updateMany({ where: { id: { in: contestIds } }, data: { archived: true } });

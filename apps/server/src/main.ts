@@ -55,7 +55,9 @@ class Errors implements ExceptionFilter {
       message = typeof v === 'string' ? v : String((v as Record<string, unknown>).message);
     } else if (error instanceof ZodError) {
       status = 400;
-      message = error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('；');
+      message = error.issues
+        .map((i) => (i.path.length ? `${i.path.join('.')}：${i.message}` : i.message))
+        .join('；');
     } else if (error instanceof Prisma.PrismaClientKnownRequestError) {
       status = error.code === 'P2002' ? 409 : error.code === 'P2025' ? 404 : 400;
       message =

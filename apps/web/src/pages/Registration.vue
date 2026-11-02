@@ -5,7 +5,7 @@ import PaginatedList from '../components/PaginatedList.vue';
 import { ref, shallowRef, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter, RouterLink } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { api, ApiError, auth, money, date, label, upload } from '../api';
+import { api, ApiError, auth, money, date, label, financeLabel, upload } from '../api';
 import type { RegistrationView, PersonView, Data } from '../types';
 import { useEditSession, mayLeaveEdits } from '../composables/useEditSession';
 import EditActions from '../components/EditActions.vue';
@@ -884,7 +884,7 @@ async function memberSave(id: string, index: number) {
               v-for="state in ['PENDING', 'CONFIRMED', 'REJECTED']"
               :key="state"
               :value="state"
-              :label="label(state)" /></el-select
+              :label="financeLabel('vouchers', state)" /></el-select
           ><el-date-picker
             v-model="voucherPage.filters.value.from"
             type="datetime"
@@ -907,7 +907,9 @@ async function memberSave(id: string, index: number) {
           ><el-table-column label="付款人" prop="payer" /><el-table-column label="金额"
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
           ><el-table-column label="状态"
-            ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
+            ><template #default="{ row }">{{
+              financeLabel('vouchers', row.status)
+            }}</template></el-table-column
           ><el-table-column label="操作" min-width="180"
             ><template #default="{ row }"
               ><a :href="`/api/v1/files/${row.attachmentId}`" target="_blank" rel="noopener"
@@ -1017,7 +1019,7 @@ async function memberSave(id: string, index: number) {
               v-for="state in ['REQUESTED', 'APPROVED', 'REJECTED', 'COMPLETED']"
               :key="state"
               :value="state"
-              :label="label(state)" /></el-select
+              :label="financeLabel('refunds', state)" /></el-select
           ><el-date-picker
             v-model="refundPage.filters.value.from"
             type="datetime"
@@ -1041,7 +1043,9 @@ async function memberSave(id: string, index: number) {
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
           ><el-table-column label="原因" prop="reason" min-width="150" /><el-table-column
             label="状态"
-            ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
+            ><template #default="{ row }">{{
+              financeLabel('refunds', row.status)
+            }}</template></el-table-column
           ><el-table-column label="实际退款参考号" prop="reference" /><el-table-column
             v-if="financeReviewer"
             label="操作"
@@ -1097,7 +1101,7 @@ async function memberSave(id: string, index: number) {
               v-for="state in ['REQUESTED', 'ISSUED', 'REJECTED', 'VOID']"
               :key="state"
               :value="state"
-              :label="label(state)" /></el-select
+              :label="financeLabel('invoices', state)" /></el-select
           ><el-date-picker
             v-model="invoicePage.filters.value.from"
             type="datetime"
@@ -1135,7 +1139,9 @@ async function memberSave(id: string, index: number) {
             label="金额"
             ><template #default="{ row }">{{ money(row.amountCents) }}</template></el-table-column
           ><el-table-column label="状态"
-            ><template #default="{ row }">{{ label(row.status) }}</template></el-table-column
+            ><template #default="{ row }">{{
+              financeLabel('invoices', row.status)
+            }}</template></el-table-column
           ><el-table-column label="操作" min-width="160"
             ><template #default="{ row }"
               ><a
@@ -1273,7 +1279,7 @@ async function memberSave(id: string, index: number) {
               ? ({ PERSON: '个人', ENTERPRISE: '企业', ORGANIZATION: '非企业单位' } as Data)[
                   invoiceDetail[key]
                 ] || '历史申请'
-              : label(invoiceDetail[key]) || '—'
+              : financeLabel('invoices', invoiceDetail[key]) || '—'
           }}</el-descriptions-item
         ><el-descriptions-item label="金额">{{
           money(invoiceDetail.amountCents)

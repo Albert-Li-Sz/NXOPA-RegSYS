@@ -99,7 +99,7 @@ import { auth } from '../api';
   margin: clamp(22px, 2vw, 40px) 0;
 }
 .hero-copy h1 span {
-  color: #2080f0;
+  color: var(--el-color-primary);
 }
 .hero-description {
   color: #69788b;

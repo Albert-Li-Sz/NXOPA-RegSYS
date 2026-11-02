@@ -48,6 +48,20 @@ export async function reauthenticate() {
     await api('/auth/reauth', 'POST', { code: value });
   }
 }
+// fetch rejects without a response when offline or timed out; callers rely on
+// this layer to tell the user, as they do for HTTP errors.
+async function send(path: string, init: RequestInit) {
+  try {
+    return await fetch(`/api/v1${path}`, init);
+  } catch (error) {
+    const message =
+      error instanceof DOMException && error.name === 'TimeoutError'
+        ? '请求超时，请检查网络后重试'
+        : '网络连接失败，请检查网络后重试';
+    ElMessage.error({ message, grouping: true });
+    throw new ApiError(0, message);
+  }
+}
 const pendingWrites = new Map<string, Promise<any>>();
 const retryKeys = new Map<string, { key: string; expiresAt: number }>();
 export function api<T = any>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -81,7 +95,7 @@ async function requestApi<T = any>(
   idempotencyKey = requestId(),
 ): Promise<T> {
   const form = body instanceof FormData;
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await send(path, {
     signal: AbortSignal.timeout(form ? 180000 : 120000),
     method,
     credentials: 'same-origin',
@@ -124,7 +138,7 @@ export async function loadAuth(options: { allowSignedOut?: boolean } = {}) {
   auth.loaded = true;
 }
 export async function downloadArchive(path: string, body: unknown, name: string) {
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await send(path, {
     signal: AbortSignal.timeout(180000),
     method: 'POST',
     credentials: 'same-origin',
@@ -224,3 +238,13 @@ export const labels: Record<string, string> = {
   REVOKED_LOCALLY: '本站资格已撤销',
 };
 export const label = (v: string) => labels[v] ?? v;
+// Background jobs and finance records reuse state names whose review wording does not fit.
+const jobLabels: Record<string, string> = { PENDING: '等待执行' };
+export const jobLabel = (v: string) => jobLabels[v] ?? label(v);
+const financeLabels: Record<'vouchers' | 'refunds' | 'invoices', Record<string, string>> = {
+  vouchers: { PENDING: '待核账', REJECTED: '已退回' },
+  refunds: { APPROVED: '已批准', REJECTED: '已拒绝', COMPLETED: '已退款' },
+  invoices: { REQUESTED: '待开票', REJECTED: '已拒绝' },
+};
+export const financeLabel = (kind: keyof typeof financeLabels, v: string) =>
+  financeLabels[kind][v] ?? label(v);
