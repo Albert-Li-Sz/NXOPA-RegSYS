@@ -223,7 +223,7 @@ try {
       join(output, `installation-interactive-previous-${arch}.json`),
       JSON.stringify(previousUpgrade, null, 2),
     );
-    for (const initialTag of ['v2.2.1', 'v2.2.2']) {
+    for (const initialTag of ['v2.2.1', 'v2.2.2', 'v2.2.4']) {
       const immediateUpgrade = JSON.parse(
         await readFile(
           join(
