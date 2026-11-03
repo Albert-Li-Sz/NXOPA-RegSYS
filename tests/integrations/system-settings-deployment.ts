@@ -96,7 +96,7 @@ try {
   await page.locator('#account').fill(credentials.email);
   await page.locator('#password').fill(credentials.password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '比赛列表', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '活动列表', exact: true })).toBeVisible();
   checks.push('Built production website requires login and returns to the contest list');
   await page.goto('/admin?tab=mail');
   await expect(page.locator('#mail-from-name')).toHaveValue('容器邮件配置验收');

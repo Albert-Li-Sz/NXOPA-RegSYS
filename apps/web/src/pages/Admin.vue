@@ -456,10 +456,13 @@ async function webhook() {
         :closable="false"
       />
       <el-table :data="contestsPage.items.value" v-loading="contestsPage.loading.value"
-        ><el-table-column label="竞赛名称" prop="title" min-width="280" /><el-table-column
-          label="赛季"
-          prop="season"
-          width="100" /><el-table-column label="公开" width="90"
+        ><el-table-column label="活动名称" min-width="200"
+          ><template #default="{ row }"
+            ><router-link :to="`/admin/contests/${row.id}`">{{ row.title }}</router-link></template
+          ></el-table-column
+        ><el-table-column label="赛季" prop="season" width="100" /><el-table-column
+          label="公开"
+          width="90"
           ><template #default="{ row }">{{
             row.published ? '已发布' : '草稿'
           }}</template></el-table-column

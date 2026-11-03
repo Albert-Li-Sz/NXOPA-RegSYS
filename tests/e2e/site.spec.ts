@@ -27,7 +27,7 @@ test('desktop home, filters and account center', async ({ page }) => {
   ).toBeVisible();
   await expect(page).toHaveTitle('南晓开放原子社在线报名系统');
   await expect(page.locator('.contest-card')).toHaveCount(0);
-  await expect(page.getByRole('textbox', { name: '搜索竞赛' })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: '搜索活动' })).toHaveCount(0);
   await page.screenshot({
     path: '.runtime/reports/landing-desktop.png',
     fullPage: true,
@@ -41,7 +41,7 @@ test('desktop home, filters and account center', async ({ page }) => {
   await page.locator('#password').fill('DemoContest2026!');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page).toHaveURL(/\/contests$/);
-  await expect(page.getByRole('heading', { name: '比赛列表' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '活动列表' })).toBeVisible();
   await expect(page.locator('.contest-card').first()).toBeVisible();
   await expect(page.locator('.card-tags .el-tag').first()).toHaveText(/个人报名|团队报名/);
   const seedIds = [
@@ -75,7 +75,7 @@ test('desktop home, filters and account center', async ({ page }) => {
   });
   await page.getByText('即将开始', { exact: true }).first().click();
   await expect(seededCards).toHaveCount(1);
-  await page.getByText('全部竞赛', { exact: true }).click();
+  await page.getByText('全部活动', { exact: true }).click();
   await page.goto('/account');
   await expect(page.getByRole('heading', { name: '个人信息' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '总览', exact: true })).toBeVisible();
@@ -190,8 +190,8 @@ test('mobile layout and empty/error states', async ({ page }) => {
     fullPage: true,
     animations: 'disabled',
   });
-  await page.getByRole('textbox', { name: '搜索竞赛' }).fill('无此竞赛');
-  await expect(page.getByText('暂时没有符合条件的竞赛')).toBeVisible();
+  await page.getByRole('textbox', { name: '搜索活动' }).fill('无此竞赛');
+  await expect(page.getByText('暂时没有符合条件的活动')).toBeVisible();
   await page.goto('/nonexistent');
   await expect(page.getByText('页面不存在')).toBeVisible();
   await page.context().clearCookies();

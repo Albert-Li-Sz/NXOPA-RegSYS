@@ -15,7 +15,7 @@ const filter = ref(String(useRoute().query.status ?? 'ALL')),
   search = ref(''),
   season = ref('');
 const statuses = [
-  { label: '全部竞赛', value: 'ALL' },
+  { label: '全部活动', value: 'ALL' },
   { label: '开放报名', value: 'OPEN' },
   { label: '即将开始', value: 'UPCOMING' },
   { label: '报名关闭', value: 'CLOSED' },
@@ -35,19 +35,19 @@ watch([filter, search, season], list.reset);
 <template>
   <div class="page-heading">
     <div>
-      <component :is="headingLevel === 1 ? 'h1' : 'h2'" class="catalogue-title">比赛列表</component>
-      <p class="subtitle">发现竞赛，管理您的报名与队伍</p>
+      <component :is="headingLevel === 1 ? 'h1' : 'h2'" class="catalogue-title">活动列表</component>
+      <p class="subtitle">发现活动与竞赛，管理您的报名与队伍</p>
     </div>
-    <span class="compact-label">共 {{ contests.length }} 项竞赛</span>
+    <span class="compact-label">共 {{ contests.length }} 项活动</span>
   </div>
   <div class="toolbar">
-    <span class="filter-label">比赛筛选：</span
+    <span class="filter-label">活动筛选：</span
     ><el-segmented v-model="filter" :options="statuses" /><el-input
       v-model="search"
       :prefix-icon="Search"
-      placeholder="搜索竞赛名称"
+      placeholder="搜索活动名称"
       clearable
-      aria-label="搜索竞赛"
+      aria-label="搜索活动"
     /><el-select v-model="season" placeholder="全部赛季" clearable style="width: 145px" filterable
       ><el-option v-for="s in seasons" :label="`${s} 赛季`" :value="s" :key="s"
     /></el-select>
@@ -56,8 +56,8 @@ watch([filter, search, season], list.reset);
   <div v-else-if="error" class="error-state">
     加载失败 <el-button text @click="emit('retry')">重试</el-button>
   </div>
-  <el-empty v-else-if="!filtered.length" description="暂时没有符合条件的竞赛" />
-  <section v-else class="contest-grid" aria-label="竞赛列表">
+  <el-empty v-else-if="!filtered.length" description="暂时没有符合条件的活动" />
+  <section v-else class="contest-grid" aria-label="活动列表">
     <article v-for="c in list.items.value" :key="c.id" class="contest-card">
       <div class="card-tags">
         <el-tag effect="dark" round
@@ -75,7 +75,7 @@ watch([filter, search, season], list.reset);
       <h2>{{ c.title }}</h2>
       <div class="contest-meta">
         <p>
-          <el-icon><Calendar /></el-icon><span>比赛日期： {{ shortDate(c.startsAt) }}</span>
+          <el-icon><Calendar /></el-icon><span>活动日期： {{ shortDate(c.startsAt) }}</span>
         </p>
         <p>
           <el-icon><Calendar /></el-icon><span>报名开始： {{ date(c.opensAt) }}</span>
@@ -87,7 +87,7 @@ watch([filter, search, season], list.reset);
       <div class="contest-bottom">
         <span>{{
           c.policy.feeMode === 'FREE'
-            ? '免费竞赛'
+            ? '免费'
             : `${money(c.policy.feeCents)} / ${c.policy.feeMode === 'PER_PERSON' ? '人' : '份报名'}`
         }}</span
         ><span>{{
@@ -98,7 +98,7 @@ watch([filter, search, season], list.reset);
       </div>
       <div class="contest-actions">
         <router-link :to="`/contests/${c.id}`" class="el-button el-button--primary view-button"
-          >查看竞赛 <span class="view-arrow" aria-hidden="true">&gt;&gt;</span></router-link
+          >查看详情 <span class="view-arrow" aria-hidden="true">&gt;&gt;</span></router-link
         >
         <router-link
           v-if="c.publicRosterEnabled"

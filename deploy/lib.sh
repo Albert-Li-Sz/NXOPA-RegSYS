@@ -146,7 +146,42 @@ validate_secrets() {
   [[ -n "$database_value" && "$database_value" != GENERATE_ON_INSTALL ]] || fail 'POSTGRES_PASSWORD 缺失或未生成，请修复已有配置。'
 }
 
+loopback_address() {
+  case "$1" in 127.*|::1|'[::1]'|localhost) return 0 ;; *) return 1 ;; esac
+}
+
+# A gateway published on loopback is only reachable from this host, and Docker
+# forwards those connections from the edge network gateway. Trust that peer so
+# the API sees real client addresses behind the host's own reverse proxy.
+# Any other bind address (0.0.0.0, a LAN IP) also forwards direct clients from
+# the same peer, so it stays untrusted until TRUSTED_PROXY_CIDRS names the proxy.
+gateway_trusted_proxies() {
+  [[ "$proxy_mode" == gateway ]] || return 0
+  [[ -z "${TRUSTED_PROXY_CIDRS:-}" && -z "$(env_value TRUSTED_PROXY_CIDRS)" ]] || return 0
+  local bind project peers address
+  bind="${GATEWAY_BIND_ADDRESS:-$(env_value GATEWAY_BIND_ADDRESS)}"
+  loopback_address "${bind:-127.0.0.1}" || return 0
+  project="$(env_value COMPOSE_PROJECT_NAME)"
+  peers="$(docker network inspect "${project:-nxopa-regsys}_edge" \
+    --format '{{range .IPAM.Config}}{{.Gateway}} {{end}}' 2>/dev/null)" || return 0
+  local cidrs='127.0.0.1/32 ::1/128'
+  for address in $peers; do
+    case "$address" in *:*) cidrs+=" $address/128" ;; *.*) cidrs+=" $address/32" ;; esac
+  done
+  export TRUSTED_PROXY_CIDRS="$cidrs"
+}
+
+warn_untrusted_gateway() {
+  [[ "$proxy_mode" == gateway ]] || return 0
+  [[ -z "${TRUSTED_PROXY_CIDRS:-}" && -z "$(env_value TRUSTED_PROXY_CIDRS)" ]] || return 0
+  local bind
+  bind="${GATEWAY_BIND_ADDRESS:-$(env_value GATEWAY_BIND_ADDRESS)}"
+  loopback_address "${bind:-127.0.0.1}" && return 0
+  printf '提示：网关监听 %s，且未设置 TRUSTED_PROXY_CIDRS。外层代理转发的真实客户端 IP 不会被采信，按 IP 的限流和审计将视所有请求为同一来源；请在 deploy/.env 中填写外层代理的具体地址。\n' "$bind" >&2
+}
+
 compose() {
+  gateway_trusted_proxies
   local compose_args=(--project-directory "$install_dir" --env-file "$install_env" -f "$install_dir/compose.yaml")
   if [[ "$(env_value STORAGE_MODE)" == MINIO ]]; then compose_args+=(--profile minio); fi
   if [[ -n "$platform_override" ]]; then compose_args+=(-f "$platform_override"); fi
@@ -290,6 +325,14 @@ start_services() {
   else
     compose up -d --build --remove-orphans --wait --wait-timeout 240 || return
   fi
+  # A first install creates the edge network during `up`; recreate the gateway
+  # once its peer address is known so forwarded client addresses are trusted.
+  local initial_trust="${TRUSTED_PROXY_CIDRS:-}"
+  gateway_trusted_proxies
+  if [[ "${TRUSTED_PROXY_CIDRS:-}" != "$initial_trust" ]]; then
+    compose up -d --no-build --wait --wait-timeout 240 caddy || return
+  fi
+  warn_untrusted_gateway
   compose ps
 }
 

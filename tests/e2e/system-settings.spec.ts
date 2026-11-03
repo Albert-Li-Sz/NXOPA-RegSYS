@@ -35,7 +35,7 @@ test('public landing, login redirect and original contest return on desktop and 
   );
   await signIn(page, 'alice');
   await expect(page).toHaveURL(/\/contests$/);
-  await expect(page.getByRole('heading', { name: '比赛列表' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '活动列表' })).toBeVisible();
   await page.goto('/');
   await page.locator('.hero-actions').getByRole('link', { name: '进入报名系统' }).click();
   await expect(page).toHaveURL(/\/contests$/);

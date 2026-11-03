@@ -679,8 +679,11 @@ function insertVariable(v: string) {
             /></el-form-item>
           </div>
           <el-form-item label="队伍公示"
-            ><el-switch v-model="form.publicRosterEnabled" active-text="开启公示名单"
-          /></el-form-item>
+            ><el-switch v-model="form.publicRosterEnabled" active-text="开启公示名单" />
+            <p v-if="form.publicRosterEnabled" class="form-help">
+              公示页面无需登录即可访问，会公开队名、学校、队员与指导老师姓名及审核状态。
+            </p></el-form-item
+          >
           <el-form-item v-if="form.publicRosterEnabled" label="公示的审核状态"
             ><el-checkbox-group v-model="form.publicRosterReviews"
               ><el-checkbox

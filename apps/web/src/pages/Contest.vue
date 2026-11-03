@@ -221,7 +221,7 @@ async function create() {
           </div>
         </div></el-tab-pane
       >
-      <el-tab-pane v-if="c.policy.feeMode !== 'FREE'" label="财务" name="finance"
+      <el-tab-pane v-if="auth.user && c.policy.feeMode !== 'FREE'" label="财务" name="finance"
         ><div class="panel">
           <p class="notice pre-line" v-if="c.policy.paymentInstructions">
             {{ c.policy.paymentInstructions }}

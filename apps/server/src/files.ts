@@ -45,12 +45,24 @@ function uploadFilename(name: string) {
 }
 async function fileRegistrations(tx: import('./db.js').Tx, id: string) {
   z.string().uuid().parse(id);
-  return tx.$queryRaw<
-    { id: string; used: boolean }[]
-  >`SELECT "registrationId" AS id,false AS used FROM "Attachment" WHERE id=${id}::uuid AND "registrationId" IS NOT NULL
-    UNION SELECT id,true FROM "Registration" WHERE answers::text ILIKE ${`%${id}%`}
-    UNION SELECT "registrationId",true FROM "RegistrationPerson" WHERE answers::text ILIKE ${`%${id}%`}
-    UNION SELECT "registrationId",true FROM "RegistrationCoach" WHERE answers::text ILIKE ${`%${id}%`}`;
+  const pattern = `%${id}%`;
+  // Only these registrations can hold a reference: the bound entry, assigned team
+  // files, entries the uploader takes part in, and entries of the file's activity.
+  // Scanning just them keeps deletion from reading every answer in the database.
+  return tx.$queryRaw<{ id: string; used: boolean }[]>`WITH a AS (
+      SELECT "ownerId","registrationId","contestId" FROM "Attachment" WHERE id=${id}::uuid
+    ), candidate AS (
+      SELECT "registrationId" AS id FROM a WHERE "registrationId" IS NOT NULL
+      UNION SELECT "registrationId" FROM "TeamFile" WHERE "attachmentId"=${id}::uuid
+      UNION SELECT r.id FROM "Registration" r JOIN a ON r."ownerId"=a."ownerId"
+      UNION SELECT p."registrationId" FROM "RegistrationPerson" p JOIN a ON p."userId"=a."ownerId"
+      UNION SELECT k."registrationId" FROM "RegistrationCoach" k JOIN a ON k."userId"=a."ownerId"
+      UNION SELECT r.id FROM "Registration" r JOIN a ON r."contestId"=a."contestId"
+    )
+    SELECT "registrationId" AS id,false AS used FROM a WHERE "registrationId" IS NOT NULL
+    UNION SELECT r.id,true FROM "Registration" r JOIN candidate c ON c.id=r.id WHERE r.answers::text ILIKE ${pattern}
+    UNION SELECT p."registrationId",true FROM "RegistrationPerson" p JOIN candidate c ON c.id=p."registrationId" WHERE p.answers::text ILIKE ${pattern}
+    UNION SELECT k."registrationId",true FROM "RegistrationCoach" k JOIN candidate c ON c.id=k."registrationId" WHERE k.answers::text ILIKE ${pattern}`;
 }
 const fileView = {
   id: true,

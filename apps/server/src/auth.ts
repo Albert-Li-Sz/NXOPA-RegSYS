@@ -169,6 +169,8 @@ export async function session(req: AuthRequest, res: Response, id: string) {
     await lock(tx, `auth:${id}`);
     const current = await tx.user.findUniqueOrThrow({ where: { id } });
     if (current.deactivatedAt || current.bannedAt) throw new ForbiddenException('账号已停用或封禁');
+    // Switching accounts in one browser must not leave the replaced session usable.
+    if (req.sessionId) await tx.session.deleteMany({ where: { id: req.sessionId } });
     await tx.session.create({
       data: {
         id: sha(token),
@@ -398,8 +400,15 @@ export class AuthService {
     const b = z
       .object({ account: z.string().min(1).max(254), password: z.string().max(128) })
       .parse(body);
-    const failureKey = `login-failures:${sha(b.account.trim().toLowerCase())}`;
-    if (Number(await redis.get(failureKey)) >= 10)
+    // Lock per account and source, so a stranger cannot lock the owner out from
+    // elsewhere; the higher account-wide ceiling still stops distributed guessing.
+    const accountKey = sha(b.account.trim().toLowerCase());
+    const failureKey = `login-failures:${accountKey}:${sha(req.ip ?? '')}`,
+      accountFailureKey = `login-failures:${accountKey}`;
+    if (
+      Number(await redis.get(failureKey)) >= 10 ||
+      Number(await redis.get(accountFailureKey)) >= 100
+    )
       throw new ForbiddenException('此账号登录失败次数过多，请稍后重试或找回密码');
     const u = await db.user.findFirst({
       where: { OR: [{ email: b.account.toLowerCase() }, { username: b.account }] },
@@ -407,6 +416,7 @@ export class AuthService {
     const validPassword = await verify(u?.passwordHash ?? (await missingAccountHash), b.password);
     if (!u?.passwordHash || u.deactivatedAt || !validPassword) {
       await incrementExpiring(failureKey, 900);
+      await incrementExpiring(accountFailureKey, 900);
       await audit(
         db,
         u?.id ?? 'anonymous',
@@ -417,7 +427,7 @@ export class AuthService {
       throw new UnauthorizedException('账号或密码错误');
     }
     if (u.bannedAt) throw new ForbiddenException('账号已被封禁，请联系管理员');
-    await redis.del(failureKey);
+    await redis.del(failureKey, accountFailureKey);
     await audit(db, u.id, 'LOGIN_SUCCESS', u.id, requestDetails(req));
     return session(req, res, u.id);
   }

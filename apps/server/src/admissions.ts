@@ -633,7 +633,13 @@ export class AdmissionService {
   }
   async job(u: Principal, id: string) {
     const j = await db.job.findUniqueOrThrow({ where: { id } });
-    if (j.resourceId !== u.id && !u.isAdmin) await getRegistration(u, j.resourceId);
+    // Registration-scoped jobs include mail and integration tasks whose results
+    // are internal; only admission managers may follow admission jobs.
+    if (j.resourceId !== u.id && !u.isAdmin) {
+      const r = await getRegistration(u, j.resourceId);
+      if (j.kind !== 'ADMISSION' || !manages(u, r.contestId, 'ADMISSIONS'))
+        throw new ForbiddenException();
+    }
     return {
       id: j.id,
       kind: j.kind,
@@ -645,10 +651,11 @@ export class AdmissionService {
   }
   async previewDownload(u: Principal, id: string) {
     const j = await db.job.findUniqueOrThrow({ where: { id } });
+    if (j.kind !== 'PDF_PREVIEW' || (j.resourceId !== u.id && !u.isAdmin))
+      throw new ForbiddenException();
     if (j.createdAt.getTime() < Date.now() - 3600000)
       throw new BadRequestException('预览已过期，请重新生成');
-    if (j.kind !== 'PDF_PREVIEW' || (j.resourceId !== u.id && !u.isAdmin) || j.state !== 'SUCCESS')
-      throw new ForbiddenException();
+    if (j.state !== 'SUCCESS') throw new ForbiddenException();
     return {
       name: 'preview.pdf',
       buffer: await readBlob(j.result as unknown as StorageRef),

@@ -52,7 +52,7 @@ import { MailDeliveryService } from './mail-delivery.js';
 import { InstitutionService } from './institutions.js';
 import { db, registrationInclude, json, lock, audit } from './db.js';
 import { requireManager, requireAdmin } from './security.js';
-import { redis } from './auth.js';
+import { redis, rateLimit } from './auth.js';
 
 @ApiTags('Contest Center')
 @Controller('api/v1')
@@ -241,9 +241,13 @@ export class ApiController {
     return this.publicRoster.list(id, q);
   }
   @Get('contests/:id/public-teams/export') async publicTeamsExport(
+    @Req() r: AuthRequest,
     @Param('id') id: string,
     @Res() res: Response,
   ) {
+    // Anonymous exports read up to 10000 rows each; bound them per source and activity.
+    await rateLimit(`public-roster-export:${r.ip}`, 5);
+    await rateLimit(`public-roster-export-contest:${z.string().uuid().parse(id)}`, 60);
     res
       .type('text/csv; charset=utf-8')
       .setHeader('Content-Disposition', 'attachment; filename="public-teams.csv"')

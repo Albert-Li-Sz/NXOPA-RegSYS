@@ -59,7 +59,7 @@ test('catalogue actions use matching side-by-side boxes and literal double arrow
   await db.contest.update({ where: { id: c.id }, data: { publicRosterEnabled: true } });
   await login(page);
   await page.goto('/contests');
-  await page.getByRole('textbox', { name: '搜索竞赛', exact: true }).fill(c.title);
+  await page.getByRole('textbox', { name: '搜索活动', exact: true }).fill(c.title);
   const card = page.locator('.contest-card').filter({ hasText: c.title });
   for (const width of [1440, 831, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -86,12 +86,12 @@ test('catalogue actions use matching side-by-side boxes and literal double arrow
   await card.getByRole('link', { name: '队伍公示', exact: true }).click();
   await expect(page).toHaveURL(`/contests/${c.id}/public-teams`);
   await page.goto('/contests');
-  await page.getByRole('textbox', { name: '搜索竞赛', exact: true }).fill(c.title);
-  await card.getByRole('link', { name: '查看竞赛', exact: true }).click();
+  await page.getByRole('textbox', { name: '搜索活动', exact: true }).fill(c.title);
+  await card.getByRole('link', { name: '查看详情', exact: true }).click();
   await expect(page).toHaveURL(`/contests/${c.id}`);
   await db.contest.update({ where: { id: c.id }, data: { publicRosterEnabled: false } });
   await page.goto('/contests');
-  await page.getByRole('textbox', { name: '搜索竞赛', exact: true }).fill(c.title);
+  await page.getByRole('textbox', { name: '搜索活动', exact: true }).fill(c.title);
   await expect(card.locator('.contest-actions a')).toHaveCount(1);
   expect(
     await card

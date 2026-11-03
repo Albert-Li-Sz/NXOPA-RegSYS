@@ -327,9 +327,9 @@ try {
     await page.locator('#password').fill(credentials.ADMIN_PASSWORD);
     await page.getByRole('button', { name: '登录', exact: true }).click();
     await expect(page).toHaveURL(/\/contests$/);
-    await expect(page.getByRole('heading', { name: '比赛列表' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '活动列表' })).toBeVisible();
     await page.reload();
-    await expect(page.getByRole('heading', { name: '比赛列表' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '活动列表' })).toBeVisible();
     await expect(page.locator('.user-menu')).toBeVisible();
     assert.deepEqual(errors, []);
   } finally {

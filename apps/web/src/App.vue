@@ -28,6 +28,9 @@ const displayName = computed(() => {
 });
 const site = ref({ ...defaultSite });
 const loggingOut = ref(false);
+// The first navigation waits for the session check; show a placeholder meanwhile.
+const routeReady = ref(false);
+void router.isReady().then(() => (routeReady.value = true));
 const recoveryPassword = ref(''),
   recovering = ref(false),
   recoveryError = ref('');
@@ -127,17 +130,21 @@ async function logout() {
         </router-link>
         <template v-if="!isLanding">
           <nav aria-label="主导航">
-            <router-link to="/overview">活动总览</router-link
+            <router-link v-if="auth.user" to="/overview">活动总览</router-link
             ><router-link to="/contests">活动及竞赛中心</router-link
-            ><router-link to="/registrations">我的报名</router-link
-            ><router-link to="/me/admissions">我的准考证</router-link
-            ><router-link to="/me/files">我的附件</router-link
-            ><router-link v-if="auth.user?.isCoach" to="/coach">指导老师</router-link
-            ><router-link to="/support">工单</router-link
+            ><template v-if="auth.user"
+              ><router-link to="/registrations">我的报名</router-link
+              ><router-link to="/me/admissions">我的准考证</router-link
+              ><router-link to="/me/files">我的附件</router-link
+              ><router-link v-if="auth.user.isCoach" to="/coach">指导老师</router-link
+              ><router-link to="/support">工单</router-link></template
+            ><span v-if="visibleCenters.length" class="nav-group-label" aria-hidden="true"
+              >管理</span
             ><router-link
               v-for="center in visibleCenters"
               :key="center.key"
               :to="center.to"
+              class="admin-nav-link"
               :class="{ selected: route.meta.adminCenter === center.key }"
               :active-class="'admin-link-active'"
               >{{ center.label }}</router-link
@@ -168,7 +175,12 @@ async function logout() {
       </div>
     </header>
     <main class="page" :inert="loggingOut || !!auth.expiredUser || undefined">
-      <router-view :key="$route.fullPath" />
+      <router-view v-if="routeReady" :key="$route.fullPath" /><el-skeleton
+        v-else
+        :rows="6"
+        animated
+        aria-label="页面加载中"
+      />
     </main>
     <footer class="site-footer" :inert="loggingOut || !!auth.expiredUser || undefined">
       <div class="footer-brand">

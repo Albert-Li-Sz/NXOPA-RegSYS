@@ -232,9 +232,9 @@ async function revokeSession(id: string) {
   <div v-if="!auth.user || ['reset', 'resetCode'].includes(mode)" class="auth-layout">
     <div class="auth-intro">
       <span class="eyebrow">OPENATOM CLUB · NANXIAO</span>
-      <h1>每一次竞赛，<br />从这里开始。</h1>
+      <h1>每一次参与，<br />从这里开始。</h1>
       <p>个人报名、团队协作、指导老师关联，<br />在同一个地方管理您的参赛旅程。</p>
-      <router-link to="/contests">浏览竞赛 →</router-link>
+      <router-link to="/">← 返回首页</router-link>
     </div>
     <div class="auth-card card">
       <h2>

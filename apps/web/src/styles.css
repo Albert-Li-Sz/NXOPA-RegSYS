@@ -117,6 +117,21 @@ button {
 .header-inner nav .selected {
   color: var(--el-color-primary);
 }
+/* Management centers follow the personal links as a separate, quieter group. */
+.header-inner nav .nav-group-label {
+  align-self: center;
+  flex-shrink: 0;
+  padding-left: 18px;
+  border-left: 1px solid #dcdfe6;
+  color: #8a919c;
+  font-size: 12px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.header-inner nav .admin-nav-link {
+  color: #4f5967;
+  font-weight: 500;
+}
 .header-inner.admin-header {
   flex-wrap: wrap;
   padding-top: 14px;
@@ -709,6 +724,20 @@ h2 {
   }
   .role-pill {
     display: none;
+  }
+}
+@media (max-width: 1100px) {
+  /* The nav scrolls sideways here; fade its edge so hidden entries are noticeable. */
+  .header-inner nav {
+    padding-right: 28px;
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+}
+@media (hover: none), (max-width: 760px) {
+  /* Touch screens never hover, so keep wide tables' scrollbars visible. */
+  .el-table .el-scrollbar__bar.is-horizontal {
+    opacity: 1 !important;
+    display: block !important;
   }
 }
 @media (max-width: 760px) {

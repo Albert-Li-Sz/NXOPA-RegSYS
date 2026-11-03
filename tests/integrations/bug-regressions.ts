@@ -1164,6 +1164,43 @@ try {
     assert.ok(messages.includes('报名审核结果：未通过。资料不完整'), messages.join(' | '));
     assert.ok(messages.every((m) => !/APPROVED|REJECTED|CORRECTION/.test(m)));
   });
+
+  await check('participants-cannot-read-internal-registration-jobs', async () => {
+    const c = await contest();
+    const r = await submitted(c.id);
+    const job = await db.job.create({
+      data: {
+        kind: 'MAIL',
+        resourceId: r.id,
+        dedupeKey: `bug-internal-job:${run}`,
+        payload: {},
+        error: 'SMTP 内部错误详情',
+      },
+    });
+    try {
+      assert.equal((await alice.raw(`/api/v1/jobs/${job.id}`)).status, 403);
+      assert.equal((await admin.raw(`/api/v1/jobs/${job.id}`)).status, 200);
+    } finally {
+      await db.job.delete({ where: { id: job.id } });
+    }
+  });
+
+  await check('file-deletion-still-finds-referencing-drafts', async () => {
+    const c = await contest();
+    const r = await alice.api('/registrations', 'POST', { contestId: c.id });
+    // An unbound personal file is found through the uploader's own registrations.
+    const file = await alice.upload();
+    await db.registration.update({
+      where: { id: r.id },
+      data: { answers: { team: {}, registration: { proof: file.id } } },
+    });
+    const before = (await db.registration.findUniqueOrThrow({ where: { id: r.id } })).version;
+    await alice.api(`/files/${file.id}`, 'DELETE');
+    assert.ok(
+      (await db.registration.findUniqueOrThrow({ where: { id: r.id } })).version > before,
+      'Deleting a referenced file must mark the referencing registration as changed',
+    );
+  });
 } finally {
   if (contestIds.length)
     await db.contest.updateMany({ where: { id: { in: contestIds } }, data: { archived: true } });
