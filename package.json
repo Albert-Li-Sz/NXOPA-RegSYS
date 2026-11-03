@@ -1,6 +1,6 @@
 {
   "name": "contest-center",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
