@@ -30,8 +30,8 @@ importers:
         specifier: ^24.0.0
         version: 24.19.2
       dotenv:
-        specifier: ^17.2.0
-        version: 17.4.2
+        specifier: ^18.0.9
+        version: 18.0.9
       openapi-typescript:
         specifier: 7.13.0
         version: 7.13.0(typescript@5.9.3)
@@ -105,8 +105,8 @@ importers:
         specifier: 1.4.7
         version: 1.4.7
       dotenv:
-        specifier: ^17.2.0
-        version: 17.4.2
+        specifier: ^18.0.9
+        version: 18.0.9
       ioredis:
         specifier: ^5.0.0
         version: 5.11.1(supports-color@10.2.2)
@@ -1633,6 +1633,11 @@ packages:
   dotenv@17.4.2:
     resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
+
+  dotenv@18.0.9:
+    resolution: {integrity: sha512-3fVOW4cB02R066PUSwn8O4TJyz9NckQl7F81blIbaq9jKBm2tSmOKky7ZHIXzGvkVPXCSn6jkpziBPZdGFs8Tw==}
+    engines: {node: '>=12'}
+    hasBin: true
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -4289,6 +4294,8 @@ snapshots:
       '@types/trusted-types': 2.0.7
 
   dotenv@17.4.2: {}
+
+  dotenv@18.0.9: {}
 
   dunder-proto@1.0.1:
     dependencies:
