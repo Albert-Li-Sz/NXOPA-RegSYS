@@ -417,7 +417,7 @@ async function memberSave(id: string, index: number) {
     </div>
     <h1 class="detail-title">{{ r.teamName || r.people[0]?.name || '报名资料' }}</h1>
     <p class="subtitle">
-      比赛时间：{{ date(r.contest.startsAt) }} ·
+      活动时间：{{ date(r.contest.startsAt) }} ·
       {{ policy?.mode === 'TEAM' ? '团队报名' : '个人报名' }}
     </p>
     <div class="toolbar">
@@ -467,7 +467,11 @@ async function memberSave(id: string, index: number) {
         <div class="stat">
           <span>参加人数</span>
           <div class="value">{{ r.people.length }}</div>
-          <span class="hint">{{ policy?.minMembers }}–{{ policy?.maxMembers }} 人</span>
+          <span class="hint">{{
+            policy?.minMembers === policy?.maxMembers
+              ? `限 ${policy?.maxMembers} 人`
+              : `${policy?.minMembers}–${policy?.maxMembers} 人`
+          }}</span>
         </div>
         <div class="stat">
           <span>关联老师</span>
@@ -481,7 +485,7 @@ async function memberSave(id: string, index: number) {
           }}</span>
         </div>
         <div class="stat">
-          <span>应付金额</span>
+          <span>应收金额</span>
           <div class="value">{{ money(r.feeCents) }}</div>
           <span class="hint">提交时确定费用</span>
         </div>
@@ -821,7 +825,7 @@ async function memberSave(id: string, index: number) {
     <div class="panel" v-if="tab === 'finance' && r.canReadFinanceDetails">
       <div class="stats">
         <div class="stat">
-          <span>应付金额</span>
+          <span>应收金额</span>
           <div class="value">{{ money(r.feeCents) }}</div>
         </div>
         <div class="stat">

@@ -259,6 +259,11 @@ button {
 .toolbar .el-input {
   max-width: 300px;
 }
+/* Filters share one width so a select does not stretch across the toolbar. */
+.toolbar > .el-select {
+  width: 200px;
+  max-width: 100%;
+}
 .toolbar .upload-label {
   display: flex;
   align-items: center;
@@ -277,7 +282,8 @@ input[type='file'] {
   height: 32px;
   max-width: 100%;
   font: inherit;
-  color: var(--el-text-color-regular);
+  font-size: 13px;
+  color: var(--muted);
 }
 input[type='file']::file-selector-button {
   height: 32px;
@@ -289,6 +295,15 @@ input[type='file']::file-selector-button {
   color: var(--el-text-color-regular);
   font: inherit;
   cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background-color 0.15s;
+}
+input[type='file']:hover::file-selector-button {
+  border-color: var(--el-color-primary-light-7);
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
 }
 .panel {
   background: var(--panel);
@@ -327,6 +342,9 @@ input[type='file']::file-selector-button {
   font-weight: 600;
   color: var(--el-color-primary);
   margin: 12px 0 8px;
+}
+.stat .value-danger {
+  color: var(--el-color-danger);
 }
 .stat .hint {
   font-size: 13px;
@@ -506,7 +524,8 @@ input[type='file']::file-selector-button {
 }
 .crumb {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   align-items: center;
   color: #626b78;
   font-size: 14px;
@@ -793,6 +812,11 @@ h2 {
   }
   .toolbar .el-input {
     max-width: none;
+  }
+  .toolbar > .el-select,
+  .toolbar > .el-date-editor.el-input,
+  .toolbar > .el-date-editor {
+    width: 100%;
   }
   .stats {
     grid-template-columns: 1fr 1fr;

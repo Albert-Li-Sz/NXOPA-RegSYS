@@ -502,7 +502,18 @@ async function webhook() {
     <div class="stats" v-if="auth.user?.isAdmin">
       <div class="stat">
         <span>后台任务服务</span>
-        <div class="value">{{ metrics.workerHealthy ? '运行中' : '暂未响应' }}</div>
+        <div class="value" :class="{ 'value-danger': metrics.workerHealthy === false }">
+          {{
+            metrics.workerHealthy === undefined
+              ? '—'
+              : metrics.workerHealthy
+                ? '运行中'
+                : '暂未响应'
+          }}
+        </div>
+        <span v-if="metrics.workerHealthy === false" class="hint value-danger"
+          >邮件、制证与清理任务暂停，请检查 Worker 服务</span
+        >
       </div>
       <div class="stat">
         <span>待派发事件</span>
